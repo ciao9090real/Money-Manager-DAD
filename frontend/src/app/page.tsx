@@ -286,6 +286,13 @@ export default function App() {
   }
 
   useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+    });
+  }, []);
+
+  useEffect(() => {
     if (!message) return;
     const isError = /(failed|could not|cannot|invalid|unable|must|required|not configured|not found|error)/i.test(message);
     const timer = window.setTimeout(() => setMessage(""), isError ? 5000 : 2400);

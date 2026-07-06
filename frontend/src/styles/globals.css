@@ -4180,3 +4180,489 @@ option {
     padding: 28px 24px;
   }
 }
+
+/* Mobile app polish for the installable PWA */
+@media (max-width: 760px) {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    overflow-x: hidden;
+  }
+
+  button,
+  input,
+  select,
+  textarea,
+  .modern-control {
+    font-size: 16px;
+  }
+
+  .app-shell {
+    min-height: 100dvh;
+    padding-bottom: calc(78px + env(safe-area-inset-bottom));
+  }
+
+  .app-header {
+    min-height: 64px;
+    padding: calc(8px + env(safe-area-inset-top)) 14px 8px;
+    position: sticky;
+    top: 0;
+    z-index: 60;
+    backdrop-filter: blur(14px);
+    background: color-mix(in srgb, var(--surface) 92%, transparent);
+  }
+
+  .brand-button {
+    min-width: 0;
+    gap: 9px;
+    font-size: 19px;
+  }
+
+  .brand-mark {
+    width: 42px;
+    height: 42px;
+    border-radius: 13px;
+  }
+
+  .app-user {
+    gap: 8px;
+  }
+
+  .user-avatar {
+    width: 42px;
+    height: 42px;
+    flex: 0 0 auto;
+  }
+
+  .mobile-menu {
+    width: calc(100% - 28px);
+    margin: 10px auto 0;
+    padding: 8px;
+    position: sticky;
+    top: calc(64px + env(safe-area-inset-top));
+    z-index: 50;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: var(--surface);
+    box-shadow: 0 14px 28px rgb(28 36 57 / 12%);
+  }
+
+  .mobile-menu button {
+    min-height: 48px;
+    padding: 10px;
+    border: 0;
+    border-radius: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: var(--muted);
+    background: transparent;
+    font-weight: 650;
+  }
+
+  .mobile-menu button.active {
+    color: #fff;
+    background: linear-gradient(135deg, #7638ef, #5b4bea);
+  }
+
+  .bottom-nav {
+    min-height: calc(68px + env(safe-area-inset-bottom));
+    padding: 7px 8px calc(7px + env(safe-area-inset-bottom));
+    position: fixed;
+    inset: auto 0 0;
+    z-index: 100;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    border-top: 1px solid var(--border);
+    background: color-mix(in srgb, var(--surface) 94%, transparent);
+    backdrop-filter: blur(18px);
+    box-shadow: 0 -12px 32px rgb(28 36 57 / 10%);
+  }
+
+  .bottom-nav button {
+    min-width: 0;
+    min-height: 52px;
+    padding: 6px 2px;
+    border: 0;
+    border-radius: 15px;
+    display: grid;
+    place-items: center;
+    gap: 2px;
+    color: var(--muted);
+    background: transparent;
+    font-size: 10px;
+    font-weight: 650;
+  }
+
+  .bottom-nav button svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .bottom-nav button.active {
+    color: var(--accent-dark);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+
+  .page-grid {
+    width: 100%;
+    max-width: none;
+    padding: 22px 14px 34px;
+    gap: 22px;
+  }
+
+  .page-heading h1,
+  .bank-detail-hero h1 {
+    font-size: clamp(26px, 8vw, 34px);
+    letter-spacing: -0.04em;
+  }
+
+  .page-heading p,
+  .section-intro,
+  .settings-card-heading p,
+  .bank-detail-hero p,
+  .bank-detail-hero span {
+    font-size: 14px;
+    line-height: 1.55;
+  }
+
+  .overview-metrics,
+  .simple-stats,
+  .bank-detail-stats,
+  .forecast-totals,
+  .bank-forecast-totals,
+  .investment-metric-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .overview-metrics .metric-card,
+  .metric-card,
+  .simple-stats article,
+  .bank-detail-stats article,
+  .forecast-totals article,
+  .investment-metric-grid article {
+    min-height: auto;
+    padding: 18px;
+    border-radius: 18px;
+  }
+
+  .overview-metrics .metric-card strong,
+  .metric-card strong,
+  .simple-stats strong,
+  .bank-detail-stats strong {
+    font-size: 25px;
+  }
+
+  .overview-charts,
+  .bank-detail-charts,
+  .bank-ring-layout,
+  .bank-analysis-grid,
+  .settings-layout,
+  .profile-editor,
+  .policy-grid,
+  .managed-entity-grid,
+  .forecast-body {
+    grid-template-columns: 1fr;
+  }
+
+  .chart-card,
+  .recent-card,
+  .settings-card,
+  .bank-ring-card,
+  .bank-analysis,
+  .analysis-chart-card,
+  .bank-cards-analysis,
+  .bank-transaction-history,
+  .bank-quick-transaction,
+  .transaction-management,
+  .investment-activity-management,
+  .investment-summary-hero,
+  .forecast-card,
+  .entity-edit-form,
+  .managed-entities,
+  .insurance-shell {
+    padding: 20px 16px;
+    border-radius: 20px;
+  }
+
+  .chart-card {
+    min-height: auto;
+  }
+
+  .line-chart,
+  .cashflow-columns {
+    height: 230px;
+    margin-top: 22px;
+    overflow-x: auto;
+  }
+
+  .donut {
+    width: min(240px, 72vw);
+    height: min(240px, 72vw);
+    margin: 26px auto 18px;
+  }
+
+  .bank-ring {
+    width: min(330px, 88vw);
+    height: min(330px, 88vw);
+    margin-inline: auto;
+  }
+
+  .bank-ring-center strong {
+    font-size: clamp(26px, 8vw, 38px);
+  }
+
+  .bank-ring-legend,
+  .analysis-list {
+    gap: 10px;
+  }
+
+  .bank-ring-legend button,
+  .analysis-card-row,
+  .entity-management-list article,
+  .managed-entity-grid article,
+  .transaction-list article,
+  .recurring-list article {
+    padding: 14px;
+    border-radius: 15px;
+  }
+
+  .bank-detail-hero {
+    padding: 22px 18px;
+    border-radius: 22px;
+    align-items: stretch;
+    gap: 22px;
+  }
+
+  .bank-detail-hero > div:first-child {
+    align-items: flex-start;
+  }
+
+  .bank-detail-hero-actions {
+    align-items: stretch;
+  }
+
+  .bank-detail-hero-actions > strong {
+    font-size: clamp(34px, 11vw, 48px);
+    text-align: left;
+  }
+
+  .bank-detail-hero-actions button,
+  .primary,
+  .secondary,
+  .settings-save,
+  .insurance-add {
+    min-height: 48px;
+    justify-content: center;
+    border-radius: 14px;
+  }
+
+  .bank-card-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .card-metric-values {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-card {
+    gap: 20px;
+  }
+
+  .settings-fields,
+  .two-settings-fields,
+  .form-grid,
+  .inline-form,
+  .insurance-form,
+  .category-editor,
+  .quote-input,
+  .transaction-bank-picker {
+    grid-template-columns: 1fr;
+  }
+
+  .field input,
+  .field select,
+  .field textarea,
+  .modern-control,
+  .auth-panel input {
+    min-height: 52px;
+    border-radius: 14px;
+  }
+
+  .modern-options {
+    max-height: min(320px, 55vh);
+    border-radius: 16px;
+  }
+
+  .calendar-popover {
+    width: min(360px, calc(100vw - 28px));
+    left: 50%;
+    transform: translateX(-50%);
+    border-radius: 22px;
+  }
+
+  .photo-dropzone {
+    min-height: 128px;
+    padding: 16px;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .photo-dropzone > svg {
+    display: none;
+  }
+
+  .settings-actions,
+  .entity-edit-actions,
+  .category-editor-actions,
+  .action-title,
+  .investment-summary-heading,
+  .forecast-heading,
+  .bank-forecast-heading,
+  .insurance-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .action-title > button,
+  .settings-actions button,
+  .entity-edit-actions button,
+  .category-editor-actions button,
+  .investment-summary-heading > .modern-select,
+  .forecast-range,
+  .bank-forecast-heading .forecast-range {
+    width: 100%;
+  }
+
+  .forecast-range {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .forecast-range button {
+    min-height: 42px;
+  }
+
+  .forecast-month {
+    grid-template-columns: 58px minmax(90px, 1fr) 88px;
+    gap: 8px;
+  }
+
+  .bank-forecast-months > div {
+    grid-template-columns: 34px minmax(0, 1fr) 86px;
+  }
+
+  .recognizable-transactions,
+  .data-panel {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .recognizable-transactions table,
+  .data-panel table {
+    min-width: 680px;
+  }
+
+  .recognizable-transactions th,
+  .recognizable-transactions td,
+  .data-panel th,
+  .data-panel td {
+    padding: 13px 10px;
+  }
+
+  .policy-card {
+    min-height: auto;
+    padding: 22px;
+  }
+
+  .policy-values {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .auth-page {
+    min-height: 100dvh;
+    display: block;
+  }
+
+  .auth-showcase {
+    min-height: auto;
+    padding: calc(18px + env(safe-area-inset-top)) 18px 10px;
+  }
+
+  .auth-form-side {
+    min-height: auto;
+    padding: 14px 16px 28px;
+    display: block;
+  }
+
+  .auth-panel {
+    width: 100%;
+    margin: 14px 0 0;
+    padding: 26px 20px;
+    border: 1px solid var(--border);
+    border-radius: 22px;
+    box-shadow: 0 12px 26px rgb(22 30 48 / 10%);
+  }
+
+  .auth-panel h2 {
+    font-size: 25px;
+  }
+
+  .feature-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .notice {
+    width: calc(100% - 28px);
+    top: calc(74px + env(safe-area-inset-top));
+    right: 14px;
+    border-radius: 16px;
+  }
+}
+
+@media (max-width: 420px) {
+  .page-grid {
+    padding-inline: 12px;
+  }
+
+  .brand-button {
+    font-size: 18px;
+  }
+
+  .brand-mark {
+    width: 38px;
+    height: 38px;
+  }
+
+  .bottom-nav button {
+    font-size: 9px;
+  }
+
+  .bottom-nav button svg {
+    width: 19px;
+    height: 19px;
+  }
+
+  .chart-card,
+  .recent-card,
+  .settings-card,
+  .bank-ring-card,
+  .bank-analysis,
+  .analysis-chart-card,
+  .bank-cards-analysis,
+  .bank-transaction-history,
+  .bank-quick-transaction,
+  .investment-summary-hero,
+  .forecast-card {
+    padding: 18px 14px;
+  }
+}

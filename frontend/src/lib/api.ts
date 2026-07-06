@@ -34,7 +34,7 @@ export async function apiFetch<T>(path: string, token?: string | null, options: 
   try {
     response = await fetch(`${API_URL}${path}`, { ...options, headers });
   } catch {
-    throw new Error(`Cannot reach the Finlio backend at ${API_URL}. Make sure FastAPI is running on port 8000.`);
+    throw new Error(`Cannot reach the Finlio backend at ${API_URL}. Check that the backend is awake and CORS allows this app URL.`);
   }
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: response.statusText }));
