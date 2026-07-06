@@ -4788,3 +4788,122 @@ option {
     min-width: 520px;
   }
 }
+
+/* Targeted phone fixes for bank detail cashflow + forecast */
+@media (max-width: 760px) {
+  .bank-detail-page,
+  .bank-detail-page * {
+    min-width: 0;
+  }
+
+  .bank-detail-page {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .bank-detail-page .bank-detail-charts {
+    width: 100%;
+    max-width: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .bank-detail-page .analysis-chart-card,
+  .bank-detail-page .bank-forecast-card {
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  .bank-detail-page .cashflow-columns {
+    width: 100%;
+    max-width: 100%;
+    height: 210px;
+    padding: 12px 6px 0;
+    gap: 6px;
+    overflow: hidden;
+    justify-content: stretch;
+  }
+
+  .bank-detail-page .cashflow-month {
+    min-width: 0;
+    flex: 1 1 0;
+    gap: 6px;
+  }
+
+  .bank-detail-page .cashflow-month > div {
+    gap: 3px;
+  }
+
+  .bank-detail-page .cashflow-month i {
+    width: min(12px, 44%);
+  }
+
+  .bank-detail-page .cashflow-month > span {
+    overflow: hidden;
+    font-size: 10px;
+    text-overflow: clip;
+    white-space: nowrap;
+  }
+
+  .bank-detail-page .analysis-legend {
+    flex-wrap: wrap;
+  }
+
+  .bank-detail-page .bank-forecast-heading {
+    width: 100%;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .bank-detail-page .bank-forecast-heading > div:first-child,
+  .bank-detail-page .bank-forecast-heading h2,
+  .bank-detail-page .bank-forecast-heading p {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .bank-detail-page .bank-forecast-card .forecast-range {
+    width: 100%;
+    flex: 1 1 auto;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .bank-detail-page .bank-forecast-balance strong {
+    font-size: clamp(25px, 8vw, 34px);
+    overflow-wrap: anywhere;
+  }
+
+  .bank-detail-page .bank-forecast-totals {
+    grid-template-columns: 1fr;
+  }
+
+  .bank-detail-page .bank-forecast-totals > span {
+    min-width: 0;
+  }
+
+  .bank-detail-page .bank-forecast-totals b {
+    overflow: visible;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .bank-detail-page .bank-forecast-months {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .bank-detail-page .bank-forecast-months > div {
+    width: 100%;
+    grid-template-columns: 42px minmax(0, 1fr) minmax(74px, auto);
+    gap: 8px;
+  }
+
+  .bank-detail-page .bank-forecast-months b {
+    font-size: 11px;
+    overflow-wrap: anywhere;
+  }
+}
