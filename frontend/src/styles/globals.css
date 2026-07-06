@@ -4666,3 +4666,125 @@ option {
     padding: 18px 14px;
   }
 }
+
+/* Targeted phone fixes for the overview bank-analysis panel */
+@media (max-width: 760px) {
+  .bank-overview-page,
+  .bank-overview-page * {
+    min-width: 0;
+  }
+
+  .bank-overview-page .bank-analysis {
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  .bank-overview-page .bank-analysis-heading,
+  .bank-overview-page .bank-analysis-heading > div {
+    width: 100%;
+    min-width: 0;
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .bank-overview-page .bank-analysis-heading > div {
+    gap: 12px;
+  }
+
+  .bank-overview-page .bank-analysis-heading h2,
+  .bank-overview-page .bank-analysis-heading p {
+    overflow-wrap: anywhere;
+  }
+
+  .bank-overview-page .bank-analysis-heading button {
+    width: 100%;
+    min-height: 46px;
+  }
+
+  .bank-overview-page .bank-analysis-stats {
+    display: grid;
+    grid-template-columns: 1fr;
+    border: 0;
+    border-radius: 0;
+    gap: 10px;
+    overflow: visible;
+  }
+
+  .bank-overview-page .bank-analysis-stats div {
+    min-width: 0;
+    padding: 16px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--bg);
+  }
+
+  .bank-overview-page .bank-analysis-stats div:last-child {
+    border-right: 1px solid var(--border);
+  }
+
+  .bank-overview-page .bank-analysis-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .bank-overview-page .analysis-list {
+    width: 100%;
+    min-width: 0;
+    padding: 16px;
+  }
+
+  .bank-overview-page .analysis-list > div,
+  .bank-overview-page .analysis-card-row {
+    min-width: 0;
+    grid-template-columns: 1fr;
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .bank-overview-page .analysis-list > div > span,
+  .bank-overview-page .analysis-card-row > span {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .bank-overview-page .analysis-list strong,
+  .bank-overview-page .analysis-list small,
+  .bank-overview-page .analysis-card-row strong,
+  .bank-overview-page .analysis-card-row small {
+    overflow-wrap: anywhere;
+  }
+
+  .bank-overview-page .analysis-list b,
+  .bank-overview-page .analysis-card-row b {
+    width: 100%;
+    text-align: right;
+  }
+
+  .bank-overview-page .bank-transactions {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .bank-overview-page .bank-transactions-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .bank-overview-page .bank-transactions-heading button {
+    min-height: 42px;
+  }
+
+  .bank-overview-page .bank-transactions .data-panel {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .bank-overview-page .bank-transactions .data-panel table {
+    min-width: 520px;
+  }
+}
