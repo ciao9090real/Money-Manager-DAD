@@ -24,13 +24,14 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 Copy-Item ..\.env.example .env
-python seed.py
 uvicorn app.main:app --reload --port 8000
 ```
 
 API documentation is available at `http://localhost:8000/docs`.
 
-`python seed.py` creates shared system categories only. It does not create demo users or demo financial data.
+New users start with an empty workspace: no banks, accounts, cards, transactions, investments, insurance policies, or demo financial data are created automatically. The app creates shared system categories on startup.
+
+`python seed.py` is optional for development/manual setup only. It creates shared system categories and does not create demo users or demo financial data.
 
 For PostgreSQL, set:
 

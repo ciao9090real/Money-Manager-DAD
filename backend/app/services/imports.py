@@ -1,3 +1,10 @@
+"""Future statement-import helpers.
+
+The CSV/XLSX import workflow is currently disabled and no import routes are
+mounted in FastAPI. These parsing helpers remain only for future redesign work
+and isolated unit tests; normal app setup and UI flows do not call them.
+"""
+
 import hashlib
 import io
 import json

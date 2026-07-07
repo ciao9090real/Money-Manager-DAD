@@ -132,6 +132,11 @@ class Transaction(Base, TimestampMixin):
     original_hash: Mapped[str] = mapped_column(String(64), index=True)
 
 
+# Future statement-import tables.
+#
+# The import workflow is currently disabled and no import routes are mounted.
+# These models remain only to preserve existing databases/migrations and for a
+# future redesigned import experience.
 class ImportTemplate(Base, TimestampMixin):
     __tablename__ = "import_templates"
     id: Mapped[int] = mapped_column(primary_key=True)
