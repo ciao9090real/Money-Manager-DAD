@@ -1,6 +1,6 @@
 from decimal import Decimal
 from datetime import date
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
@@ -87,6 +87,23 @@ class AccountIn(BaseModel):
     display_order: int = 0
 
 
+class AccountTreeNode(ORMModel):
+    id: int
+    bank_id: int
+    parent_account_id: int | None = None
+    name: str
+    type: str
+    account_type: str
+    account_level: int
+    currency: str
+    current_balance: Decimal
+    direct_balance: Decimal
+    rollup_balance: Decimal
+    display_order: int
+    is_active: bool
+    children: list["AccountTreeNode"] = Field(default_factory=list)
+
+
 class CardIn(BaseModel):
     bank_id: int
     account_id: int
@@ -123,13 +140,14 @@ class TransactionIn(BaseModel):
     bank_id: int
     account_id: int
     card_id: int | None = None
+    transfer_account_id: int | None = None
     date: str
     value_date: str | None = None
-    description: str
+    description: str = ""
     merchant_name: str | None = None
     amount: Decimal
     currency: str = "EUR"
-    type: str = "expense"
+    type: Literal["income", "expense", "transfer", "adjustment", "investment"] = "expense"
     category_id: int | None = None
     notes: str | None = None
 

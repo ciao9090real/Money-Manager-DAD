@@ -27,13 +27,32 @@ from app.models import (
     Transaction,
     User,
 )
-from app.schemas import AccountIn, BankIn, CardIn, CategoryIn, GenericCreate, TransactionIn
+from app.schemas import AccountIn, AccountTreeNode, BankIn, CardIn, CategoryIn, GenericCreate, TransactionIn
 from app.services.dashboard import build_dashboard_report
 from app.services.imports import normalize_description, original_hash
 from app.services.market import get_exchange_rate
 
 
 router = APIRouter()
+
+ACCOUNT_TYPES = {
+    "bank",
+    "current_account",
+    "savings_account",
+    "cash",
+    "wallet",
+    "card_container",
+    "payment_method",
+    "investment",
+    "insurance",
+    "benefit",
+    "checking",
+    "savings",
+    "brokerage",
+    "loan",
+    "mortgage",
+    "other",
+}
 
 
 def add_calendar_months(value: date, months: int) -> date:
@@ -108,6 +127,143 @@ def ensure_category_access(db: Session, category_id: int | None, user_id: int) -
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
     return category
+
+
+def normalize_account_type(value: str | None, fallback: str | None = None) -> str:
+    account_type = (value or fallback or "other").strip().lower()
+    aliases = {
+        "checking": "current_account",
+        "savings": "savings_account",
+        "cash_wallet": "wallet",
+        "brokerage": "investment",
+        "payment": "payment_method",
+    }
+    account_type = aliases.get(account_type, account_type)
+    if account_type not in ACCOUNT_TYPES:
+        raise HTTPException(status_code=422, detail="Unsupported account type")
+    return account_type
+
+
+def account_depth(db: Session, account: Account) -> int:
+    depth = 1
+    seen = {account.id}
+    parent_id = account.parent_account_id
+    while parent_id:
+        if parent_id in seen:
+            raise HTTPException(status_code=422, detail="Circular account hierarchy detected")
+        seen.add(parent_id)
+        parent = db.query(Account).filter(Account.id == parent_id, Account.user_id == account.user_id).first()
+        if not parent:
+            break
+        depth += 1
+        parent_id = parent.parent_account_id
+    return depth
+
+
+def account_descendant_ids(db: Session, account_id: int, user_id: int) -> set[int]:
+    children_by_parent: dict[int, list[int]] = defaultdict(list)
+    rows = db.query(Account.id, Account.parent_account_id).filter(Account.user_id == user_id).all()
+    for child_id, parent_id in rows:
+        if parent_id:
+            children_by_parent[parent_id].append(child_id)
+    descendants: set[int] = set()
+    stack = list(children_by_parent.get(account_id, []))
+    while stack:
+        child_id = stack.pop()
+        if child_id in descendants:
+            continue
+        descendants.add(child_id)
+        stack.extend(children_by_parent.get(child_id, []))
+    return descendants
+
+
+def validate_account_parent(
+    db: Session,
+    user_id: int,
+    bank_id: int,
+    parent_account_id: int | None,
+    account_id: int | None = None,
+) -> int:
+    if not parent_account_id:
+        return 1
+    if account_id and parent_account_id == account_id:
+        raise HTTPException(status_code=422, detail="An account cannot be its own parent")
+    parent = ensure_owner(db, Account, parent_account_id, user_id)
+    if parent.bank_id != bank_id:
+        raise HTTPException(status_code=422, detail="Parent account must belong to the same bank")
+    if not parent.is_active:
+        raise HTTPException(status_code=422, detail="Parent account must be active")
+    if account_id and parent_account_id in account_descendant_ids(db, account_id, user_id):
+        raise HTTPException(status_code=422, detail="An account cannot be moved under one of its children")
+    level = account_depth(db, parent) + 1
+    if level > 3:
+        raise HTTPException(status_code=422, detail="Account hierarchy can be at most three levels deep")
+    return level
+
+
+def refresh_account_levels(db: Session, user_id: int) -> None:
+    accounts = db.query(Account).filter(Account.user_id == user_id).all()
+    for account in accounts:
+        account.account_level = account_depth(db, account)
+
+
+def build_account_tree(accounts: list[Account]) -> list[dict]:
+    nodes = {
+        account.id: {
+            "id": account.id,
+            "bank_id": account.bank_id,
+            "parent_account_id": account.parent_account_id,
+            "name": account.name,
+            "type": account.type,
+            "account_type": account.account_type or account.type,
+            "account_level": account.account_level or 1,
+            "currency": account.currency,
+            "current_balance": account.current_balance or Decimal("0"),
+            "direct_balance": account.current_balance or Decimal("0"),
+            "rollup_balance": account.current_balance or Decimal("0"),
+            "display_order": account.display_order or 0,
+            "is_active": account.is_active,
+            "children": [],
+        }
+        for account in accounts
+    }
+    roots: list[dict] = []
+    for account in accounts:
+        node = nodes[account.id]
+        parent = nodes.get(account.parent_account_id)
+        if parent:
+            parent["children"].append(node)
+        else:
+            roots.append(node)
+
+    def sort_and_rollup(node: dict) -> Decimal:
+        node["children"].sort(key=lambda child: (child["display_order"], child["account_level"], child["name"].lower()))
+        total = Decimal(node["direct_balance"] or 0)
+        for child in node["children"]:
+            total += sort_and_rollup(child)
+        node["rollup_balance"] = total
+        return total
+
+    roots.sort(key=lambda item: (item["display_order"], item["account_level"], item["name"].lower()))
+    for root in roots:
+        sort_and_rollup(root)
+    return roots
+
+
+def signed_transaction_amount(payload: TransactionIn) -> Decimal:
+    amount = Decimal(payload.amount or 0)
+    if amount == 0:
+        raise HTTPException(status_code=422, detail="Transaction amount must be greater than zero")
+    absolute = abs(amount)
+    if payload.type == "income":
+        return absolute
+    if payload.type in {"expense", "investment"}:
+        return -absolute
+    if payload.type == "adjustment":
+        return amount
+    if payload.type == "transfer":
+        return -absolute
+    raise HTTPException(status_code=422, detail="Unsupported transaction type")
 
 
 @router.get("/categories")
@@ -220,18 +376,21 @@ def list_accounts(db: Session = Depends(get_db), user: User = Depends(get_curren
     )
 
 
-def account_hierarchy_fields(db: Session, payload: AccountIn, user_id: int) -> dict:
+@router.get("/accounts/tree", response_model=list[AccountTreeNode])
+def account_tree(include_inactive: bool = False, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    query = db.query(Account).filter(Account.user_id == user.id)
+    if not include_inactive:
+        query = query.filter(Account.is_active.is_(True))
+    accounts = query.order_by(Account.display_order, Account.account_level, Account.name).all()
+    return build_account_tree(accounts)
+
+
+def account_hierarchy_fields(db: Session, payload: AccountIn, user_id: int, account_id: int | None = None) -> dict:
     data = payload.model_dump()
-    data["account_type"] = data.get("account_type") or data["type"]
+    data["account_type"] = normalize_account_type(data.get("account_type"), data.get("type"))
+    data["type"] = data["account_type"]
     parent_id = data.get("parent_account_id")
-    if parent_id:
-        parent = ensure_owner(db, Account, parent_id, user_id)
-        if parent.bank_id != payload.bank_id:
-            raise HTTPException(status_code=422, detail="Parent account must belong to the same bank")
-        parent_level = int(parent.account_level or 1)
-        data["account_level"] = min(parent_level + 1, 3)
-    else:
-        data["account_level"] = data.get("account_level") or 1
+    data["account_level"] = validate_account_parent(db, user_id, payload.bank_id, parent_id, account_id)
     return data
 
 
@@ -254,9 +413,8 @@ def get_account(item_id: int, db: Session = Depends(get_db), user: User = Depend
 def update_account(item_id: int, payload: AccountIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     item = ensure_owner(db, Account, item_id, user.id)
     ensure_owner(db, Bank, payload.bank_id, user.id)
-    if payload.parent_account_id == item.id:
-        raise HTTPException(status_code=422, detail="An account cannot be its own parent")
-    update_fields(item, account_hierarchy_fields(db, payload, user.id))
+    update_fields(item, account_hierarchy_fields(db, payload, user.id, item.id))
+    refresh_account_levels(db, user.id)
     db.commit()
     db.refresh(item)
     return item
@@ -353,20 +511,85 @@ def create_transaction(payload: TransactionIn, db: Session = Depends(get_db), us
     account = ensure_account_bank(db, payload.account_id, payload.bank_id, user.id)
     card = ensure_card_account(db, payload.card_id, payload.account_id, user.id)
     ensure_category_access(db, payload.category_id, user.id)
-    tx_date = date.fromisoformat(payload.date)
-    tx_hash = original_hash(payload.account_id, tx_date, payload.amount, normalize_description(payload.description))
+    try:
+        tx_date = date.fromisoformat(payload.date)
+        value_date = date.fromisoformat(payload.value_date) if payload.value_date else None
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Transaction date must be a valid YYYY-MM-DD date")
+    signed_amount = signed_transaction_amount(payload)
+    description = (payload.description or "").strip()
+    if payload.type != "transfer" and not description:
+        description = "Manual transaction"
+    if payload.type == "transfer":
+        if not payload.transfer_account_id:
+            raise HTTPException(status_code=422, detail="Choose the account that receives this transfer")
+        target = ensure_owner(db, Account, payload.transfer_account_id, user.id)
+        if target.id == account.id:
+            raise HTTPException(status_code=422, detail="Transfer accounts must be different")
+        group_id = uuid4().hex
+        amount = abs(Decimal(payload.amount or 0))
+        if amount <= 0:
+            raise HTTPException(status_code=422, detail="Transfer amount must be greater than zero")
+        outgoing = Transaction(
+            user_id=user.id,
+            bank_id=account.bank_id,
+            account_id=account.id,
+            card_id=card.id if card else None,
+            date=tx_date,
+            value_date=value_date,
+            description=description or f"Transfer to {target.name}",
+            amount=-amount,
+            currency=account.currency,
+            type="transfer",
+            category_id=None,
+            notes=payload.notes,
+            is_transfer=True,
+            transfer_group_id=group_id,
+            source="manual",
+            original_hash=sha256(f"transfer:{user.id}:{group_id}:out".encode()).hexdigest(),
+        )
+        incoming = Transaction(
+            user_id=user.id,
+            bank_id=target.bank_id,
+            account_id=target.id,
+            card_id=None,
+            date=tx_date,
+            value_date=value_date,
+            description=description or f"Transfer from {account.name}",
+            amount=amount,
+            currency=target.currency,
+            type="transfer",
+            category_id=None,
+            notes=payload.notes,
+            is_transfer=True,
+            transfer_group_id=group_id,
+            source="manual",
+            original_hash=sha256(f"transfer:{user.id}:{group_id}:in".encode()).hexdigest(),
+        )
+        db.add_all([outgoing, incoming])
+        account.current_balance = Decimal(account.current_balance or 0) - amount
+        target.current_balance = Decimal(target.current_balance or 0) + amount
+        if card:
+            card.current_balance = Decimal(card.current_balance or 0) - amount
+        db.commit()
+        db.refresh(outgoing)
+        return outgoing
+
+    tx_hash = original_hash(payload.account_id, tx_date, signed_amount, normalize_description(description))
     item = Transaction(
         user_id=user.id,
         original_hash=tx_hash,
         date=tx_date,
-        value_date=date.fromisoformat(payload.value_date) if payload.value_date else None,
+        value_date=value_date,
         source="manual",
-        **payload.model_dump(exclude={"date", "value_date"}),
+        **payload.model_dump(exclude={"date", "value_date", "amount", "description", "transfer_account_id"}),
+        amount=signed_amount,
+        description=description,
     )
     db.add(item)
-    account.current_balance = Decimal(account.current_balance or 0) + Decimal(payload.amount)
+    account.current_balance = Decimal(account.current_balance or 0) + signed_amount
     if card:
-        card.current_balance = Decimal(card.current_balance or 0) + Decimal(payload.amount)
+        card.current_balance = Decimal(card.current_balance or 0) + signed_amount
     db.commit()
     db.refresh(item)
     return item
@@ -382,6 +605,8 @@ def update_transaction(item_id: int, payload: TransactionIn, db: Session = Depen
     item = ensure_owner(db, Transaction, item_id, user.id)
     if item.source == "investment":
         raise HTTPException(status_code=409, detail="Edit this transaction from Investments so the holding stays in sync")
+    if item.is_transfer or payload.type == "transfer":
+        raise HTTPException(status_code=409, detail="Transfer editing is not available yet. Delete and recreate the transfer.")
     ensure_owner(db, Bank, payload.bank_id, user.id)
     old_account = ensure_owner(db, Account, item.account_id, user.id)
     new_account = ensure_account_bank(db, payload.account_id, payload.bank_id, user.id)
@@ -389,19 +614,25 @@ def update_transaction(item_id: int, payload: TransactionIn, db: Session = Depen
     new_card = ensure_card_account(db, payload.card_id, payload.account_id, user.id)
     ensure_category_access(db, payload.category_id, user.id)
     data = payload.model_dump()
-    data["date"] = date.fromisoformat(data["date"])
-    data["value_date"] = date.fromisoformat(data["value_date"]) if data.get("value_date") else None
+    try:
+        data["date"] = date.fromisoformat(data["date"])
+        data["value_date"] = date.fromisoformat(data["value_date"]) if data.get("value_date") else None
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Transaction date must be a valid YYYY-MM-DD date")
+    data["amount"] = signed_transaction_amount(payload)
+    data["description"] = str(data.get("description") or "").strip() or "Manual transaction"
+    data.pop("transfer_account_id", None)
     old_account.current_balance = Decimal(old_account.current_balance or 0) - Decimal(item.amount or 0)
-    new_account.current_balance = Decimal(new_account.current_balance or 0) + Decimal(payload.amount)
+    new_account.current_balance = Decimal(new_account.current_balance or 0) + Decimal(data["amount"])
     if old_card:
         old_card.current_balance = Decimal(old_card.current_balance or 0) - Decimal(item.amount or 0)
     if new_card:
-        new_card.current_balance = Decimal(new_card.current_balance or 0) + Decimal(payload.amount)
+        new_card.current_balance = Decimal(new_card.current_balance or 0) + Decimal(data["amount"])
     data["original_hash"] = original_hash(
         payload.account_id,
         data["date"],
-        payload.amount,
-        normalize_description(payload.description),
+        data["amount"],
+        normalize_description(data["description"]),
     )
     update_fields(item, data)
     db.commit()
@@ -414,12 +645,20 @@ def delete_transaction(item_id: int, db: Session = Depends(get_db), user: User =
     item = ensure_owner(db, Transaction, item_id, user.id)
     if item.source == "investment":
         raise HTTPException(status_code=409, detail="Delete this transaction from Investments so the holding stays in sync")
-    account = ensure_owner(db, Account, item.account_id, user.id)
-    account.current_balance = Decimal(account.current_balance or 0) - Decimal(item.amount or 0)
-    if item.card_id:
-        card = ensure_owner(db, Card, item.card_id, user.id)
-        card.current_balance = Decimal(card.current_balance or 0) - Decimal(item.amount or 0)
-    db.delete(item)
+    items = [item]
+    if item.is_transfer and item.transfer_group_id:
+        items = db.query(Transaction).filter_by(
+            user_id=user.id,
+            transfer_group_id=item.transfer_group_id,
+            is_transfer=True,
+        ).all()
+    for row in items:
+        account = ensure_owner(db, Account, row.account_id, user.id)
+        account.current_balance = Decimal(account.current_balance or 0) - Decimal(row.amount or 0)
+        if row.card_id:
+            card = ensure_owner(db, Card, row.card_id, user.id)
+            card.current_balance = Decimal(card.current_balance or 0) - Decimal(row.amount or 0)
+        db.delete(row)
     db.commit()
     return {"ok": True}
 

@@ -28,6 +28,7 @@ import {
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { ModernDateInput } from "../components/ui/ModernDateInput";
 import { ModernSelect } from "../components/ui/ModernSelect";
+import { AccountSelector } from "../features/accounts/AccountSelector";
 import { AuthScreen } from "../features/auth/AuthScreen";
 import { apiFetch } from "../lib/api";
 import { formatDateValue, formatMoney } from "../lib/formatting";
@@ -945,7 +946,7 @@ function TransactionView({ token, setMessage }: { token: string; setMessage: (ms
       ) : (
         <form className="inline-form guided-form" onSubmit={submit}>
           <label className="field"><span>{t("Flow")}</span><ModernSelect name="type" value={transactionType} onValueChange={(value) => setTransactionType(value as "expense" | "income")} options={[{ value: "expense", label: t("Money out") }, { value: "income", label: t("Money in") }]} /></label>
-          <label className="field"><span>{t("Account")}</span><ModernSelect name="account_id" value={accountId} onValueChange={setAccountId} required placeholder="Choose account" options={bankAccounts.map((account) => ({ value: String(account.id), label: account.name }))} /></label>
+          <label className="field"><span>{t("Account")}</span><AccountSelector name="account_id" accounts={accounts} banks={banks} bankId={bankId} value={accountId} onValueChange={setAccountId} required placeholder="Choose account" showBalance /></label>
           <label className="field"><span>Card used (optional)</span><ModernSelect name="card_id" disabled={!accountId} defaultValue="" options={[{ value: "", label: "No card / bank transfer" }, ...cards.filter((card) => card.account_id === Number(accountId)).map((card) => ({ value: String(card.id), label: `${card.name} · •••• ${card.last4}` }))]} /></label>
           <label className="field"><span>{t("Category")}</span><ModernSelect name="category_id" required placeholder={`Choose ${transactionType} category`} options={matchingCategories.map((category) => ({ value: String(category.id), label: category.name }))} /></label>
           <label className="field"><span>{t("Date")}</span><ModernDateInput name="date" defaultValue={formatDateValue(new Date())} required /></label>
@@ -958,7 +959,7 @@ function TransactionView({ token, setMessage }: { token: string; setMessage: (ms
         <form className="entity-edit-form guided-form" onSubmit={saveTransactionEdit}>
           <div className="section-title field-wide"><h2>Edit transaction</h2><p>The old balance effect is reversed automatically before applying these changes.</p></div>
           <label className="field"><span>Flow</span><ModernSelect name="type" defaultValue={Number(editingTransaction.amount) < 0 ? "expense" : "income"} options={[{ value: "expense", label: "Money out" }, { value: "income", label: "Money in" }]} /></label>
-          <label className="field"><span>Account</span><ModernSelect name="account_id" defaultValue={String(editingTransaction.account_id)} options={bankAccounts.map((account) => ({ value: String(account.id), label: account.name }))} required /></label>
+          <label className="field"><span>Account</span><AccountSelector name="account_id" accounts={accounts} banks={banks} bankId={bankId} defaultValue={String(editingTransaction.account_id)} required showBalance /></label>
           <label className="field"><span>Card</span><ModernSelect name="card_id" defaultValue={editingTransaction.card_id ? String(editingTransaction.card_id) : ""} options={[{ value: "", label: "No card / bank transfer" }, ...cards.filter((card) => card.bank_id === Number(bankId)).map((card) => ({ value: String(card.id), label: `${card.name} · •••• ${card.last4}` }))]} /></label>
           <label className="field"><span>Category</span><ModernSelect name="category_id" defaultValue={editingTransaction.category_id ? String(editingTransaction.category_id) : ""} options={categories.filter((category) => category.type === (Number(editingTransaction.amount) < 0 ? "expense" : "income")).map((category) => ({ value: String(category.id), label: category.name }))} required /></label>
           <label className="field"><span>Date</span><ModernDateInput name="date" defaultValue={editingTransaction.date} required /></label>
@@ -976,7 +977,7 @@ function TransactionView({ token, setMessage }: { token: string; setMessage: (ms
         <form className="inline-form guided-form" onSubmit={addRecurring}>
           <label className="field"><span>Name</span><input name="name" placeholder={recurringKind === "income" ? "e.g. Monthly salary" : "e.g. Netflix"} required /></label>
           <label className="field"><span>Type</span><ModernSelect name="kind" value={recurringKind} onValueChange={setRecurringKind} options={[{ value: "income", label: t("Recurring revenue") }, { value: "subscription", label: t("Subscription") }, { value: "bill", label: t("Recurring bill") }, { value: "payment", label: t("Recurring payment") }]} /></label>
-          <label className="field"><span>Account</span><ModernSelect name="account_id" value={recurringAccountId} onValueChange={setRecurringAccountId} options={[{ value: "", label: "No linked account" }, ...accounts.map((account) => ({ value: String(account.id), label: account.name }))]} /></label>
+          <label className="field"><span>Account</span><AccountSelector name="account_id" accounts={accounts} banks={banks} value={recurringAccountId} onValueChange={setRecurringAccountId} includeEmpty emptyLabel="No linked account" placeholder="Choose account" /></label>
           <label className="field"><span>Card (optional)</span><ModernSelect name="card_id" disabled={!recurringAccountId || recurringKind === "income"} options={[{ value: "", label: "No card" }, ...cards.filter((card) => card.account_id === Number(recurringAccountId)).map((card) => ({ value: String(card.id), label: `${card.name} · •••• ${card.last4}` }))]} /></label>
           <label className="field"><span>{t("Amount")}</span><input name="amount" type="number" min="0" step="0.01" required /></label>
           <label className="field"><span>{t("Frequency")}</span><ModernSelect name="frequency" defaultValue="monthly" options={[{ value: "weekly", label: "Weekly" }, { value: "monthly", label: "Monthly" }, { value: "quarterly", label: "Quarterly" }, { value: "yearly", label: "Yearly" }]} /></label>

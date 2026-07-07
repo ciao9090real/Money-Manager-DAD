@@ -36,6 +36,13 @@ export type AccountItem = {
   opening_balance?: number;
   current_balance: number;
   display_order?: number;
+  is_active?: boolean;
+};
+
+export type AccountTreeNode = AccountItem & {
+  direct_balance: number;
+  rollup_balance: number;
+  children: AccountTreeNode[];
 };
 
 export type CardItem = {
