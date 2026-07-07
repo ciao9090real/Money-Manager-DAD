@@ -1,7 +1,6 @@
 from sqlalchemy.orm import Session
 
-from app.core.security import hash_password
-from app.models import Category, User, UserSettings
+from app.models import Category
 
 
 DEFAULT_CATEGORIES = {
@@ -31,17 +30,3 @@ def seed_system_categories(db: Session) -> None:
             if not exists:
                 db.add(Category(name=name, type=category_type, is_system=True))
     db.commit()
-
-
-def seed_demo(db: Session) -> User:
-    seed_system_categories(db)
-    user = db.query(User).filter_by(email="demo@example.com").first()
-    if user:
-        return user
-    user = User(email="demo@example.com", full_name="Demo User", password_hash=hash_password("demo-password"))
-    db.add(user)
-    db.flush()
-    db.add(UserSettings(user_id=user.id, favorite_language="en", default_currency="EUR"))
-    db.commit()
-    db.refresh(user)
-    return user

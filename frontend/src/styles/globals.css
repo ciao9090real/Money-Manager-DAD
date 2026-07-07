@@ -3732,8 +3732,7 @@ option {
   gap: 18px;
 }
 
-.auth-submit,
-.demo-button {
+.auth-submit {
   min-height: 52px;
   border-radius: 9px;
   font-weight: 600;
@@ -3744,17 +3743,6 @@ option {
   border: 0;
   color: #fff;
   background: #111a2e;
-}
-
-.demo-button {
-  margin-top: 14px;
-  border: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  color: var(--text);
-  background: var(--surface);
 }
 
 .auth-switch {

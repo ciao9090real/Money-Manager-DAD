@@ -75,12 +75,16 @@ class BankIn(BaseModel):
 
 class AccountIn(BaseModel):
     bank_id: int
+    parent_account_id: int | None = None
     name: str
     type: str = "checking"
+    account_type: str | None = None
+    account_level: int | None = Field(default=None, ge=1, le=3)
     currency: str = "EUR"
     iban_last4: str | None = Field(default=None, max_length=4)
     opening_balance: Decimal = Decimal("0")
     current_balance: Decimal = Decimal("0")
+    display_order: int = 0
 
 
 class CardIn(BaseModel):

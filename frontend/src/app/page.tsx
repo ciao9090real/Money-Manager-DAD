@@ -7,11 +7,6 @@ import {
   ArrowUpRight,
   Banknote,
   Building2,
-  CalendarDays,
-  Check,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   CreditCard,
   FileUp,
   Home,
@@ -30,9 +25,14 @@ import {
   UserRound,
   WalletCards
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { apiFetch, formatMoney } from "../lib/api";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { ModernDateInput } from "../components/ui/ModernDateInput";
+import { ModernSelect } from "../components/ui/ModernSelect";
+import { AuthScreen } from "../features/auth/AuthScreen";
+import { apiFetch } from "../lib/api";
+import { formatDateValue, formatMoney } from "../lib/formatting";
 import { I18nContext, Language, normalizeLanguage, translate, useI18n } from "../lib/i18n";
+import { AccountItem, BankItem, CardItem, CategoryItem, Dashboard, Profile, TransactionItem, UserSettings } from "../lib/types";
 
 type View =
   | "dashboard"
@@ -40,7 +40,6 @@ type View =
   | "accounts"
   | "cards"
   | "transactions"
-  | "import"
   | "investments"
   | "insurance"
   | "reports"
@@ -58,210 +57,12 @@ const sections = [
 
 const mobileSections = sections.filter((item) => ["dashboard", "transactions", "accounts", "cards", "investments"].includes(item.id));
 
-type Dashboard = {
-  net_worth: number;
-  total_liquidity: number;
-  total_investments: number;
-  insurance_value: number;
-  total_debt: number;
-  monthly_income: number;
-  monthly_expenses: number;
-  savings_rate: number;
-  recent_transactions: Array<{ id: number; date: string; description: string; amount: number; currency: string }>;
-  account_balances: Array<{ id: number; bank_id: number; name: string; type: string; current_balance: number; currency: string }>;
-  card_balances: Array<{ id: number; bank_id: number; account_id: number; name: string; type: string; current_balance: number; last4: string }>;
-};
-
-type UserSettings = {
-  theme: "system" | "light" | "dark";
-  favorite_language: string;
-  default_currency: string;
-  date_format: string;
-  number_format: string;
-  profile_photo_url?: string | null;
-  notifications_enabled: boolean;
-};
-
-type BankItem = { id: number; name: string; country?: string };
-type AccountItem = { id: number; bank_id: number; name: string; type: string; currency: string; opening_balance?: number; current_balance: number };
-type CardItem = { id: number; bank_id: number; account_id: number; name: string; type: string; last4: string; current_balance: number; credit_limit?: number | null; expiry_month?: number | null; expiry_year?: number | null };
-type CategoryItem = { id: number; user_id?: number | null; name: string; type: "income" | "expense" | "investment"; color?: string | null; is_system: boolean };
-type TransactionItem = { id: number; bank_id: number; account_id: number; card_id?: number; category_id?: number; type: string; source?: string; date: string; description: string; amount: number; currency: string };
-type Profile = { id: number; email: string; full_name: string };
-
 function applyTheme(theme: UserSettings["theme"]) {
   if (theme === "system") {
     document.documentElement.removeAttribute("data-theme");
   } else {
     document.documentElement.dataset.theme = theme;
   }
-}
-
-type SelectOption = { value: string; label: string };
-
-function ModernSelect({
-  name,
-  options,
-  value,
-  defaultValue = "",
-  onValueChange,
-  placeholder = "Choose an option",
-  disabled = false,
-  required = false
-}: {
-  name?: string;
-  options: SelectOption[];
-  value?: string;
-  defaultValue?: string;
-  onValueChange?: (value: string) => void;
-  placeholder?: string;
-  disabled?: boolean;
-  required?: boolean;
-}) {
-  const [internalValue, setInternalValue] = useState(defaultValue);
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const currentValue = value ?? internalValue;
-  const selected = options.find((option) => option.value === currentValue);
-
-  useEffect(() => {
-    const close = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const form = rootRef.current?.closest("form");
-    const reset = () => {
-      if (value === undefined) setInternalValue(defaultValue);
-      setOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    form?.addEventListener("reset", reset);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      form?.removeEventListener("reset", reset);
-    };
-  }, [defaultValue, value]);
-
-  function choose(nextValue: string) {
-    if (value === undefined) setInternalValue(nextValue);
-    onValueChange?.(nextValue);
-    setOpen(false);
-  }
-
-  return (
-    <div className={`modern-select ${open ? "open" : ""} ${disabled ? "disabled" : ""}`} ref={rootRef}>
-      {name && <select className="modern-native-proxy" name={name} value={currentValue} onChange={() => undefined} required={required} disabled={disabled} tabIndex={-1} aria-hidden="true">{!options.some((option) => option.value === "") && <option value="" />}{options.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select>}
-      <button type="button" className="modern-control" onClick={() => !disabled && setOpen((current) => !current)} disabled={disabled} aria-expanded={open} aria-haspopup="listbox" aria-required={required}>
-        <span className={selected ? "" : "placeholder"}>{selected?.label || placeholder}</span>
-        <ChevronDown size={19} />
-      </button>
-      {open && (
-        <div className="modern-options" role="listbox">
-          {options.map((option) => (
-            <button type="button" role="option" aria-selected={option.value === currentValue} className={option.value === currentValue ? "selected" : ""} key={option.value} onClick={() => choose(option.value)}>
-              <span>{option.label}</span>
-              {option.value === currentValue && <Check size={19} />}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ModernDateInput({
-  name,
-  value,
-  defaultValue = "",
-  onValueChange,
-  required = false,
-  placeholder = "Choose a date"
-}: {
-  name: string;
-  value?: string;
-  defaultValue?: string;
-  onValueChange?: (value: string) => void;
-  required?: boolean;
-  placeholder?: string;
-}) {
-  const [internalValue, setInternalValue] = useState(defaultValue);
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const currentValue = value ?? internalValue;
-  const selectedDate = currentValue ? parseDateValue(currentValue) : null;
-  const [visibleMonth, setVisibleMonth] = useState(() => selectedDate || new Date());
-
-  useEffect(() => {
-    const close = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const form = rootRef.current?.closest("form");
-    const reset = () => {
-      if (value === undefined) setInternalValue(defaultValue);
-      setOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    form?.addEventListener("reset", reset);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      form?.removeEventListener("reset", reset);
-    };
-  }, [defaultValue, value]);
-
-  function selectDate(date: Date) {
-    const nextValue = formatDateValue(date);
-    if (value === undefined) setInternalValue(nextValue);
-    onValueChange?.(nextValue);
-    setVisibleMonth(date);
-    setOpen(false);
-  }
-
-  const year = visibleMonth.getFullYear();
-  const month = visibleMonth.getMonth();
-  const firstCell = new Date(year, month, 1 - new Date(year, month, 1).getDay());
-  const days = Array.from({ length: 42 }, (_, index) => new Date(firstCell.getFullYear(), firstCell.getMonth(), firstCell.getDate() + index));
-
-  return (
-    <div className={`modern-date ${open ? "open" : ""}`} ref={rootRef}>
-      <input className="modern-native-proxy" name={name} value={currentValue} onChange={() => undefined} required={required} tabIndex={-1} aria-hidden="true" />
-      <button type="button" className="modern-control" onClick={() => { setVisibleMonth(selectedDate || new Date()); setOpen((current) => !current); }} aria-expanded={open} aria-haspopup="dialog" aria-required={required}>
-        <span className={selectedDate ? "" : "placeholder"}>{selectedDate ? selectedDate.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" }) : placeholder}</span>
-        <CalendarDays size={19} />
-      </button>
-      {open && (
-        <div className="calendar-popover" role="dialog" aria-label="Choose a date">
-          <div className="calendar-heading">
-            <strong>{visibleMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</strong>
-            <span>
-              <button type="button" onClick={() => setVisibleMonth(new Date(year, month - 1, 1))} aria-label="Previous month"><ChevronLeft size={21} /></button>
-              <button type="button" onClick={() => setVisibleMonth(new Date(year, month + 1, 1))} aria-label="Next month"><ChevronRight size={21} /></button>
-            </span>
-          </div>
-          <div className="calendar-weekdays">{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => <span key={day}>{day}</span>)}</div>
-          <div className="calendar-days">
-            {days.map((day) => {
-              const dayValue = formatDateValue(day);
-              const isSelected = dayValue === currentValue;
-              const isToday = dayValue === formatDateValue(new Date());
-              return <button type="button" key={dayValue} className={`${day.getMonth() !== month ? "outside" : ""} ${isSelected ? "selected" : ""} ${isToday ? "today" : ""}`} onClick={() => selectDate(day)}>{day.getDate()}</button>;
-            })}
-          </div>
-          <button type="button" className="calendar-today" onClick={() => selectDate(new Date())}>Today</button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function parseDateValue(value: string) {
-  const [year, month, day] = value.split("-").map(Number);
-  return new Date(year, month - 1, day);
-}
-
-function formatDateValue(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
 }
 
 export default function App() {
@@ -372,7 +173,6 @@ export default function App() {
             {profileOpen && (
               <div className="profile-menu">
                 <button onClick={() => { setView("settings"); setProfileOpen(false); }}>{t("Profile & settings")}</button>
-                <button onClick={() => { setView("import"); setProfileOpen(false); }}><FileUp size={15} />{t("Import statements")}</button>
                 <button onClick={() => saveToken(null)}>
                   <LogOut size={15} />
                   {t("Sign out")}
@@ -425,159 +225,9 @@ export default function App() {
   );
 }
 
-function AuthScreen({ onLogin }: { onLogin: (token: string) => void }) {
-  const { t } = useI18n();
-  const [mode, setMode] = useState<"login" | "register" | "forgot" | "reset">("login");
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [password, setPassword] = useState("");
-  const [resetToken, setResetToken] = useState("");
-
-  useEffect(() => {
-    const token = new URLSearchParams(window.location.search).get("reset_token");
-    if (token) {
-      setResetToken(token);
-      setMode("reset");
-    }
-  }, []);
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError("");
-    setNotice("");
-    setBusy(true);
-    const form = new FormData(event.currentTarget);
-    try {
-      if (mode === "forgot") {
-        const result = await apiFetch<{ message: string }>("/auth/forgot-password", null, {
-          method: "POST",
-          body: JSON.stringify({ email: String(form.get("email")) })
-        });
-        setNotice(result.message);
-        return;
-      }
-      if (mode === "reset") {
-        const result = await apiFetch<{ message: string }>("/auth/reset-password", null, {
-          method: "POST",
-          body: JSON.stringify({ token: resetToken, password })
-        });
-        window.history.replaceState({}, "", window.location.pathname);
-        setNotice(result.message);
-        setPassword("");
-        setMode("login");
-        return;
-      }
-      const body = {
-        email: String(form.get("email")),
-        password,
-        full_name: String(form.get("full_name") || "")
-      };
-      const result = await apiFetch<{ access_token: string }>(mode === "login" ? "/auth/login" : "/auth/register", null, {
-        method: "POST",
-        body: JSON.stringify(body)
-      });
-      onLogin(result.access_token);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Authentication failed");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function suggestPassword() {
-    const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@$%*";
-    const values = new Uint32Array(16);
-    crypto.getRandomValues(values);
-    const suggested = Array.from(values, (value) => alphabet[value % alphabet.length]).join("");
-    setPassword(suggested);
-    setNotice("Strong password suggested. Save it somewhere safe.");
-    setError("");
-  }
-
-  function changeMode(nextMode: "login" | "register" | "forgot") {
-    setMode(nextMode);
-    setError("");
-    setNotice("");
-    setPassword("");
-  }
-
-  async function tryDemo() {
-    setError("");
-    setBusy(true);
-    try {
-      const result = await apiFetch<{ access_token: string }>("/auth/demo", null, { method: "POST" });
-      onLogin(result.access_token);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not open the demo");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <main className="auth-page">
-      <section className="auth-showcase">
-        <div className="brand auth-logo">
-          <span className="brand-mark"><Sparkles size={24} /></span>
-          <span>Finlio</span>
-        </div>
-        <div className="auth-pitch">
-          <h1>Your money, finally in one place.</h1>
-          <p>Track accounts, cards, transactions, investments and insurance — with beautiful insights and one-click CSV/XLSX imports.</p>
-          <div className="feature-grid">
-            <span><WalletCards size={20} />Accounts</span>
-            <span><CreditCard size={20} />Cards</span>
-            <span><ArrowUpRight size={20} />Investments</span>
-            <span><ShieldCheck size={20} />Insurance</span>
-          </div>
-        </div>
-        <small>Built for people who care about their financial future.</small>
-      </section>
-      <section className="auth-form-side">
-        <div className="auth-panel">
-          <h2>{mode === "login" ? t("Welcome back") : mode === "register" ? t("Create your account") : mode === "forgot" ? t("Forgot password?") : "Choose a new password"}</h2>
-          <p>{mode === "login" ? "Sign in to your Finlio dashboard" : mode === "register" ? "A few details and you're ready to go" : mode === "forgot" ? "We'll email you a secure reset link" : "Make it strong and easy for you to store"}</p>
-          <form onSubmit={submit} className="form">
-            {mode === "register" && <label className="field"><span>{t("Full name")}</span><input name="full_name" placeholder="Your name" required /></label>}
-            {mode !== "reset" && <label className="field"><span>{t("Email")}</span><input name="email" type="email" placeholder="you@example.com" required /></label>}
-            {mode !== "forgot" && (
-              <label className="field">
-                <span>{mode === "reset" ? "New password" : t("Password")}</span>
-                <span className="password-input">
-                  <input name="password" type={mode === "login" ? "password" : "text"} placeholder="At least 8 characters" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} required />
-                  {(mode === "register" || mode === "reset") && <button type="button" className="suggest-password" onClick={suggestPassword} title="Suggest a strong password" aria-label="Suggest a strong password"><Sparkles size={19} /></button>}
-                </span>
-              </label>
-            )}
-            {mode === "login" && <button className="forgot-link" type="button" onClick={() => changeMode("forgot")}>{t("Forgot password?")}</button>}
-            {error && <p className="error">{error}</p>}
-            {notice && <p className="auth-notice">{notice}</p>}
-            <button className="auth-submit wide" type="submit" disabled={busy}>
-              {mode === "login" ? t("Sign in") : mode === "register" ? t("Create account") : mode === "forgot" ? "Send reset link" : "Update password"}
-            </button>
-          </form>
-          {mode === "login" && <button className="demo-button wide" type="button" onClick={tryDemo} disabled={busy}><Sparkles size={17} />{t("Try demo (auto-seeded)")}</button>}
-          {mode === "login" || mode === "register" ? (
-            <p className="auth-switch">
-              {mode === "login" ? t("Don't have an account?") : "Already have an account?"}
-              <button type="button" onClick={() => changeMode(mode === "login" ? "register" : "login")}>
-                {mode === "login" ? t("Sign up") : t("Sign in")}
-              </button>
-            </p>
-          ) : (
-            <button className="back-to-login" type="button" onClick={() => changeMode("login")}>Back to sign in</button>
-          )}
-        </div>
-      </section>
-    </main>
-  );
-}
-
 function Content({ view, token, dashboard, refresh, setMessage, onProfilePhoto, onProfileChange, onLanguageChange, selectedBankId, onOpenBank, onCloseBank }: { view: View; token: string; dashboard: Dashboard | null; refresh: () => Promise<void>; setMessage: (msg: string) => void; onProfilePhoto: (url: string | null) => void; onProfileChange: (profile: Profile) => void; onLanguageChange: (language: string) => void; selectedBankId: number | null; onOpenBank: (bankId: number) => void; onCloseBank: () => void }) {
   if (view === "dashboard") return <DashboardView token={token} dashboard={dashboard} refresh={refresh} onOpenBank={onOpenBank} />;
   if (view === "bank-detail" && selectedBankId) return <BankDetailView token={token} bankId={selectedBankId} onBack={onCloseBank} setMessage={setMessage} />;
-  if (view === "import") return <ImportView token={token} setMessage={setMessage} />;
   if (view === "settings") return <SettingsView token={token} setMessage={setMessage} onProfilePhoto={onProfilePhoto} onProfileChange={onProfileChange} onLanguageChange={onLanguageChange} />;
   if (view === "transactions") return <TransactionView token={token} setMessage={setMessage} />;
   if (view === "investments") return <SimplifiedInvestmentView token={token} setMessage={setMessage} />;
@@ -1011,7 +661,7 @@ function EntityView({ kind, token, setMessage }: { kind: "banks" | "accounts" | 
       kind === "banks"
         ? { name: form.name, country: form.country }
         : kind === "accounts"
-          ? { bank_id: Number(form.bank_id), name: form.name, type: form.type || "checking", currency: form.currency || "EUR", opening_balance: Number(form.current_balance || 0), current_balance: Number(form.current_balance || 0) }
+          ? { bank_id: Number(form.bank_id), parent_account_id: form.parent_account_id ? Number(form.parent_account_id) : null, name: form.name, type: form.type || "checking", account_type: form.type || "checking", currency: form.currency || "EUR", opening_balance: Number(form.current_balance || 0), current_balance: Number(form.current_balance || 0), display_order: Number(form.display_order || 0) }
           : { bank_id: account?.bank_id, account_id: account?.id, name: form.name, type: form.type || "debit", last4: form.last4, credit_limit: form.credit_limit ? Number(form.credit_limit) : null, expiry_month: form.expiry_month ? Number(form.expiry_month) : null, expiry_year: form.expiry_year ? Number(form.expiry_year) : null };
     try {
       await apiFetch(`/${kind}`, token, { method: "POST", body: JSON.stringify(body) });
@@ -1030,7 +680,7 @@ function EntityView({ kind, token, setMessage }: { kind: "banks" | "accounts" | 
     const body = editing.entity === "banks"
       ? { name: form.name, country: form.country }
       : editing.entity === "accounts"
-        ? { bank_id: Number(form.bank_id), name: form.name, type: form.type, currency: form.currency, current_balance: Number(form.current_balance || 0), opening_balance: Number(form.opening_balance || 0) }
+        ? { bank_id: Number(form.bank_id), parent_account_id: form.parent_account_id ? Number(form.parent_account_id) : null, name: form.name, type: form.type, account_type: form.type, currency: form.currency, current_balance: Number(form.current_balance || 0), opening_balance: Number(form.opening_balance || 0), display_order: Number(form.display_order || 0) }
         : { bank_id: account?.bank_id, account_id: account?.id, name: form.name, type: form.type, last4: form.last4, current_balance: Number(form.current_balance || 0), credit_limit: form.credit_limit ? Number(form.credit_limit) : null, expiry_month: form.expiry_month ? Number(form.expiry_month) : null, expiry_year: form.expiry_year ? Number(form.expiry_year) : null };
     try {
       await apiFetch(`/${editing.entity}/${editing.id}`, token, { method: "PATCH", body: JSON.stringify(body) });
@@ -1055,22 +705,21 @@ function EntityView({ kind, token, setMessage }: { kind: "banks" | "accounts" | 
   }
   const bankName = (bankId: number) => banks.find((bank) => bank.id === bankId)?.name || "Unknown bank";
   const accountName = (accountId: number) => accounts.find((account) => account.id === accountId)?.name || "Unknown account";
-  const banksWithoutAccounts = banks.filter((bank) => !accounts.some((account) => account.bank_id === bank.id));
-  const canCreate = kind === "banks" || (kind === "accounts" ? banksWithoutAccounts.length > 0 : accounts.length > 0);
+  const canCreate = kind === "banks" || (kind === "accounts" ? banks.length > 0 : accounts.length > 0);
   const rows = kind === "banks"
     ? banks.map((item) => [item.name, item.country || "Country not set"])
     : kind === "accounts"
-      ? accounts.map((item) => [item.name, bankName(item.bank_id), item.type, `${cards.filter((card) => card.account_id === item.id).length} card(s)`, formatMoney(item.current_balance, item.currency)])
+      ? accounts.map((item) => [item.name, bankName(item.bank_id), item.account_type || item.type, `Level ${item.account_level || 1}`, `${cards.filter((card) => card.account_id === item.id).length} card(s)`, formatMoney(item.current_balance, item.currency)])
       : cards.map((item) => [item.name, accountName(item.account_id), `•••• ${item.last4}`, item.type]);
   return (
     <div className="page-grid">
       <div className="page-heading">
         <h1>{t(kind[0].toUpperCase() + kind.slice(1))}</h1>
-        <p>{t(kind === "banks" ? "Start with the institutions you use." : kind === "accounts" ? "Each bank has one primary account where its balance and transactions live." : "Connect each card to the account it spends from.")}</p>
+        <p>{t(kind === "banks" ? "Start with the institutions you use." : kind === "accounts" ? "Create bank accounts, cash wallets, PayPal-style balances, and other payment sources." : "Connect each card to the account it spends from.")}</p>
       </div>
       {kind === "accounts" && (
         <section className="module-section">
-          <div className="section-title"><div><h2>{t("Your banks")}</h2><p>Create the bank first, then connect its single primary account below.</p></div></div>
+          <div className="section-title"><div><h2>{t("Your banks")}</h2><p>Create the institution first, then connect accounts or wallets below.</p></div></div>
           <form className="inline-form compact-form" onSubmit={addBank}>
             <label className="field"><span>{t("Bank name")}</span><input name="name" placeholder="e.g. Intesa Sanpaolo" required /></label>
             <label className="field"><span>{t("Country")}</span><input name="country" placeholder="e.g. Italy" /></label>
@@ -1081,14 +730,15 @@ function EntityView({ kind, token, setMessage }: { kind: "banks" | "accounts" | 
       )}
       {!canCreate && loaded ? (
         <section className="setup-callout">
-          <strong>{kind === "accounts" ? (banks.length ? "Every bank already has an account" : "Add a bank first") : "Add an account first"}</strong>
-          <span>{kind === "accounts" ? (banks.length ? "Edit the existing account below, or add another bank to create a new one." : "Each bank can have one primary account.") : "A card needs a linked account so purchases affect the right cash flow."}</span>
+          <strong>{kind === "accounts" ? "Add a bank first" : "Add an account first"}</strong>
+          <span>{kind === "accounts" ? "Accounts need a bank or institution to belong to." : "A card needs a linked account so purchases affect the right cash flow."}</span>
         </section>
       ) : (
         <form className="inline-form guided-form" onSubmit={submit}>
           {kind === "accounts" && (
-            <label className="field"><span>Bank</span><ModernSelect name="bank_id" required placeholder="Choose a bank" options={banksWithoutAccounts.map((bank) => ({ value: String(bank.id), label: bank.name }))} /></label>
+            <label className="field"><span>Bank</span><ModernSelect name="bank_id" required placeholder="Choose a bank" options={banks.map((bank) => ({ value: String(bank.id), label: bank.name }))} /></label>
           )}
+          {kind === "accounts" && <label className="field"><span>Parent account</span><ModernSelect name="parent_account_id" placeholder="Top-level account" options={[{ value: "", label: "Top-level account" }, ...accounts.map((account) => ({ value: String(account.id), label: `${account.name} · ${bankName(account.bank_id)}` }))]} /></label>}
           {kind === "cards" && (
             <label className="field"><span>Account charged by this card</span><ModernSelect name="account_id" required placeholder="Choose an account" options={accounts.map((account) => ({ value: String(account.id), label: `${account.name} · ${bankName(account.bank_id)}` }))} /></label>
           )}
@@ -1097,6 +747,7 @@ function EntityView({ kind, token, setMessage }: { kind: "banks" | "accounts" | 
           {kind === "accounts" && <label className="field"><span>{t("Account type")}</span><ModernSelect name="type" defaultValue="checking" options={[{ value: "checking", label: "Current account" }, { value: "savings", label: "Savings" }, { value: "cash", label: "Cash wallet" }, { value: "brokerage", label: "Brokerage" }, { value: "loan", label: "Loan" }, { value: "mortgage", label: "Mortgage" }, { value: "other", label: "Other" }]} /></label>}
           {kind === "accounts" && <label className="field"><span>{t("Currency")}</span><input name="currency" defaultValue="EUR" maxLength={3} /></label>}
           {kind === "accounts" && <label className="field"><span>{t("Balance today")}</span><input name="current_balance" type="number" step="0.01" defaultValue="0" /></label>}
+          {kind === "accounts" && <label className="field"><span>Display order</span><input name="display_order" type="number" step="1" defaultValue="0" /></label>}
           {kind === "cards" && <label className="field"><span>{t("Card type")}</span><ModernSelect name="type" defaultValue="debit" options={[{ value: "debit", label: "Debit card" }, { value: "credit", label: "Credit card" }, { value: "prepaid", label: "Prepaid card" }]} /></label>}
           {kind === "cards" && <label className="field"><span>{t("Last 4 digits")}</span><input name="last4" inputMode="numeric" pattern="[0-9]{4}" placeholder="1234" minLength={4} maxLength={4} required /></label>}
           {kind === "cards" && <label className="field"><span>{t("Credit / spending limit")}</span><input name="credit_limit" type="number" min="0" step="0.01" placeholder="Optional" /></label>}
@@ -1109,7 +760,7 @@ function EntityView({ kind, token, setMessage }: { kind: "banks" | "accounts" | 
         <form className="entity-edit-form guided-form" onSubmit={saveEdit}>
           <div className="section-title field-wide"><h2>Edit {editing.entity.slice(0, -1)}</h2><p>Update the details below, then save your changes.</p></div>
           {editing.entity === "banks" && <><label className="field"><span>Bank name</span><input name="name" defaultValue={editing.values.name} required /></label><label className="field"><span>Country</span><input name="country" defaultValue={editing.values.country} /></label></>}
-          {editing.entity === "accounts" && <><label className="field"><span>Bank</span><ModernSelect key={`bank-${editing.id}`} name="bank_id" defaultValue={String(editing.values.bank_id)} options={banks.map((bank) => ({ value: String(bank.id), label: bank.name }))} required /></label><label className="field"><span>Account name</span><input name="name" defaultValue={editing.values.name} required /></label><label className="field"><span>Type</span><ModernSelect key={`account-type-${editing.id}`} name="type" defaultValue={String(editing.values.type)} options={[{ value: "checking", label: "Current account" }, { value: "savings", label: "Savings" }, { value: "cash", label: "Cash wallet" }, { value: "brokerage", label: "Brokerage" }, { value: "loan", label: "Loan" }, { value: "mortgage", label: "Mortgage" }, { value: "other", label: "Other" }]} /></label><label className="field"><span>Currency</span><input name="currency" defaultValue={editing.values.currency} maxLength={3} required /></label><label className="field"><span>Current balance</span><input name="current_balance" type="number" step="0.01" defaultValue={editing.values.current_balance} /></label><input type="hidden" name="opening_balance" value={editing.values.opening_balance} /></>}
+          {editing.entity === "accounts" && <><label className="field"><span>Bank</span><ModernSelect key={`bank-${editing.id}`} name="bank_id" defaultValue={String(editing.values.bank_id)} options={banks.map((bank) => ({ value: String(bank.id), label: bank.name }))} required /></label><label className="field"><span>Parent account</span><ModernSelect key={`parent-${editing.id}`} name="parent_account_id" defaultValue={editing.values.parent_account_id ? String(editing.values.parent_account_id) : ""} placeholder="Top-level account" options={[{ value: "", label: "Top-level account" }, ...accounts.filter((account) => account.id !== editing.id).map((account) => ({ value: String(account.id), label: `${account.name} · ${bankName(account.bank_id)}` }))]} /></label><label className="field"><span>Account name</span><input name="name" defaultValue={editing.values.name} required /></label><label className="field"><span>Type</span><ModernSelect key={`account-type-${editing.id}`} name="type" defaultValue={String(editing.values.type)} options={[{ value: "checking", label: "Current account" }, { value: "savings", label: "Savings" }, { value: "cash", label: "Cash wallet" }, { value: "brokerage", label: "Brokerage" }, { value: "loan", label: "Loan" }, { value: "mortgage", label: "Mortgage" }, { value: "payment", label: "Payment method" }, { value: "other", label: "Other" }]} /></label><label className="field"><span>Currency</span><input name="currency" defaultValue={editing.values.currency} maxLength={3} required /></label><label className="field"><span>Current balance</span><input name="current_balance" type="number" step="0.01" defaultValue={editing.values.current_balance} /></label><label className="field"><span>Display order</span><input name="display_order" type="number" step="1" defaultValue={editing.values.display_order || 0} /></label><input type="hidden" name="opening_balance" value={editing.values.opening_balance} /></>}
           {editing.entity === "cards" && <><label className="field"><span>Linked account</span><ModernSelect key={`card-account-${editing.id}`} name="account_id" defaultValue={String(editing.values.account_id)} options={accounts.map((account) => ({ value: String(account.id), label: `${account.name} · ${bankName(account.bank_id)}` }))} required /></label><label className="field"><span>Card name</span><input name="name" defaultValue={editing.values.name} required /></label><label className="field"><span>Type</span><ModernSelect key={`card-type-${editing.id}`} name="type" defaultValue={String(editing.values.type)} options={[{ value: "debit", label: "Debit card" }, { value: "credit", label: "Credit card" }, { value: "prepaid", label: "Prepaid card" }]} /></label><label className="field"><span>Last 4 digits</span><input name="last4" defaultValue={editing.values.last4} pattern="[0-9]{4}" maxLength={4} required /></label><label className="field"><span>Current net activity</span><input name="current_balance" type="number" step="0.01" defaultValue={editing.values.current_balance} /></label><label className="field"><span>Credit / spending limit</span><input name="credit_limit" type="number" min="0" step="0.01" defaultValue={editing.values.credit_limit} /></label><label className="field"><span>Expiry month</span><ModernSelect name="expiry_month" defaultValue={editing.values.expiry_month ? String(editing.values.expiry_month) : ""} placeholder="Month" options={Array.from({ length: 12 }, (_, index) => ({ value: String(index + 1), label: String(index + 1).padStart(2, "0") }))} /></label><label className="field"><span>Expiry year</span><ModernSelect name="expiry_year" defaultValue={editing.values.expiry_year ? String(editing.values.expiry_year) : ""} placeholder="Year" options={Array.from({ length: 15 }, (_, index) => ({ value: String(new Date().getFullYear() + index), label: String(new Date().getFullYear() + index) }))} /></label></>}
           <div className="entity-edit-actions field-wide"><button className="secondary" type="button" onClick={() => setEditing(null)}>Cancel</button><button className="primary" type="submit">Save changes</button></div>
         </form>
@@ -1117,7 +768,7 @@ function EntityView({ kind, token, setMessage }: { kind: "banks" | "accounts" | 
       <section className="managed-entities">
         <div className="section-title"><h2>{t(`Your ${kind}`)}</h2><p>Edit details or archive items you no longer use.</p></div>
         {kind === "banks" ? null : kind === "accounts" ? (
-          accounts.length ? <div className="managed-entity-grid">{accounts.map((account) => <article key={account.id}><div><span className="entity-management-icon"><Building2 size={19} /></span><span><strong>{account.name}</strong><small>{bankName(account.bank_id)} · {account.type}</small></span></div><b>{formatMoney(account.current_balance, account.currency)}</b><div className="managed-actions"><button onClick={() => setEditing({ entity: "accounts", id: account.id, values: { bank_id: account.bank_id, name: account.name, type: account.type, currency: account.currency, current_balance: account.current_balance, opening_balance: account.opening_balance || 0 } })}><Pencil size={16} />Edit</button><button className="danger-action" onClick={() => archive("accounts", account.id, account.name)}><Trash2 size={16} />Archive</button></div></article>)}</div> : <p className="muted">No accounts yet.</p>
+          accounts.length ? <div className="managed-entity-grid">{accounts.map((account) => <article key={account.id}><div><span className="entity-management-icon"><Building2 size={19} /></span><span><strong>{account.name}</strong><small>{bankName(account.bank_id)} · {account.account_type || account.type} · level {account.account_level || 1}</small></span></div><b>{formatMoney(account.current_balance, account.currency)}</b><div className="managed-actions"><button onClick={() => setEditing({ entity: "accounts", id: account.id, values: { bank_id: account.bank_id, parent_account_id: account.parent_account_id || "", name: account.name, type: account.type, currency: account.currency, current_balance: account.current_balance, opening_balance: account.opening_balance || 0, display_order: account.display_order || 0 } })}><Pencil size={16} />Edit</button><button className="danger-action" onClick={() => archive("accounts", account.id, account.name)}><Trash2 size={16} />Archive</button></div></article>)}</div> : <p className="muted">No accounts yet.</p>
         ) : cards.length ? <div className="managed-entity-grid">{cards.map((card) => <article key={card.id}><div><span className="entity-management-icon"><CreditCard size={19} /></span><span><strong>{card.name}</strong><small>{accountName(card.account_id)} · {card.type} · •••• {card.last4}{card.expiry_month && card.expiry_year ? ` · expires ${String(card.expiry_month).padStart(2, "0")}/${String(card.expiry_year).slice(-2)}` : ""}</small></span></div><b>{formatMoney(card.current_balance)}</b><div className="managed-actions"><button onClick={() => setEditing({ entity: "cards", id: card.id, values: { account_id: card.account_id, name: card.name, type: card.type, last4: card.last4, current_balance: card.current_balance, credit_limit: card.credit_limit || 0, expiry_month: card.expiry_month || "", expiry_year: card.expiry_year || "" } })}><Pencil size={16} />Edit</button><button className="danger-action" onClick={() => archive("cards", card.id, card.name)}><Trash2 size={16} />Archive</button></div></article>)}</div> : <p className="muted">No cards yet.</p>}
       </section>
     </div>
@@ -1341,82 +992,6 @@ function TransactionView({ token, setMessage }: { token: string; setMessage: (ms
           }) : <p className="muted">No recurring revenues or payments yet.</p>}
         </div>
       </section>
-    </div>
-  );
-}
-
-function ImportView({ token, setMessage }: { token: string; setMessage: (msg: string) => void }) {
-  const [batchId, setBatchId] = useState<number | null>(null);
-  const [columns, setColumns] = useState<string[]>([]);
-  const [accounts, setAccounts] = useState<AccountItem[]>([]);
-  useEffect(() => {
-    apiFetch<AccountItem[]>("/accounts", token).then(setAccounts).catch(() => undefined);
-  }, [token]);
-  async function upload(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    const result = await apiFetch<{ batch_id: number; columns: string[] }>("/imports/upload", token, { method: "POST", body: data });
-    setBatchId(result.batch_id);
-    setColumns(result.columns);
-    setMessage("File uploaded. Map the columns next.");
-  }
-  async function map(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!batchId) return;
-    const form = Object.fromEntries(new FormData(event.currentTarget));
-    const account = accounts.find((item) => item.id === Number(form.account_id));
-    if (!account) {
-      setMessage("Choose an account for this statement");
-      return;
-    }
-    const result = await apiFetch<any>(`/imports/${batchId}/map`, token, {
-      method: "POST",
-      body: JSON.stringify({
-        bank_id: account.bank_id,
-        account_id: account.id,
-        mapping: { date: form.date, description: form.description, amount: form.amount, currency: form.currency || null },
-        decimal_separator: form.decimal_separator || ".",
-        save_template_name: form.save_template_name || null
-      })
-    });
-    setMessage(`Ready: ${result.ready_rows}, duplicates: ${result.duplicate_rows}, errors: ${result.error_rows}`);
-  }
-  async function confirm() {
-    if (!batchId) return;
-    const result = await apiFetch<any>(`/imports/${batchId}/confirm`, token, { method: "POST" });
-    setMessage(`Imported ${result.imported_rows} transactions`);
-  }
-  async function cancel() {
-    if (!batchId) return;
-    await apiFetch(`/imports/${batchId}`, token, { method: "DELETE" });
-    setBatchId(null);
-    setColumns([]);
-    setMessage("Import cancelled");
-  }
-  return (
-    <div className="page-grid">
-      <h1>Import center</h1>
-      <p className="section-intro">Upload a CSV or Excel statement, then tell Money Manager which columns contain the date, description, and amount.</p>
-      {accounts.length === 0 && <section className="setup-callout"><strong>An account is required</strong><span>Create the account represented by this statement before importing it.</span></section>}
-      <form className="dropzone" onSubmit={upload}>
-        <FileUp size={34} />
-        <input name="file" type="file" accept=".csv,.xlsx,.xls" required />
-        <button className="primary" type="submit">Upload statement</button>
-      </form>
-      {batchId && (
-        <form className="inline-form" onSubmit={map}>
-          <label className="field"><span>Import into</span><ModernSelect name="account_id" required placeholder="Choose an account" options={accounts.map((account) => ({ value: String(account.id), label: account.name }))} /></label>
-          {["date", "description", "amount", "currency"].map((name) => (
-            <label className="field" key={name}><span>{name[0].toUpperCase() + name.slice(1)} column</span><ModernSelect name={name} required={name !== "currency"} placeholder="Choose column" options={columns.map((column) => ({ value: column, label: column }))} /></label>
-          ))}
-          <label className="field"><span>Decimal style</span><ModernSelect name="decimal_separator" defaultValue="." options={[{ value: ".", label: "Decimal dot · 1,234.56" }, { value: ",", label: "Decimal comma · 1.234,56" }]} /></label>
-          <label className="field"><span>Save mapping as (optional)</span><input name="save_template_name" placeholder="e.g. Monthly statement" /></label>
-          <button className="secondary" type="submit">Preview mapping</button>
-          <button className="primary" type="button" onClick={confirm}>Confirm import</button>
-          <button className="secondary" type="button" onClick={cancel}>Cancel</button>
-        </form>
-      )}
     </div>
   );
 }

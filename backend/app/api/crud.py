@@ -28,6 +28,7 @@ from app.models import (
     User,
 )
 from app.schemas import AccountIn, BankIn, CardIn, CategoryIn, GenericCreate, TransactionIn
+from app.services.dashboard import build_dashboard_report
 from app.services.imports import normalize_description, original_hash
 from app.services.market import get_exchange_rate
 
@@ -211,15 +212,33 @@ def archive_bank(item_id: int, db: Session = Depends(get_db), user: User = Depen
 
 @router.get("/accounts")
 def list_accounts(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    return db.query(Account).filter_by(user_id=user.id, is_active=True).order_by(Account.name).all()
+    return (
+        db.query(Account)
+        .filter_by(user_id=user.id, is_active=True)
+        .order_by(Account.display_order, Account.account_level, Account.name)
+        .all()
+    )
+
+
+def account_hierarchy_fields(db: Session, payload: AccountIn, user_id: int) -> dict:
+    data = payload.model_dump()
+    data["account_type"] = data.get("account_type") or data["type"]
+    parent_id = data.get("parent_account_id")
+    if parent_id:
+        parent = ensure_owner(db, Account, parent_id, user_id)
+        if parent.bank_id != payload.bank_id:
+            raise HTTPException(status_code=422, detail="Parent account must belong to the same bank")
+        parent_level = int(parent.account_level or 1)
+        data["account_level"] = min(parent_level + 1, 3)
+    else:
+        data["account_level"] = data.get("account_level") or 1
+    return data
 
 
 @router.post("/accounts")
 def create_account(payload: AccountIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     ensure_owner(db, Bank, payload.bank_id, user.id)
-    if db.query(Account).filter_by(user_id=user.id, bank_id=payload.bank_id, is_active=True).first():
-        raise HTTPException(status_code=409, detail="This bank already has an account")
-    item = Account(user_id=user.id, **payload.model_dump())
+    item = Account(user_id=user.id, **account_hierarchy_fields(db, payload, user.id))
     db.add(item)
     db.commit()
     db.refresh(item)
@@ -235,15 +254,9 @@ def get_account(item_id: int, db: Session = Depends(get_db), user: User = Depend
 def update_account(item_id: int, payload: AccountIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     item = ensure_owner(db, Account, item_id, user.id)
     ensure_owner(db, Bank, payload.bank_id, user.id)
-    duplicate = db.query(Account).filter(
-        Account.user_id == user.id,
-        Account.bank_id == payload.bank_id,
-        Account.is_active.is_(True),
-        Account.id != item.id,
-    ).first()
-    if duplicate:
-        raise HTTPException(status_code=409, detail="This bank already has an account")
-    update_fields(item, payload.model_dump())
+    if payload.parent_account_id == item.id:
+        raise HTTPException(status_code=422, detail="An account cannot be its own parent")
+    update_fields(item, account_hierarchy_fields(db, payload, user.id))
     db.commit()
     db.refresh(item)
     return item
@@ -422,37 +435,7 @@ def bulk_update(ids: list[int], category_id: int | None = Query(default=None), d
 
 @router.get("/reports/dashboard")
 def dashboard(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    accounts = db.query(Account).filter_by(user_id=user.id, is_active=True).all()
-    cards = db.query(Card).filter_by(user_id=user.id, is_active=True).all()
-    liquidity_types = {"checking", "savings", "cash"}
-    liquidity = sum(Decimal(a.current_balance or 0) for a in accounts if a.type in liquidity_types)
-    liquidity += sum(Decimal(c.current_balance or 0) for c in cards if c.type == "prepaid")
-    investments = sum(Decimal(h.quantity or 0) * Decimal(h.current_price or 0) for h in db.query(Holding).filter_by(user_id=user.id).all())
-    insurance = sum(Decimal(p.insured_amount or 0) for p in db.query(InsurancePolicy).filter_by(user_id=user.id, is_active=True).all())
-    debt = sum(abs(Decimal(a.current_balance or 0)) for a in accounts if a.type in {"loan", "mortgage", "credit_card_liability"} and Decimal(a.current_balance or 0) < 0)
-    month_start = date.today().replace(day=1)
-    income = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
-        Transaction.user_id == user.id, Transaction.date >= month_start, Transaction.amount > 0
-    ).scalar()
-    expenses = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
-        Transaction.user_id == user.id, Transaction.date >= month_start, Transaction.amount < 0
-    ).scalar()
-    recent = db.query(Transaction).filter_by(user_id=user.id).order_by(Transaction.date.desc()).limit(8).all()
-    net_worth = liquidity + investments + insurance - debt
-    savings_rate = float((Decimal(income or 0) + Decimal(expenses or 0)) / Decimal(income or 1) * 100) if Decimal(income or 0) else 0
-    return {
-        "net_worth": net_worth,
-        "total_liquidity": liquidity,
-        "total_investments": investments,
-        "insurance_value": insurance,
-        "total_debt": debt,
-        "monthly_income": income,
-        "monthly_expenses": abs(Decimal(expenses or 0)),
-        "savings_rate": round(savings_rate, 2),
-        "recent_transactions": recent,
-        "account_balances": accounts,
-        "card_balances": cards,
-    }
+    return build_dashboard_report(db, user.id)
 
 
 @router.get("/reports/forecast")

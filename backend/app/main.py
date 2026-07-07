@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api import auth, crud, imports, integrations
+from app.api import auth, crud, integrations
 from app.core.config import settings
 from app.db.init_db import seed_system_categories
 from app.db.session import Base, SessionLocal, engine
@@ -23,7 +23,6 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(crud.router)
-app.include_router(imports.router)
 app.include_router(integrations.router)
 
 upload_dir = Path(settings.upload_dir)

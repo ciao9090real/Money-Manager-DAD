@@ -1,3 +1,5 @@
+import warnings
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,3 +20,10 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+if settings.secret_key == "change-me-in-production":
+    warnings.warn(
+        "SECRET_KEY is using the development default. Set a unique value before deployment.",
+        RuntimeWarning,
+        stacklevel=2,
+    )

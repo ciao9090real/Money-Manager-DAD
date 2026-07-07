@@ -9,11 +9,12 @@ Full-stack personal finance manager with a FastAPI API and a responsive Next.js 
 - Cards are strictly linked to an account in the same bank
 - Finnhub live quotes for investment holdings
 - Resend email reminders for subscriptions and recurring payments
-- CSV/XLSX uploads with preview storage, column mapping, decimal comma support, templates, and duplicate detection
+- Manual-first tracking with a clean empty state for new users
+- Account hierarchy fields ready for parent/child accounts, wallets, and payment methods
 - Dashboard totals for liquidity, investments, insurance, debt, income, expenses, and savings rate
 - Responsive desktop sidebar and mobile bottom navigation
 - SQLite for local development and PostgreSQL support through `DATABASE_URL`
-- Alembic migration configuration, demo seed command, and import tests
+- Alembic migration configuration and system category seeding
 
 ## Backend
 
@@ -29,15 +30,13 @@ uvicorn app.main:app --reload --port 8000
 
 API documentation is available at `http://localhost:8000/docs`.
 
-Demo credentials after seeding:
-
-- Email: `demo@example.com`
-- Password: `demo-password`
+`python seed.py` creates shared system categories only. It does not create demo users or demo financial data.
 
 For PostgreSQL, set:
 
 ```env
 DATABASE_URL=postgresql+psycopg2://user:password@localhost/money_manager
+SECRET_KEY=replace-with-a-long-random-value
 ```
 
 External integrations are configured only on the backend:

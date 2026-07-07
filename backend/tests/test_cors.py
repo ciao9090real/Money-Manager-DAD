@@ -6,7 +6,7 @@ from app.main import app
 def test_localhost_development_port_is_allowed():
     with TestClient(app) as client:
         response = client.options(
-            "/auth/demo",
+            "/auth/login",
             headers={
                 "Origin": "http://localhost:3001",
                 "Access-Control-Request-Method": "POST",

@@ -7,7 +7,7 @@ export type Language = "en" | "it" | "fr" | "de" | "es";
 const translations: Record<Exclude<Language, "en">, Record<string, string>> = {
   it: {
     "Overview": "Panoramica", "Accounts": "Conti", "Cards": "Carte", "Transactions": "Transazioni", "Investments": "Investimenti", "Insurance": "Assicurazioni",
-    "Menu": "Menu", "Profile & settings": "Profilo e impostazioni", "Import statements": "Importa estratti conto", "Sign out": "Esci",
+    "Menu": "Menu", "Profile & settings": "Profilo e impostazioni", "Sign out": "Esci",
     "Your total net worth": "Il tuo patrimonio netto", "Cash": "Liquidità", "Debt": "Debiti", "Your money by bank": "Il tuo denaro per banca",
     "Select a segment to open that bank’s complete analysis.": "Seleziona un segmento per aprire l’analisi completa della banca.",
     "Bank balances": "Saldi bancari", "No banks yet": "Nessuna banca", "Back to overview": "Torna alla panoramica", "Bank analysis": "Analisi bancaria",
@@ -36,11 +36,11 @@ const translations: Record<Exclude<Language, "en">, Record<string, string>> = {
     "Appearance": "Aspetto", "Theme": "Tema", "System": "Sistema", "Light": "Chiaro", "Dark": "Scuro", "Regional preferences": "Preferenze regionali",
     "Default currency": "Valuta predefinita", "Date format": "Formato data", "Number format": "Formato numeri", "Notifications": "Notifiche", "Save settings": "Salva impostazioni",
     "Welcome back": "Bentornato", "Create your account": "Crea il tuo account", "Password": "Password", "Sign in": "Accedi", "Create account": "Crea account",
-    "Forgot password?": "Password dimenticata?", "Try demo (auto-seeded)": "Prova la demo", "Don't have an account?": "Non hai un account?", "Sign up": "Registrati"
+    "Forgot password?": "Password dimenticata?", "Don't have an account?": "Non hai un account?", "Sign up": "Registrati"
   },
   fr: {
     "Overview": "Aperçu", "Accounts": "Comptes", "Cards": "Cartes", "Transactions": "Transactions", "Investments": "Investissements", "Insurance": "Assurances",
-    "Menu": "Menu", "Profile & settings": "Profil et paramètres", "Import statements": "Importer des relevés", "Sign out": "Déconnexion",
+    "Menu": "Menu", "Profile & settings": "Profil et paramètres", "Sign out": "Déconnexion",
     "Your total net worth": "Votre patrimoine net", "Cash": "Liquidités", "Debt": "Dettes", "Your money by bank": "Votre argent par banque",
     "Select a segment to open that bank’s complete analysis.": "Sélectionnez un segment pour ouvrir l’analyse complète de cette banque.",
     "Bank balances": "Soldes bancaires", "No banks yet": "Aucune banque", "Back to overview": "Retour à l’aperçu", "Bank analysis": "Analyse bancaire",
@@ -69,11 +69,11 @@ const translations: Record<Exclude<Language, "en">, Record<string, string>> = {
     "Appearance": "Apparence", "Theme": "Thème", "System": "Système", "Light": "Clair", "Dark": "Sombre", "Regional preferences": "Préférences régionales",
     "Default currency": "Devise par défaut", "Date format": "Format de date", "Number format": "Format des nombres", "Notifications": "Notifications", "Save settings": "Enregistrer",
     "Welcome back": "Bon retour", "Create your account": "Créez votre compte", "Password": "Mot de passe", "Sign in": "Se connecter", "Create account": "Créer un compte",
-    "Forgot password?": "Mot de passe oublié ?", "Try demo (auto-seeded)": "Essayer la démo", "Don't have an account?": "Pas encore de compte ?", "Sign up": "S’inscrire"
+    "Forgot password?": "Mot de passe oublié ?", "Don't have an account?": "Pas encore de compte ?", "Sign up": "S’inscrire"
   },
   de: {
     "Overview": "Übersicht", "Accounts": "Konten", "Cards": "Karten", "Transactions": "Transaktionen", "Investments": "Anlagen", "Insurance": "Versicherungen",
-    "Menu": "Menü", "Profile & settings": "Profil & Einstellungen", "Import statements": "Kontoauszüge importieren", "Sign out": "Abmelden",
+    "Menu": "Menü", "Profile & settings": "Profil & Einstellungen", "Sign out": "Abmelden",
     "Your total net worth": "Ihr Nettovermögen", "Cash": "Liquidität", "Debt": "Schulden", "Your money by bank": "Ihr Geld nach Bank",
     "Select a segment to open that bank’s complete analysis.": "Wählen Sie ein Segment für die vollständige Bankanalyse.",
     "Bank balances": "Banksalden", "No banks yet": "Noch keine Banken", "Back to overview": "Zurück zur Übersicht", "Bank analysis": "Bankanalyse",
@@ -102,11 +102,11 @@ const translations: Record<Exclude<Language, "en">, Record<string, string>> = {
     "Appearance": "Darstellung", "Theme": "Design", "System": "System", "Light": "Hell", "Dark": "Dunkel", "Regional preferences": "Regionale Einstellungen",
     "Default currency": "Standardwährung", "Date format": "Datumsformat", "Number format": "Zahlenformat", "Notifications": "Benachrichtigungen", "Save settings": "Einstellungen speichern",
     "Welcome back": "Willkommen zurück", "Create your account": "Konto erstellen", "Password": "Passwort", "Sign in": "Anmelden", "Create account": "Konto erstellen",
-    "Forgot password?": "Passwort vergessen?", "Try demo (auto-seeded)": "Demo testen", "Don't have an account?": "Noch kein Konto?", "Sign up": "Registrieren"
+    "Forgot password?": "Passwort vergessen?", "Don't have an account?": "Noch kein Konto?", "Sign up": "Registrieren"
   },
   es: {
     "Overview": "Resumen", "Accounts": "Cuentas", "Cards": "Tarjetas", "Transactions": "Transacciones", "Investments": "Inversiones", "Insurance": "Seguros",
-    "Menu": "Menú", "Profile & settings": "Perfil y ajustes", "Import statements": "Importar extractos", "Sign out": "Cerrar sesión",
+    "Menu": "Menú", "Profile & settings": "Perfil y ajustes", "Sign out": "Cerrar sesión",
     "Your total net worth": "Tu patrimonio neto", "Cash": "Efectivo", "Debt": "Deuda", "Your money by bank": "Tu dinero por banco",
     "Select a segment to open that bank’s complete analysis.": "Selecciona un segmento para abrir el análisis completo del banco.",
     "Bank balances": "Saldos bancarios", "No banks yet": "Aún no hay bancos", "Back to overview": "Volver al resumen", "Bank analysis": "Análisis bancario",
@@ -135,7 +135,7 @@ const translations: Record<Exclude<Language, "en">, Record<string, string>> = {
     "Appearance": "Apariencia", "Theme": "Tema", "System": "Sistema", "Light": "Claro", "Dark": "Oscuro", "Regional preferences": "Preferencias regionales",
     "Default currency": "Moneda predeterminada", "Date format": "Formato de fecha", "Number format": "Formato numérico", "Notifications": "Notificaciones", "Save settings": "Guardar ajustes",
     "Welcome back": "Bienvenido de nuevo", "Create your account": "Crea tu cuenta", "Password": "Contraseña", "Sign in": "Iniciar sesión", "Create account": "Crear cuenta",
-    "Forgot password?": "¿Olvidaste tu contraseña?", "Try demo (auto-seeded)": "Probar demo", "Don't have an account?": "¿No tienes cuenta?", "Sign up": "Regístrate"
+    "Forgot password?": "¿Olvidaste tu contraseña?", "Don't have an account?": "¿No tienes cuenta?", "Sign up": "Regístrate"
   }
 };
 

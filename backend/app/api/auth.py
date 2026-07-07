@@ -14,7 +14,6 @@ from app.core.security import (
     verify_password,
 )
 from app.db.session import get_db
-from app.db.init_db import seed_demo
 from app.models import User, UserSettings
 from app.schemas import (
     ForgotPasswordRequest,
@@ -50,12 +49,6 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter_by(email=payload.email.lower()).first()
     if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
-    return Token(access_token=create_access_token(user.id))
-
-
-@router.post("/auth/demo", response_model=Token)
-def demo_login(db: Session = Depends(get_db)):
-    user = seed_demo(db)
     return Token(access_token=create_access_token(user.id))
 
 

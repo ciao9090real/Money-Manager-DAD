@@ -42,9 +42,3 @@ export async function apiFetch<T>(path: string, token?: string | null, options: 
   }
   return response.json();
 }
-
-export const formatMoney = (value: number | string | null | undefined, currency = "EUR") =>
-  new Intl.NumberFormat(
-    typeof document !== "undefined" ? document.documentElement.lang || "en" : "en",
-    { style: "currency", currency }
-  ).format(Number(value || 0));
