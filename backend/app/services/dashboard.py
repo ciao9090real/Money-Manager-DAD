@@ -7,11 +7,31 @@ from sqlalchemy.orm import Session
 from app.models import Account, Card, Holding, InsurancePolicy, Transaction
 
 
+LIQUIDITY_ACCOUNT_TYPES = {
+    "current_account",
+    "savings_account",
+    "cash",
+    "wallet",
+    "benefit",
+    "checking",
+    "savings",
+}
+
+DEBT_ACCOUNT_TYPES = {"loan", "mortgage", "credit_card_liability"}
+
+
+def account_type(account: Account) -> str:
+    return (account.account_type or account.type or "").strip().lower()
+
+
 def build_dashboard_report(db: Session, user_id: int) -> dict:
     accounts = db.query(Account).filter_by(user_id=user_id, is_active=True).all()
     cards = db.query(Card).filter_by(user_id=user_id, is_active=True).all()
-    liquidity_types = {"checking", "savings", "cash"}
-    liquidity = sum(Decimal(account.current_balance or 0) for account in accounts if account.type in liquidity_types)
+    liquidity = sum(
+        Decimal(account.current_balance or 0)
+        for account in accounts
+        if account_type(account) in LIQUIDITY_ACCOUNT_TYPES
+    )
     liquidity += sum(Decimal(card.current_balance or 0) for card in cards if card.type == "prepaid")
     investments = sum(
         Decimal(holding.quantity or 0) * Decimal(holding.current_price or 0)
@@ -24,7 +44,7 @@ def build_dashboard_report(db: Session, user_id: int) -> dict:
     debt = sum(
         abs(Decimal(account.current_balance or 0))
         for account in accounts
-        if account.type in {"loan", "mortgage", "credit_card_liability"} and Decimal(account.current_balance or 0) < 0
+        if account_type(account) in DEBT_ACCOUNT_TYPES and Decimal(account.current_balance or 0) < 0
     )
     month_start = date.today().replace(day=1)
     income = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(

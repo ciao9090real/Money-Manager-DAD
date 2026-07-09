@@ -7,8 +7,8 @@ import {
   ArrowUpRight,
   Banknote,
   Building2,
+  Camera,
   CreditCard,
-  FileUp,
   Home,
   Landmark,
   LineChart,
@@ -1724,7 +1724,7 @@ function SettingsView({ token, setMessage, onProfilePhoto, onProfileChange, onLa
                 {preferences.profile_photo_url ? <img src={preferences.profile_photo_url} alt="" /> : <UserRound size={34} />}
               </span>
               <span><strong>{uploading ? "Uploading…" : "Drop your photo here"}</strong><small>or click to choose · JPG, PNG, WebP or GIF · max 5 MB</small></span>
-              <FileUp size={22} />
+              <Camera size={22} />
               <input id="profile-photo" type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={(event) => uploadPhoto(event.target.files?.[0])} />
             </label>
             <div className="settings-fields two-settings-fields">
