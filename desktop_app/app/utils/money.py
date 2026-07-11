@@ -22,6 +22,6 @@ def require_positive(value: object) -> Decimal:
 
 def format_money(value: object, currency: str = "EUR") -> str:
     amount = to_decimal(value)
-    symbol = "€" if currency == "EUR" else f"{currency} "
-    return f"{symbol}{amount:,.2f}"
-
+    symbol = "\u20ac" if currency == "EUR" else f"{currency} "
+    prefix = "-" if amount < 0 else ""
+    return f"{prefix}{symbol}{abs(amount):,.2f}"

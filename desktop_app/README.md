@@ -1,4 +1,4 @@
-# Money Manager DAD Desktop
+# Money Manager Desktop
 
 Local-first Windows desktop prototype built with Python, PySide6, SQLite, and PyInstaller.
 
@@ -8,7 +8,7 @@ Data is stored outside the repository in:
 C:\Users\<username>\AppData\Local\MoneyManagerDAD\money_manager.db
 ```
 
-The app also creates local `backups`, `exports`, and `logs` folders beside the database.
+The app also creates local `backups`, `exports`, and `logs` folders beside the database. The folder name remains `MoneyManagerDAD` so existing local data keeps working after the visible app rename.
 
 ## Run In Development
 
@@ -36,8 +36,7 @@ cd desktop_app
 The executable is created at:
 
 ```text
-desktop_app\dist\MoneyManagerDAD\MoneyManagerDAD.exe
+desktop_app\dist\MoneyManager\MoneyManager.exe
 ```
 
 The user database is not bundled into the executable.
-

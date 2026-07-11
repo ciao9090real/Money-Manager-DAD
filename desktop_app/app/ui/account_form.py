@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from PySide6.QtWidgets import QCheckBox, QComboBox, QDialog, QFormLayout, QLineEdit, QPushButton, QHBoxLayout, QVBoxLayout
+from PySide6.QtWidgets import QCheckBox, QComboBox, QDialog, QFormLayout, QLabel, QLineEdit, QHBoxLayout, QVBoxLayout
 
 from app.models.account import Account
+from app.ui.components import primary_button, secondary_button
+from app.ui.theme import Spacing
 
 
 ACCOUNT_TYPES = ["bank", "current_account", "savings_account", "cash", "wallet", "benefit", "payment_method", "other"]
@@ -12,6 +14,7 @@ class AccountForm(QDialog):
     def __init__(self, accounts: list[Account], account: Account | None = None):
         super().__init__()
         self.setWindowTitle("Account")
+        self.setMinimumWidth(460)
         self.account = account
         self.name = QLineEdit(account.name if account else "")
         self.type = QComboBox()
@@ -32,15 +35,23 @@ class AccountForm(QDialog):
         self.active = QCheckBox("Active")
         self.active.setChecked(account.is_active if account else True)
 
+        title = QLabel("Edit account" if account else "Add account")
+        title.setProperty("role", "pageTitle")
+        subtitle = QLabel("Accounts can be nested up to three levels deep.")
+        subtitle.setProperty("role", "subtitle")
+
         form = QFormLayout()
+        form.setLabelAlignment(form.labelAlignment())
+        form.setHorizontalSpacing(16)
+        form.setVerticalSpacing(12)
         form.addRow("Name", self.name)
         form.addRow("Type", self.type)
         form.addRow("Parent", self.parent)
         form.addRow("Opening balance", self.opening_balance)
         form.addRow("", self.active)
 
-        save = QPushButton("Save")
-        cancel = QPushButton("Cancel")
+        save = primary_button("Save account")
+        cancel = secondary_button("Cancel")
         save.clicked.connect(self.accept)
         cancel.clicked.connect(self.reject)
         buttons = QHBoxLayout()
@@ -48,6 +59,10 @@ class AccountForm(QDialog):
         buttons.addWidget(cancel)
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(Spacing.PAGE, Spacing.PAGE, Spacing.PAGE, Spacing.PAGE)
+        layout.setSpacing(Spacing.GAP)
+        layout.addWidget(title)
+        layout.addWidget(subtitle)
         layout.addLayout(form)
         layout.addLayout(buttons)
 
@@ -59,4 +74,3 @@ class AccountForm(QDialog):
             "opening_balance": self.opening_balance.text(),
             "is_active": self.active.isChecked(),
         }
-

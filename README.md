@@ -1,4 +1,4 @@
-Money Manager DAD is a local-first desktop finance tracker.
+Money Manager is a local-first desktop finance tracker.
 It stores data locally in SQLite and runs as a Windows executable.
 No cloud database, no server, no web deployment.
 

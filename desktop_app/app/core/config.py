@@ -1,3 +1,2 @@
-APP_NAME = "Money Manager DAD"
+APP_NAME = "Money Manager"
 DEFAULT_CURRENCY = "EUR"
-

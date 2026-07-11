@@ -9,3 +9,6 @@ __pycache__/
 node_modules/
 .next/
 uploads/
+desktop_app/.tmp_build/
+desktop_app/build/
+desktop_app/dist/
