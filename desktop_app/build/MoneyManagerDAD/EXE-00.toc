@@ -76,7 +76,7 @@
  [],
  False,
  False,
- 1783720565,
+ 1783757094,
  [('runw.exe',
    'C:\\Users\\leona\\Desktop\\Money '
    'Manager\\DAD\\desktop_app\\.venv\\Lib\\site-packages\\PyInstaller\\bootloader\\Windows-64bit-intel\\runw.exe',
