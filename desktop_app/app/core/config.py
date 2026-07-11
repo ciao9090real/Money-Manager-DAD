@@ -1,0 +1,3 @@
+APP_NAME = "Money Manager DAD"
+DEFAULT_CURRENCY = "EUR"
+
