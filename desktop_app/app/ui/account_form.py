@@ -7,14 +7,28 @@ from app.ui.components import primary_button, secondary_button
 from app.ui.theme import Spacing
 
 
-ACCOUNT_TYPES = ["bank", "current_account", "savings_account", "cash", "wallet", "benefit", "payment_method", "other"]
+ACCOUNT_TYPES = [
+    "bank",
+    "current_account",
+    "savings_account",
+    "cash",
+    "wallet",
+    "benefit",
+    "investment",
+    "property",
+    "credit_card",
+    "loan",
+    "mortgage",
+    "liability",
+    "other",
+]
 
 
 class AccountForm(QDialog):
     def __init__(self, accounts: list[Account], account: Account | None = None):
         super().__init__()
         self.setWindowTitle("Account")
-        self.setMinimumWidth(460)
+        self.setMinimumWidth(500)
         self.account = account
         self.name = QLineEdit(account.name if account else "")
         self.type = QComboBox()
@@ -36,9 +50,10 @@ class AccountForm(QDialog):
         self.active.setChecked(account.is_active if account else True)
 
         title = QLabel("Edit account" if account else "Add account")
-        title.setProperty("role", "pageTitle")
-        subtitle = QLabel("Accounts can be nested up to three levels deep.")
+        title.setProperty("role", "dialogTitle")
+        subtitle = QLabel("Create a clear structure for banks, wallets, savings, assets, and liabilities.")
         subtitle.setProperty("role", "subtitle")
+        subtitle.setWordWrap(True)
 
         form = QFormLayout()
         form.setLabelAlignment(form.labelAlignment())
@@ -55,12 +70,13 @@ class AccountForm(QDialog):
         save.clicked.connect(self.accept)
         cancel.clicked.connect(self.reject)
         buttons = QHBoxLayout()
-        buttons.addWidget(save)
+        buttons.addStretch()
         buttons.addWidget(cancel)
+        buttons.addWidget(save)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(Spacing.PAGE, Spacing.PAGE, Spacing.PAGE, Spacing.PAGE)
-        layout.setSpacing(Spacing.GAP)
+        layout.setContentsMargins(28, 26, 28, 26)
+        layout.setSpacing(18)
         layout.addWidget(title)
         layout.addWidget(subtitle)
         layout.addLayout(form)

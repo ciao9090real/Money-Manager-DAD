@@ -19,5 +19,3 @@ class SettingsRepository:
             """,
             (key, value),
         )
-        self.db.commit()
-

@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 from decimal import Decimal
 
+from app.core.database import unit_of_work
 from app.models.account import Account
 from app.repositories.account_repository import AccountRepository
 from app.utils.money import to_decimal
@@ -10,6 +11,8 @@ from app.utils.validators import require_text
 
 
 class AccountService:
+    LIABILITY_TYPES = {"credit_card", "loan", "mortgage", "liability"}
+
     def __init__(self, db: sqlite3.Connection):
         self.db = db
         self.accounts = AccountRepository(db)
@@ -23,18 +26,19 @@ class AccountService:
         is_active: bool = True,
         display_order: int = 0,
     ) -> Account:
-        self._validate_parent(parent_id)
-        return self.accounts.create(
-            Account(
-                id=None,
-                name=require_text(name, "Account name"),
-                type=require_text(account_type, "Account type"),
-                parent_id=parent_id,
-                opening_balance=to_decimal(opening_balance),
-                is_active=is_active,
-                display_order=display_order,
+        with unit_of_work(self.db):
+            self._validate_parent(parent_id)
+            return self.accounts.create(
+                Account(
+                    id=None,
+                    name=require_text(name, "Account name"),
+                    type=require_text(account_type, "Account type"),
+                    parent_id=parent_id,
+                    opening_balance=self._opening_balance(account_type, opening_balance),
+                    is_active=is_active,
+                    display_order=display_order,
+                )
             )
-        )
 
     def update_account(
         self,
@@ -46,34 +50,39 @@ class AccountService:
         is_active: bool = True,
         display_order: int = 0,
     ) -> Account:
-        existing = self._require_account(account_id)
-        self._validate_parent(parent_id, account_id)
-        existing.name = require_text(name, "Account name")
-        existing.type = require_text(account_type, "Account type")
-        existing.parent_id = parent_id
-        existing.opening_balance = to_decimal(opening_balance)
-        existing.is_active = is_active
-        existing.display_order = display_order
-        return self.accounts.update(existing)
+        with unit_of_work(self.db):
+            existing = self._require_account(account_id)
+            self._validate_parent(parent_id, account_id)
+            if not is_active and self.accounts.has_active_children(account_id):
+                raise ValueError("Deactivate active child accounts first")
+            existing.name = require_text(name, "Account name")
+            existing.type = require_text(account_type, "Account type")
+            existing.parent_id = parent_id
+            existing.opening_balance = self._opening_balance(account_type, opening_balance)
+            existing.is_active = is_active
+            existing.display_order = display_order
+            return self.accounts.update(existing)
 
     def deactivate_account(self, account_id: int) -> None:
-        self._require_account(account_id)
-        self.accounts.deactivate(account_id)
+        with unit_of_work(self.db):
+            self._require_account(account_id)
+            if self.accounts.has_active_children(account_id):
+                raise ValueError("Deactivate active child accounts first")
+            self.accounts.deactivate(account_id)
 
     def list_accounts(self, include_inactive: bool = False) -> list[Account]:
         return self.accounts.list(include_inactive=include_inactive)
 
     def account_balance(self, account_id: int) -> Decimal:
-        account = self._require_account(account_id)
-        row = self.db.execute(
-            "SELECT COALESCE(SUM(amount), 0) AS total FROM transactions WHERE account_id = ?",
-            (account_id,),
-        ).fetchone()
-        return account.opening_balance + Decimal(str(row["total"] or 0))
+        balance = self.accounts.balance(account_id)
+        if balance is None:
+            raise ValueError("Account not found")
+        return balance
 
     def account_tree(self, include_inactive: bool = False) -> list[dict]:
-        accounts = self.accounts.list(include_inactive=include_inactive)
-        balances = {account.id: self.account_balance(int(account.id)) for account in accounts if account.id}
+        account_balances = self.accounts.list_with_balances(include_inactive=include_inactive)
+        accounts = [account for account, _balance in account_balances]
+        balances = {account.id: balance for account, balance in account_balances}
         nodes = {
             account.id: {
                 "account": account,
@@ -151,3 +160,9 @@ class AccountService:
             descendants.add(child_id)
             stack.extend(children.get(child_id, []))
         return descendants
+
+    def _opening_balance(self, account_type: str, value: object) -> Decimal:
+        balance = to_decimal(value)
+        if account_type in self.LIABILITY_TYPES and balance > 0:
+            return -balance
+        return balance

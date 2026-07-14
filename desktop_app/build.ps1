@@ -14,7 +14,7 @@ if (-not (Test-Path ".venv")) {
 
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements.lock
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 .\.venv\Scripts\python.exe -m pytest -p no:cacheprovider --basetemp "$PytestTemp"
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

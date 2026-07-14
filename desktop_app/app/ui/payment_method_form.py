@@ -3,26 +3,34 @@ from __future__ import annotations
 from PySide6.QtWidgets import QComboBox, QDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QVBoxLayout
 
 from app.models.account import Account
+from app.models.payment_method import PaymentMethod
 from app.ui.components import primary_button, secondary_button
 from app.ui.theme import Spacing
 
 
 class PaymentMethodForm(QDialog):
-    def __init__(self, accounts: list[Account]):
+    def __init__(self, accounts: list[Account], payment_method: PaymentMethod | None = None):
         super().__init__()
         self.setWindowTitle("Payment method")
-        self.setMinimumWidth(440)
-        self.name = QLineEdit()
+        self.setMinimumWidth(500)
+        self.name = QLineEdit(payment_method.name if payment_method else "")
         self.type = QComboBox()
         self.type.addItems(["debit_card", "credit_card", "paypal", "wallet", "other"])
+        if payment_method:
+            self.type.setCurrentText(payment_method.type)
         self.account = QComboBox()
         for account in accounts:
             self.account.addItem(account.name, account.id)
+        if payment_method:
+            index = self.account.findData(payment_method.account_id)
+            if index >= 0:
+                self.account.setCurrentIndex(index)
 
-        title = QLabel("Add payment method")
-        title.setProperty("role", "pageTitle")
+        title = QLabel("Edit payment method" if payment_method else "Add payment method")
+        title.setProperty("role", "dialogTitle")
         subtitle = QLabel("Add cards, PayPal, or other local payment methods under an account.")
         subtitle.setProperty("role", "subtitle")
+        subtitle.setWordWrap(True)
 
         form = QFormLayout()
         form.setHorizontalSpacing(16)
@@ -36,12 +44,13 @@ class PaymentMethodForm(QDialog):
         save.clicked.connect(self.accept)
         cancel.clicked.connect(self.reject)
         buttons = QHBoxLayout()
-        buttons.addWidget(save)
+        buttons.addStretch()
         buttons.addWidget(cancel)
+        buttons.addWidget(save)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(Spacing.PAGE, Spacing.PAGE, Spacing.PAGE, Spacing.PAGE)
-        layout.setSpacing(Spacing.GAP)
+        layout.setContentsMargins(28, 26, 28, 26)
+        layout.setSpacing(18)
         layout.addWidget(title)
         layout.addWidget(subtitle)
         layout.addLayout(form)

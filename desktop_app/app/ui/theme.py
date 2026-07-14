@@ -1,40 +1,46 @@
 class Colors:
-    BACKGROUND = "#f8fafc"
-    SIDEBAR = "#0f172a"
+    BACKGROUND = "#f4f6fb"
+    SIDEBAR = "#111827"
+    SIDEBAR_DEEP = "#0b1220"
     SIDEBAR_MUTED = "#94a3b8"
-    SIDEBAR_SELECTED = "#1d4ed8"
+    SIDEBAR_SELECTED = "#293548"
     CARD = "#ffffff"
-    PRIMARY = "#2563eb"
-    PRIMARY_DARK = "#1d4ed8"
-    TEXT = "#0f172a"
-    TEXT_SECONDARY = "#64748b"
-    BORDER = "#e2e8f0"
+    PRIMARY = "#5b5ce2"
+    PRIMARY_DARK = "#4849cb"
+    PRIMARY_SOFT = "#eeefff"
+    ACCENT = "#14b8a6"
+    TEXT = "#182230"
+    TEXT_SECONDARY = "#667085"
+    TEXT_MUTED = "#98a2b3"
+    BORDER = "#e4e7ec"
+    BORDER_SOFT = "#eef1f5"
     HEADER = "#f8fafc"
-    ROW_ALT = "#f9fafb"
-    POSITIVE = "#15803d"
-    NEGATIVE = "#b91c1c"
-    NEUTRAL_BADGE_BG = "#f1f5f9"
-    NEUTRAL_BADGE_TEXT = "#334155"
-    POSITIVE_BADGE_BG = "#dcfce7"
-    POSITIVE_BADGE_TEXT = "#166534"
-    NEGATIVE_BADGE_BG = "#fee2e2"
-    NEGATIVE_BADGE_TEXT = "#991b1b"
-    INFO_BADGE_BG = "#dbeafe"
-    INFO_BADGE_TEXT = "#1e40af"
-    MUTED_BADGE_BG = "#f3f4f6"
-    MUTED_BADGE_TEXT = "#4b5563"
+    ROW_ALT = "#fafbfc"
+    POSITIVE = "#079455"
+    NEGATIVE = "#d92d20"
+    WARNING = "#dc6803"
+    NEUTRAL_BADGE_BG = "#f2f4f7"
+    NEUTRAL_BADGE_TEXT = "#475467"
+    POSITIVE_BADGE_BG = "#ecfdf3"
+    POSITIVE_BADGE_TEXT = "#067647"
+    NEGATIVE_BADGE_BG = "#fef3f2"
+    NEGATIVE_BADGE_TEXT = "#b42318"
+    INFO_BADGE_BG = "#eef4ff"
+    INFO_BADGE_TEXT = "#3538cd"
+    MUTED_BADGE_BG = "#f2f4f7"
+    MUTED_BADGE_TEXT = "#667085"
 
 
 class Spacing:
-    PAGE = 24
-    CARD = 18
-    GAP = 16
-    RADIUS = 12
+    PAGE = 30
+    CARD = 22
+    GAP = 18
+    RADIUS = 16
 
 
 class Fonts:
-    TITLE = 26
+    TITLE = 28
     SUBTITLE = 13
     SECTION = 17
     BODY = 13
-    METRIC = 28
+    METRIC = 30

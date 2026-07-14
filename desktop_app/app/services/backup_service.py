@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import shutil
 import sqlite3
 from pathlib import Path
 
 from app.core.paths import backup_dir, database_path, ensure_app_dirs
+from app.core.migrations import assert_database_integrity
 from app.utils.dates import timestamp_for_filename
 
 
@@ -15,8 +15,19 @@ class BackupService:
 
     def create_backup(self) -> Path:
         ensure_app_dirs()
-        self.db.commit()
+        if self.db.in_transaction:
+            raise RuntimeError("Cannot back up while a database operation is in progress")
+        assert_database_integrity(self.db)
         target = backup_dir() / f"money_manager_backup_{timestamp_for_filename()}.db"
-        shutil.copy2(self.db_path, target)
+        destination = sqlite3.connect(target)
+        try:
+            self.db.backup(destination)
+            destination.execute("PRAGMA foreign_keys = ON")
+            assert_database_integrity(destination)
+        except Exception:
+            destination.close()
+            target.unlink(missing_ok=True)
+            raise
+        else:
+            destination.close()
         return target
-
