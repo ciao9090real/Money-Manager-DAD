@@ -29,3 +29,13 @@ class CategoryRepository:
         row = self.db.execute("SELECT * FROM categories WHERE id = ?", (cursor.lastrowid,)).fetchone()
         return row_to_category(row)
 
+    def get(self, category_id: int) -> Category | None:
+        row = self.db.execute("SELECT * FROM categories WHERE id = ?", (category_id,)).fetchone()
+        return row_to_category(row) if row else None
+
+    def find_by_name_and_type(self, name: str, category_type: str) -> Category | None:
+        row = self.db.execute(
+            "SELECT * FROM categories WHERE lower(name) = lower(?) AND type = ?",
+            (name, category_type),
+        ).fetchone()
+        return row_to_category(row) if row else None
