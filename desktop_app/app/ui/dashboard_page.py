@@ -6,6 +6,7 @@ from datetime import date
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFrame,
+    QComboBox,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -42,7 +43,9 @@ class DashboardPage(QWidget):
         super().__init__()
         self.service = DashboardService(db)
         self.account_repo = AccountRepository(db)
-        self.cards: dict[str, QLabel] = {}
+        self.global_cards: dict[str, QLabel] = {}
+        self.scope_cards: dict[str, QLabel] = {}
+        self.current_scope_id = "all"
 
         today = date.today().strftime("%A, %d %B")
         add_transaction = primary_button("Add transaction", "plus")
@@ -58,31 +61,47 @@ class DashboardPage(QWidget):
         self.overview_grid.setContentsMargins(0, 0, 0, 0)
         self.overview_grid.setSpacing(18)
         self.hero = self._build_hero(on_backup)
-        self.liquidity_card, liquidity_value = metric_card(
-            "Available liquidity",
-            format_money(0),
-            "Cash and readily available balances",
-        )
-        self.liquidity_card.setMinimumHeight(174)
-        self.liquidity_card.setMaximumHeight(190)
-        self.cards["liquidity"] = liquidity_value
         layout.addLayout(self.overview_grid)
 
-        self.monthly_grid = QGridLayout()
-        self.monthly_grid.setContentsMargins(0, 0, 0, 0)
-        self.monthly_grid.setSpacing(18)
-        self.monthly_widgets: list[QWidget] = []
-        monthly_metadata = {
-            "monthly_income": ("Income this month", "Money in", "positive"),
-            "monthly_expenses": ("Spent this month", "Money out", "negative"),
-            "monthly_net_flow": ("Monthly cash flow", "Income minus spending", None),
+        self.global_metric_grid = QGridLayout()
+        self.global_metric_grid.setContentsMargins(0, 0, 0, 0)
+        self.global_metric_grid.setSpacing(18)
+        self.global_metric_widgets: list[QWidget] = []
+        global_metadata = {
+            "total_assets": ("Total assets", "Positive asset balances", None),
+            "liquidity": ("Available liquidity", "Cash and ready balances", None),
+            "investments_property": ("Investments & property", "Longer-term assets", None),
+            "total_debt": ("Total debt", "Liability balances owed", "negative"),
+            "monthly_net_flow": ("Monthly net cash flow", "Income minus spending", None),
         }
-        for key in ("monthly_income", "monthly_expenses", "monthly_net_flow"):
-            label, helper, tone = monthly_metadata[key]
+        for key in ("total_assets", "liquidity", "investments_property", "total_debt", "monthly_net_flow"):
+            label, helper, tone = global_metadata[key]
             card, value = metric_card(label, format_money(0), helper, tone)
-            self.cards[key] = value
-            self.monthly_widgets.append(card)
-        layout.addLayout(self.monthly_grid)
+            self.global_cards[key] = value
+            self.global_metric_widgets.append(card)
+        layout.addLayout(self.global_metric_grid)
+
+        self.scope_selector_card = self._build_scope_selector()
+        layout.addWidget(self.scope_selector_card)
+
+        self.scope_grid = QGridLayout()
+        self.scope_grid.setContentsMargins(0, 0, 0, 0)
+        self.scope_grid.setSpacing(18)
+        self.scope_widgets: list[QWidget] = []
+        scope_metadata = {
+            "selected_balance": ("Selected balance", "Balance in this scope", None),
+            "liquidity": ("Available liquidity", "Liquid balances in scope", None),
+            "monthly_income": ("Income this month", "Money in for this scope", "positive"),
+            "monthly_expenses": ("Spent this month", "Money out for this scope", "negative"),
+            "monthly_net_flow": ("Net cash flow", "Income minus spending", None),
+            "scope_children": ("Accounts & methods", "Child accounts / payment methods", None),
+        }
+        for key in ("selected_balance", "liquidity", "monthly_income", "monthly_expenses", "monthly_net_flow", "scope_children"):
+            label, helper, tone = scope_metadata[key]
+            card, value = metric_card(label, "0" if key == "scope_children" else format_money(0), helper, tone)
+            self.scope_cards[key] = value
+            self.scope_widgets.append(card)
+        layout.addLayout(self.scope_grid)
 
         add_account = secondary_button("Add account", "plus")
         add_account.clicked.connect(on_add_account or (lambda: None))
@@ -134,8 +153,8 @@ class DashboardPage(QWidget):
         label.setProperty("role", "heroLabel")
         value = QLabel(format_money(0))
         value.setProperty("role", "heroValue")
-        self.cards["net_worth"] = value
-        self.hero_helper = QLabel("Across your active accounts")
+        self.global_cards["net_worth"] = value
+        self.hero_helper = QLabel("Across all banks, assets, and liabilities")
         self.hero_helper.setProperty("role", "heroHelper")
         bottom = QHBoxLayout()
         bottom.setContentsMargins(0, 8, 0, 0)
@@ -154,6 +173,32 @@ class DashboardPage(QWidget):
         layout.addLayout(bottom)
         return hero
 
+    def _build_scope_selector(self) -> QFrame:
+        card = QFrame()
+        card.setProperty("role", "card")
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(10)
+
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(12)
+        self.scope_title = QLabel("Viewing: All accounts")
+        self.scope_title.setProperty("role", "sectionTitle")
+        self.scope_combo = QComboBox()
+        self.scope_combo.setMinimumWidth(260)
+        self.scope_combo.currentIndexChanged.connect(self._scope_changed)
+        row.addWidget(self.scope_title)
+        row.addStretch()
+        row.addWidget(self.scope_combo)
+
+        self.scope_caption = QLabel("Included: all active accounts")
+        self.scope_caption.setProperty("role", "sectionSubtitle")
+        self.scope_caption.setWordWrap(True)
+        layout.addLayout(row)
+        layout.addWidget(self.scope_caption)
+        return card
+
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._layout_dashboard()
@@ -163,25 +208,24 @@ class DashboardPage(QWidget):
             return
         width = max(1, self.width())
         clear_layout(self.overview_grid)
-        for column in range(3):
+        for column in range(2):
             self.overview_grid.setColumnStretch(column, 0)
-        if width >= 1160:
-            self.overview_grid.addWidget(self.hero, 0, 0)
-            self.overview_grid.addWidget(self.liquidity_card, 0, 1)
-            self.overview_grid.setColumnStretch(0, 2)
-            self.overview_grid.setColumnStretch(1, 1)
-        else:
-            self.overview_grid.addWidget(self.hero, 0, 0)
-            self.overview_grid.addWidget(self.liquidity_card, 1, 0)
-            self.overview_grid.setColumnStretch(0, 1)
+        self.overview_grid.addWidget(self.hero, 0, 0)
+        self.overview_grid.setColumnStretch(0, 1)
 
-        clear_layout(self.monthly_grid)
-        for column in range(3):
-            self.monthly_grid.setColumnStretch(column, 0)
-        monthly_columns = 3 if width >= 1050 else 2 if width >= 620 else 1
-        for index, card in enumerate(self.monthly_widgets):
-            self.monthly_grid.addWidget(card, index // monthly_columns, index % monthly_columns)
-            self.monthly_grid.setColumnStretch(index % monthly_columns, 1)
+        clear_layout(self.global_metric_grid)
+        global_columns = 5 if width >= 1280 else 3 if width >= 920 else 2 if width >= 620 else 1
+        for column in range(global_columns):
+            self.global_metric_grid.setColumnStretch(column, 1)
+        for index, card in enumerate(self.global_metric_widgets):
+            self.global_metric_grid.addWidget(card, index // global_columns, index % global_columns)
+
+        clear_layout(self.scope_grid)
+        scope_columns = 3 if width >= 1050 else 2 if width >= 620 else 1
+        for column in range(scope_columns):
+            self.scope_grid.setColumnStretch(column, 1)
+        for index, card in enumerate(self.scope_widgets):
+            self.scope_grid.addWidget(card, index // scope_columns, index % scope_columns)
 
         clear_layout(self.content_grid)
         for column in range(2):
@@ -197,17 +241,49 @@ class DashboardPage(QWidget):
             self.content_grid.setColumnStretch(0, 1)
 
     def refresh(self) -> None:
-        data = self.service.summary()
-        for key, label in self.cards.items():
+        global_data = self.service.global_snapshot()
+        self._populate_scope_selector()
+        for key, label in self.global_cards.items():
+            value = global_data[key]
+            label.setText(f"{format_money(value)} owed" if key == "total_debt" else format_money(value))
+            if key == "monthly_net_flow":
+                tone = "positive" if value >= 0 else "negative"
+                label.setProperty("tone", tone)
+                label.style().unpolish(label)
+                label.style().polish(label)
+        self.hero_helper.setText(
+            f"Across {len(global_data['accounts'])} active account{'s' if len(global_data['accounts']) != 1 else ''}, assets, and liabilities"
+        )
+        scoped_data = self.service.scope_summary(self.current_scope_id)
+        self._refresh_scope(scoped_data)
+
+    def _refresh_scope(self, data: dict) -> None:
+        self.scope_title.setText(f"Viewing: {data['scope_label']}")
+        included = data.get("included_accounts", [])
+        if data["scope_id"] == "all":
+            included_text = "Included: all active accounts"
+        elif not included:
+            included_text = "Included: no active accounts"
+        elif len(included) <= 4:
+            included_text = f"Included: {', '.join(included)}"
+        else:
+            included_text = f"Included: {', '.join(included[:4])}, and {len(included) - 4} more"
+        if data.get("payment_method_count"):
+            included_text += f" · {data['payment_method_count']} payment method{'s' if data['payment_method_count'] != 1 else ''}"
+        self.scope_caption.setText(included_text)
+
+        for key, label in self.scope_cards.items():
+            if key == "scope_children":
+                child_count = data.get("child_account_count", 0)
+                method_count = data.get("payment_method_count", 0)
+                label.setText(f"{child_count} / {method_count}")
+                continue
             label.setText(format_money(data[key]))
             if key == "monthly_net_flow":
                 tone = "positive" if data[key] >= 0 else "negative"
                 label.setProperty("tone", tone)
                 label.style().unpolish(label)
                 label.style().polish(label)
-        self.hero_helper.setText(
-            f"Across {len(data['accounts'])} active account{'s' if len(data['accounts']) != 1 else ''}"
-        )
 
         account_names = {
             account.id: account.name for account in self.account_repo.list(include_inactive=True)
@@ -251,3 +327,43 @@ class DashboardPage(QWidget):
             )
         self.accounts.setVisible(bool(accounts))
         self.accounts_empty.setVisible(not accounts)
+
+    def _populate_scope_selector(self) -> None:
+        selected = self.current_scope_id
+        self.scope_combo.blockSignals(True)
+        self.scope_combo.clear()
+        self.scope_combo.addItem("All accounts", "all")
+        for account, depth in self._account_options():
+            prefix = "  " * depth
+            self.scope_combo.addItem(f"{prefix}{account.name}", account.id)
+        index = self.scope_combo.findData(selected)
+        if index < 0:
+            self.current_scope_id = "all"
+            index = 0
+        self.scope_combo.setCurrentIndex(index)
+        self.scope_combo.blockSignals(False)
+
+    def _account_options(self) -> list[tuple[object, int]]:
+        accounts = self.account_repo.list(include_inactive=False)
+        children: dict[str | None, list[object]] = {}
+        for account in accounts:
+            children.setdefault(account.parent_id, []).append(account)
+        for siblings in children.values():
+            siblings.sort(key=lambda item: (item.display_order, item.name.lower()))
+        options: list[tuple[object, int]] = []
+
+        def walk(parent_id: str | None, depth: int) -> None:
+            for account in children.get(parent_id, []):
+                options.append((account, depth))
+                if account.id is not None:
+                    walk(account.id, depth + 1)
+
+        walk(None, 0)
+        return options
+
+    def _scope_changed(self) -> None:
+        scope_id = self.scope_combo.currentData()
+        if not scope_id:
+            return
+        self.current_scope_id = scope_id
+        self._refresh_scope(self.service.scope_summary(self.current_scope_id))

@@ -41,6 +41,7 @@ class TransactionRepository:
         *,
         transaction_type: str | None = None,
         account_id: str | None = None,
+        account_ids: list[str] | tuple[str, ...] | set[str] | None = None,
         category_id: str | None = None,
         start_date: str | None = None,
         end_date: str | None = None,
@@ -58,6 +59,13 @@ class TransactionRepository:
         if account_id is not None:
             conditions.append("account_id = ?")
             params.append(account_id)
+        if account_ids is not None:
+            ids = list(account_ids)
+            if not ids:
+                return []
+            placeholders = ", ".join("?" for _ in ids)
+            conditions.append(f"account_id IN ({placeholders})")
+            params.extend(ids)
         if category_id is not None:
             conditions.append("category_id = ?")
             params.append(category_id)
@@ -84,16 +92,30 @@ class TransactionRepository:
             params.append(int(limit))
         return [row_to_transaction(row) for row in self.db.execute(query, params)]
 
-    def monthly_totals(self, start_date: str, end_date: str) -> tuple[Decimal, Decimal]:
+    def monthly_totals(
+        self,
+        start_date: str,
+        end_date: str,
+        account_ids: list[str] | tuple[str, ...] | set[str] | None = None,
+    ) -> tuple[Decimal, Decimal]:
+        conditions = ["date >= ?", "date < ?", "deleted_at IS NULL"]
+        params: list[object] = [start_date, end_date]
+        if account_ids is not None:
+            ids = list(account_ids)
+            if not ids:
+                return Decimal("0"), Decimal("0")
+            placeholders = ", ".join("?" for _ in ids)
+            conditions.append(f"account_id IN ({placeholders})")
+            params.extend(ids)
         row = self.db.execute(
-            """
+            f"""
             SELECT
                 COALESCE(SUM(CASE WHEN type = 'income' THEN amount_cents ELSE 0 END), 0) AS income_cents,
                 COALESCE(SUM(CASE WHEN type = 'expense' THEN -amount_cents ELSE 0 END), 0) AS expense_cents
             FROM transactions
-            WHERE date >= ? AND date < ? AND deleted_at IS NULL
+            WHERE {" AND ".join(conditions)}
             """,
-            (start_date, end_date),
+            params,
         ).fetchone()
         return cents_to_decimal(row["income_cents"]), cents_to_decimal(row["expense_cents"])
 
