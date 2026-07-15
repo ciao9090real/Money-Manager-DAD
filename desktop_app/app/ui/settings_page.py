@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QVBoxLayout,
     QWidget,
@@ -21,6 +22,7 @@ from app.services.export_service import ExportService
 from app.ui.category_manager import CategoryManagerDialog
 from app.ui.components import (
     badge,
+    clear_layout,
     create_card,
     page_layout,
     primary_button,
@@ -51,9 +53,9 @@ class SettingsPage(QWidget):
         storage_body.addWidget(self._icon_tile("folder"), 0, Qt.AlignmentFlag.AlignTop)
         storage_details = QVBoxLayout()
         storage_details.setSpacing(10)
-        database_label = QLabel(str(database_path()))
+        database_label = QLineEdit(str(database_path()))
         self.database_path_text = str(database_path())
-        database_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        database_label.setReadOnly(True)
         database_label.setProperty("role", "mono")
         actions = QHBoxLayout()
         actions.setSpacing(9)
@@ -70,10 +72,10 @@ class SettingsPage(QWidget):
         storage_layout.addLayout(storage_body)
         layout.addWidget(storage_card)
 
-        tools_grid = QGridLayout()
-        tools_grid.setContentsMargins(0, 0, 0, 0)
-        tools_grid.setHorizontalSpacing(18)
-        tools_grid.setVerticalSpacing(18)
+        self.tools_grid = QGridLayout()
+        self.tools_grid.setContentsMargins(0, 0, 0, 0)
+        self.tools_grid.setHorizontalSpacing(16)
+        self.tools_grid.setVerticalSpacing(16)
 
         backup_button = primary_button("Create backup", "backup")
         backup_button.clicked.connect(self.create_backup)
@@ -102,13 +104,8 @@ class SettingsPage(QWidget):
             categories_button,
         )
 
-        tools_grid.addWidget(backup_card, 0, 0)
-        tools_grid.addWidget(export_card, 0, 1)
-        tools_grid.addWidget(categories_card, 0, 2)
-        tools_grid.setColumnStretch(0, 1)
-        tools_grid.setColumnStretch(1, 1)
-        tools_grid.setColumnStretch(2, 1)
-        layout.addLayout(tools_grid)
+        self.tool_cards = [backup_card, export_card, categories_card]
+        layout.addLayout(self.tools_grid)
 
         privacy_card, privacy_layout = create_card(
             "Private by design",
@@ -137,6 +134,7 @@ class SettingsPage(QWidget):
         privacy_layout.addLayout(privacy_body)
         layout.addWidget(privacy_card)
         layout.addStretch()
+        self._layout_tools()
 
     def _icon_tile(self, icon_name: str) -> QFrame:
         tile = QFrame()
@@ -162,8 +160,25 @@ class SettingsPage(QWidget):
         card_layout.addWidget(description_label)
         card_layout.addStretch()
         card_layout.addWidget(button, 0, Qt.AlignmentFlag.AlignLeft)
-        card.setMinimumHeight(205)
+        card.setMinimumHeight(190)
         return card
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._layout_tools()
+
+    def _layout_tools(self) -> None:
+        if not hasattr(self, "tools_grid"):
+            return
+        columns = 3 if self.width() >= 1120 else 2 if self.width() >= 700 else 1
+        if getattr(self, "_tool_columns", None) == columns:
+            return
+        self._tool_columns = columns
+        clear_layout(self.tools_grid)
+        for column in range(3):
+            self.tools_grid.setColumnStretch(column, 1 if column < columns else 0)
+        for index, card in enumerate(self.tool_cards):
+            self.tools_grid.addWidget(card, index // columns, index % columns)
 
     def open_database_folder(self) -> None:
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(app_data_dir())))

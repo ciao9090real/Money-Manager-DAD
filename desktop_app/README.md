@@ -3,18 +3,30 @@
 Modern local-first Windows finance manager built with Python, PySide6, SQLite, and PyInstaller.
 
 The interface includes a responsive financial dashboard, collapsible navigation,
-searchable and paginated activity, contextual account controls, polished editors,
-and dedicated local storage, backup, export, and category tools.
+searchable and paginated activity, contextual account controls, an upcoming
+payment schedule, a manually valued investment portfolio, polished editors, and
+dedicated local storage, backup, export, and category tools.
 
 The current desktop baseline is tagged `desktop-baseline-v1`. Dependencies are
 fully pinned in `requirements.lock`, and the Windows CI workflow compiles the
 source, runs the database/migration tests, and packages the executable.
 
-Schema version 3 is the synchronization-ready ledger foundation. Existing
-version 1 and 2 databases are backed up and migrated automatically on first
-launch. The migration gives every account, category, payment method, and
-transaction a UUID; stores money as exact integer cents; and adds UTC audit
-timestamps, per-record revisions, soft deletion, and tombstones.
+Schema version 5 adds ledger-backed investments to the recurring-payment and
+synchronization-ready ledger foundation. Existing databases are backed up and
+migrated automatically on first launch. Accounts, categories, payment methods,
+transactions, recurring rules, and investments use UUIDs, exact integer cents,
+UTC audit timestamps, per-record revisions, soft deletion, and tombstones.
+
+The Upcoming page supports fixed subscriptions and variable bills, weekly
+through yearly schedules, pausing, skipping, and explicitly recording a payment.
+Recording creates a linked expense and advances the schedule atomically. The app
+does not post payments automatically or send notifications while it is closed.
+
+The Investments page moves contributions from a funding account into a managed
+investment account. Manual valuation updates post only the gain or loss, so the
+Dashboard and account hierarchy continue to use the central ledger. Portfolio
+value, contributions, gain or loss, and return percentage are calculated
+automatically; live market prices are not fetched.
 
 Data is stored outside the repository in:
 
@@ -99,9 +111,8 @@ Preview images are written to the ignored repository-level `artifacts` folder.
 
 ## Implementation Order
 
-The next product milestone is rich transaction detail: merchant/payee,
-counterparty, tags, receipt line items, and application-managed attachments.
-After that, account activity and reconciliation should be built on the same
-central balance calculations, followed by idempotent recurring and scheduled
-transactions. Credit-card statements and planning modules should build on those
-ledger and scheduling rules rather than introducing separate financial totals.
+The next product milestone is liabilities: loans and debts backed by explicit
+accounts and payment schedules, without creating a second balance system. Local
+desktop reminders can then build on recurring-rule reminder dates. Email or
+calendar delivery remains a later opt-in integration and is not part of the
+local-only desktop baseline.

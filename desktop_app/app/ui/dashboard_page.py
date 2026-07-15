@@ -3,14 +3,12 @@ from __future__ import annotations
 import sqlite3
 from datetime import date
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFrame,
     QComboBox,
     QGridLayout,
     QHBoxLayout,
     QLabel,
-    QPushButton,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -20,20 +18,24 @@ from PySide6.QtWidgets import (
 from app.repositories.account_repository import AccountRepository
 from app.services.dashboard_service import DashboardService
 from app.ui.components import (
+    FittedLabel,
     amount_item,
     badge,
     badge_tone,
     clear_layout,
+    compact_money,
     create_card,
     empty_state,
+    fit_item_view_height,
     metric_card,
     page_layout,
     pretty_type,
     primary_button,
     secondary_button,
+    section_heading,
+    soft_button,
     style_table,
 )
-from app.ui.icons import icon
 from app.utils.money import format_money
 from app.utils.dates import format_display_date
 
@@ -60,8 +62,20 @@ class DashboardPage(QWidget):
         self.overview_grid = QGridLayout()
         self.overview_grid.setContentsMargins(0, 0, 0, 0)
         self.overview_grid.setSpacing(18)
-        self.hero = self._build_hero(on_backup)
+        self.hero = self._build_hero()
         layout.addLayout(self.overview_grid)
+
+        self.quick_actions = self._build_quick_actions(
+            on_add_transaction, on_add_account, on_backup
+        )
+        layout.addWidget(self.quick_actions)
+
+        layout.addWidget(
+            section_heading(
+                "Portfolio overview",
+                "A global view across all active accounts and liabilities",
+            )
+        )
 
         self.global_metric_grid = QGridLayout()
         self.global_metric_grid.setContentsMargins(0, 0, 0, 0)
@@ -141,17 +155,17 @@ class DashboardPage(QWidget):
         layout.addStretch()
         self._layout_dashboard()
 
-    def _build_hero(self, on_backup) -> QFrame:
+    def _build_hero(self) -> QFrame:
         hero = QFrame()
         hero.setProperty("role", "heroCard")
-        hero.setMinimumHeight(174)
-        hero.setMaximumHeight(190)
+        hero.setMinimumHeight(158)
+        hero.setMaximumHeight(176)
         layout = QVBoxLayout(hero)
         layout.setContentsMargins(25, 22, 25, 20)
         layout.setSpacing(6)
         label = QLabel("TOTAL NET WORTH")
         label.setProperty("role", "heroLabel")
-        value = QLabel(format_money(0))
+        value = FittedLabel(format_money(0), maximum_size=38, minimum_size=18)
         value.setProperty("role", "heroValue")
         self.global_cards["net_worth"] = value
         self.hero_helper = QLabel("Across all banks, assets, and liabilities")
@@ -160,18 +174,39 @@ class DashboardPage(QWidget):
         bottom.setContentsMargins(0, 8, 0, 0)
         updated = QLabel("Local data · Updated just now")
         updated.setProperty("role", "heroHelper")
-        backup = QPushButton("Back up now")
-        backup.setProperty("variant", "hero")
-        backup.setIcon(icon("backup", "#ffffff", 16))
-        backup.clicked.connect(on_backup or (lambda: None))
         bottom.addWidget(updated)
         bottom.addStretch()
-        bottom.addWidget(backup)
         layout.addWidget(label)
         layout.addWidget(value)
         layout.addWidget(self.hero_helper)
         layout.addLayout(bottom)
         return hero
+
+    def _build_quick_actions(self, on_add_transaction, on_add_account, on_backup) -> QFrame:
+        container = QFrame()
+        container.setProperty("role", "quickActions")
+        row = QHBoxLayout(container)
+        row.setContentsMargins(14, 10, 14, 10)
+        row.setSpacing(8)
+        label = QLabel("Quick actions")
+        label.setProperty("role", "metricLabel")
+        add_transaction = soft_button("Transaction", "plus")
+        add_account = secondary_button("Account", "plus")
+        backup = secondary_button("Backup", "backup")
+        add_transaction.setToolTip("Add transaction")
+        add_account.setToolTip("Add account")
+        backup.setToolTip("Create backup")
+        for button in (add_transaction, add_account, backup):
+            button.setMaximumWidth(175)
+        add_transaction.clicked.connect(on_add_transaction or (lambda: None))
+        add_account.clicked.connect(on_add_account or (lambda: None))
+        backup.clicked.connect(on_backup or (lambda: None))
+        row.addWidget(label)
+        row.addStretch()
+        row.addWidget(add_transaction)
+        row.addWidget(add_account)
+        row.addWidget(backup)
+        return container
 
     def _build_scope_selector(self) -> QFrame:
         card = QFrame()
@@ -214,7 +249,7 @@ class DashboardPage(QWidget):
         self.overview_grid.setColumnStretch(0, 1)
 
         clear_layout(self.global_metric_grid)
-        global_columns = 5 if width >= 1280 else 3 if width >= 920 else 2 if width >= 620 else 1
+        global_columns = 5 if width >= 900 else 3 if width >= 620 else 2
         for column in range(global_columns):
             self.global_metric_grid.setColumnStretch(column, 1)
         for index, card in enumerate(self.global_metric_widgets):
@@ -245,7 +280,9 @@ class DashboardPage(QWidget):
         self._populate_scope_selector()
         for key, label in self.global_cards.items():
             value = global_data[key]
-            label.setText(f"{format_money(value)} owed" if key == "total_debt" else format_money(value))
+            full_value = format_money(value)
+            label.setText(full_value if key == "net_worth" else compact_money(value))
+            label.setToolTip(full_value)
             if key == "monthly_net_flow":
                 tone = "positive" if value >= 0 else "negative"
                 label.setProperty("tone", tone)
@@ -278,7 +315,9 @@ class DashboardPage(QWidget):
                 method_count = data.get("payment_method_count", 0)
                 label.setText(f"{child_count} / {method_count}")
                 continue
-            label.setText(format_money(data[key]))
+            full_value = format_money(data[key])
+            label.setText(compact_money(data[key]))
+            label.setToolTip(full_value)
             if key == "monthly_net_flow":
                 tone = "positive" if data[key] >= 0 else "negative"
                 label.setProperty("tone", tone)
@@ -312,21 +351,19 @@ class DashboardPage(QWidget):
             )
         self.recent.setVisible(bool(data["recent_transactions"]))
         self.recent_empty.setVisible(not data["recent_transactions"])
+        fit_item_view_height(self.recent, len(data["recent_transactions"]), maximum_rows=6)
 
         accounts = data["accounts"][:8]
         self.accounts.setRowCount(len(accounts))
         for row_index, account in enumerate(accounts):
-            values = [account["name"], "", format_money(account["balance"])]
-            for col_index, value in enumerate(values):
-                item = QTableWidgetItem(str(value))
-                if col_index == 2:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                self.accounts.setItem(row_index, col_index, item)
+            self.accounts.setItem(row_index, 0, QTableWidgetItem(account["name"]))
+            self.accounts.setItem(row_index, 2, amount_item(account["balance"], neutral=True))
             self.accounts.setCellWidget(
                 row_index, 1, badge(pretty_type(account["type"]), "neutral")
             )
         self.accounts.setVisible(bool(accounts))
         self.accounts_empty.setVisible(not accounts)
+        fit_item_view_height(self.accounts, len(accounts), maximum_rows=6)
 
     def _populate_scope_selector(self) -> None:
         selected = self.current_scope_id

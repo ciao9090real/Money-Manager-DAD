@@ -33,6 +33,7 @@ class TransactionService:
         category_id: object = None,
         payment_method_id: str | None = None,
         notes: str | None = None,
+        recurring_rule_id: str | None = None,
     ) -> Transaction:
         with unit_of_work(self.db):
             self._require_account(account_id, active=True)
@@ -48,6 +49,7 @@ class TransactionService:
                     amount=require_positive(amount),
                     description=description.strip(),
                     category_id=resolved_category,
+                    recurring_rule_id=recurring_rule_id,
                     notes=notes,
                 )
             )
@@ -61,6 +63,7 @@ class TransactionService:
         category_id: object = None,
         payment_method_id: str | None = None,
         notes: str | None = None,
+        recurring_rule_id: str | None = None,
     ) -> Transaction:
         with unit_of_work(self.db):
             self._require_account(account_id, active=True)
@@ -76,6 +79,7 @@ class TransactionService:
                     amount=-require_positive(amount),
                     description=description.strip(),
                     category_id=resolved_category,
+                    recurring_rule_id=recurring_rule_id,
                     notes=notes,
                 )
             )
@@ -87,6 +91,7 @@ class TransactionService:
         date: str,
         description: str = "",
         notes: str | None = None,
+        investment_id: str | None = None,
     ) -> Transaction:
         with unit_of_work(self.db):
             self._require_account(account_id, active=True)
@@ -98,6 +103,7 @@ class TransactionService:
                     account_id=account_id,
                     amount=to_decimal(amount),
                     description=description.strip(),
+                    investment_id=investment_id,
                     notes=notes,
                 )
             )
@@ -110,6 +116,7 @@ class TransactionService:
         date: str,
         description: str = "",
         notes: str | None = None,
+        investment_id: str | None = None,
     ) -> tuple[Transaction, Transaction]:
         with unit_of_work(self.db):
             self._require_account(source_account_id, active=True)
@@ -128,6 +135,7 @@ class TransactionService:
                     amount=-transfer_amount,
                     description=description.strip(),
                     transfer_group_id=group_id,
+                    investment_id=investment_id,
                     notes=notes,
                 )
             )
@@ -140,6 +148,7 @@ class TransactionService:
                     amount=transfer_amount,
                     description=description.strip(),
                     transfer_group_id=group_id,
+                    investment_id=investment_id,
                     notes=notes,
                 )
             )
@@ -179,6 +188,8 @@ class TransactionService:
     ) -> Transaction | tuple[Transaction, Transaction]:
         with unit_of_work(self.db):
             existing = self._require_transaction(transaction_id)
+            if existing.investment_id:
+                raise ValueError("Change investment entries from the Investments page")
             cleaned_type = self._normalize_type(transaction_type)
             if cleaned_type == "transfer":
                 return self._update_as_transfer(
@@ -205,6 +216,8 @@ class TransactionService:
     def delete_transaction(self, transaction_id: str) -> None:
         with unit_of_work(self.db):
             transaction = self._require_transaction(transaction_id)
+            if transaction.investment_id:
+                raise ValueError("Change investment entries from the Investments page")
             if transaction.transfer_group_id:
                 for linked in self.transactions.list_by_transfer_group(transaction.transfer_group_id):
                     if linked.id is not None:
@@ -269,6 +282,8 @@ class TransactionService:
                 description=description.strip(),
                 category_id=category_value,
                 transfer_group_id=None,
+                recurring_rule_id=existing.recurring_rule_id,
+                investment_id=existing.investment_id,
                 notes=notes,
             )
         )
@@ -299,8 +314,12 @@ class TransactionService:
             outgoing, incoming = self.transfer_pair(existing.id)
             outgoing_id = outgoing.id
             incoming_id = incoming.id
+            recurring_rule_id = outgoing.recurring_rule_id
+            investment_id = outgoing.investment_id
         else:
             outgoing_id = existing.id
+            recurring_rule_id = existing.recurring_rule_id
+            investment_id = existing.investment_id
             incoming = self.transactions.create(
                 Transaction(
                     id=None,
@@ -310,6 +329,7 @@ class TransactionService:
                     amount=transfer_amount,
                     description=description_value,
                     transfer_group_id=group_id,
+                    investment_id=investment_id,
                     notes=notes,
                 )
             )
@@ -324,6 +344,8 @@ class TransactionService:
                 amount=-transfer_amount,
                 description=description_value,
                 transfer_group_id=group_id,
+                recurring_rule_id=recurring_rule_id,
+                investment_id=investment_id,
                 notes=notes,
             )
         )
@@ -336,6 +358,7 @@ class TransactionService:
                 amount=transfer_amount,
                 description=description_value,
                 transfer_group_id=group_id,
+                investment_id=investment_id,
                 notes=notes,
             )
         )

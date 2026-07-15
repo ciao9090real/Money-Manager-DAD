@@ -4,8 +4,9 @@ import sqlite3
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
-from PySide6.QtWidgets import QMessageBox, QPushButton, QTreeWidget, QTreeWidgetItem, QWidget
+from PySide6.QtWidgets import QLabel, QMessageBox, QPushButton, QTreeWidget, QTreeWidgetItem, QWidget
 
+from app.repositories.investment_repository import InvestmentRepository
 from app.services.account_service import AccountService
 from app.services.payment_method_service import PaymentMethodService
 from app.ui.components import (
@@ -14,6 +15,7 @@ from app.ui.components import (
     create_card,
     danger_button,
     empty_state,
+    fit_item_view_height,
     ghost_button,
     page_layout,
     pretty_type,
@@ -31,15 +33,21 @@ class AccountsPage(QWidget):
     def __init__(self, db: sqlite3.Connection, on_changed, notify=None):
         super().__init__()
         self.service = AccountService(db)
+        self.investments = InvestmentRepository(db)
         self.payment_methods = PaymentMethodService(db)
         self.on_changed = on_changed
         self.notify = notify or (lambda _message: None)
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(["Account", "Type", "Balance", "Status"])
-        style_tree(self.tree, visible_rows=10)
+        style_tree(self.tree, visible_rows=8)
         add_button = primary_button("Add account", "plus")
-        add_payment_button = soft_button("Payment method", "plus")
-        add_payment_button.setMaximumWidth(180)
+        add_payment_button = soft_button("Add payment method", "plus")
+        add_payment_button.setMaximumWidth(190)
+        self.count_label = QLabel("")
+        self.count_label.setProperty("role", "count")
+        self.selection_label = QLabel("")
+        self.selection_label.setProperty("role", "count")
+        self.selection_label.setVisible(False)
         self.edit_payment_button = ghost_button("", "edit")
         self.edit_payment_button.setToolTip("Edit selected payment method")
         self.edit_payment_button.setFixedSize(40, 40)
@@ -77,8 +85,9 @@ class AccountsPage(QWidget):
         )
         card_layout.addWidget(
             toolbar(
-                left=[add_payment_button],
+                left=[add_payment_button, self.count_label],
                 right=[
+                    self.selection_label,
                     self.edit_payment_button,
                     self.toggle_payment_button,
                     self.edit_button,
@@ -91,7 +100,8 @@ class AccountsPage(QWidget):
         self.empty = empty_state("No accounts yet", "Add your first bank, wallet, or cash account.", empty_action)
         card_layout.addWidget(self.empty)
         card_layout.addWidget(self.tree)
-        layout.addWidget(card, 1)
+        layout.addWidget(card)
+        layout.addStretch()
 
     def refresh(self) -> None:
         self.tree.clear()
@@ -102,6 +112,22 @@ class AccountsPage(QWidget):
         for node in tree:
             self._add_node(node, methods_by_account=methods_by_account)
         self.tree.expandAll()
+        account_count = self._account_count(tree)
+        method_count = sum(
+            len(methods_by_account.get(account.id, []))
+            for account in self.service.list_accounts(include_inactive=False)
+        )
+        account_word = "account" if account_count == 1 else "accounts"
+        method_word = "method" if method_count == 1 else "methods"
+        self.count_label.setText(
+            f"{account_count} {account_word} · {method_count} {method_word}"
+        )
+        fit_item_view_height(
+            self.tree,
+            account_count + method_count,
+            minimum_rows=2,
+            maximum_rows=10,
+        )
         self.empty.setVisible(not tree)
         self.tree.setVisible(bool(tree))
         self._sync_actions()
@@ -129,9 +155,13 @@ class AccountsPage(QWidget):
             child.setData(0, 257, method.id)
             item.addChild(child)
             self.tree.setItemWidget(child, 1, badge(pretty_type(method.type), "neutral"))
-            status = "Payment method" if method.is_active else "Archived method"
-            tone = "info" if method.is_active else "muted"
+            status = "Active" if method.is_active else "Archived"
+            tone = "positive" if method.is_active else "muted"
             self.tree.setItemWidget(child, 3, badge(status, tone))
+
+    @staticmethod
+    def _account_count(nodes: list[dict]) -> int:
+        return sum(1 + AccountsPage._account_count(node["children"]) for node in nodes)
 
     def add_account(self) -> None:
         form = AccountForm(self.service.list_accounts(include_inactive=False))
@@ -140,7 +170,7 @@ class AccountsPage(QWidget):
                 values = form.values()
                 self.service.create_account(**values)
                 self.notify("Account created")
-                self.on_changed({"accounts", "dashboard", "transactions"})
+                self.on_changed({"accounts", "dashboard", "transactions", "upcoming"})
             except ValueError as exc:
                 QMessageBox.warning(self, "Could not save account", str(exc))
 
@@ -154,7 +184,7 @@ class AccountsPage(QWidget):
             try:
                 self.payment_methods.create_payment_method(**form.values())
                 self.notify("Payment method created")
-                self.on_changed({"accounts"})
+                self.on_changed({"accounts", "upcoming"})
             except ValueError as exc:
                 QMessageBox.warning(self, "Could not save payment method", str(exc))
 
@@ -163,13 +193,20 @@ class AccountsPage(QWidget):
         if account_id is None:
             return
         account = self.service.accounts.get(account_id)
+        if account and self.investments.get_by_account(account_id):
+            QMessageBox.information(
+                self,
+                "Investment account",
+                "Use the Investments page to edit this managed account.",
+            )
+            return
         form = AccountForm(self.service.list_accounts(include_inactive=True), account)
         if form.exec() and account:
             try:
                 values = form.values()
                 self.service.update_account(account_id=account_id, display_order=account.display_order, **values)
                 self.notify("Account updated")
-                self.on_changed({"accounts", "dashboard", "transactions"})
+                self.on_changed({"accounts", "dashboard", "transactions", "upcoming"})
             except ValueError as exc:
                 QMessageBox.warning(self, "Could not save account", str(exc))
 
@@ -187,7 +224,7 @@ class AccountsPage(QWidget):
                     payment_method_id=method_id, **form.values()
                 )
                 self.notify("Payment method updated")
-                self.on_changed({"accounts"})
+                self.on_changed({"accounts", "upcoming"})
             except ValueError as exc:
                 QMessageBox.warning(self, "Could not save payment method", str(exc))
 
@@ -205,7 +242,7 @@ class AccountsPage(QWidget):
             else:
                 self.payment_methods.restore_payment_method(method_id)
                 self.notify("Payment method restored")
-            self.on_changed({"accounts"})
+            self.on_changed({"accounts", "upcoming"})
         except ValueError as exc:
             QMessageBox.warning(self, "Could not update payment method", str(exc))
 
@@ -213,10 +250,17 @@ class AccountsPage(QWidget):
         account_id = self._selected_account_id()
         if account_id is None:
             return
+        if self.investments.get_by_account(account_id):
+            QMessageBox.information(
+                self,
+                "Investment account",
+                "Managed investment accounts stay active while the investment is tracked.",
+            )
+            return
         try:
             self.service.deactivate_account(account_id)
             self.notify("Account deactivated")
-            self.on_changed({"accounts", "dashboard", "transactions"})
+            self.on_changed({"accounts", "dashboard", "transactions", "upcoming"})
         except ValueError as exc:
             QMessageBox.warning(self, "Could not deactivate account", str(exc))
 
@@ -231,9 +275,14 @@ class AccountsPage(QWidget):
         return str(value) if value else None
 
     def _sync_actions(self) -> None:
-        has_account = self._selected_account_id() is not None
+        account_id = self._selected_account_id()
+        has_account = account_id is not None
+        managed_investment = bool(account_id and self.investments.get_by_account(account_id))
         has_method = self._selected_payment_method_id() is not None
-        self.edit_button.setEnabled(has_account)
-        self.deactivate_button.setEnabled(has_account)
+        selected = self.tree.currentItem()
+        self.selection_label.setText(selected.text(0) if selected else "")
+        self.selection_label.setVisible(selected is not None)
+        self.edit_button.setEnabled(has_account and not managed_investment)
+        self.deactivate_button.setEnabled(has_account and not managed_investment)
         self.edit_payment_button.setEnabled(has_method)
         self.toggle_payment_button.setEnabled(has_method)

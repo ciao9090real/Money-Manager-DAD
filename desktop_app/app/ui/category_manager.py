@@ -18,8 +18,11 @@ from PySide6.QtWidgets import (
 from app.models.category import Category
 from app.services.category_service import CategoryService
 from app.ui.components import (
+    badge,
+    badge_tone,
     create_card,
     ghost_button,
+    pretty_type,
     primary_button,
     secondary_button,
     soft_button,
@@ -42,12 +45,15 @@ class CategoryManagerDialog(QDialog):
         style_table(self.table)
 
         add_button = primary_button("Add category", "plus")
-        edit_button = ghost_button("Edit", "edit")
-        toggle_button = soft_button("Archive / restore", "archive")
+        self.edit_button = ghost_button("Edit", "edit")
+        self.toggle_button = soft_button("Archive / restore", "archive")
+        self.edit_button.setEnabled(False)
+        self.toggle_button.setEnabled(False)
         close_button = secondary_button("Close")
         add_button.clicked.connect(self.add_category)
-        edit_button.clicked.connect(self.edit_category)
-        toggle_button.clicked.connect(self.toggle_category)
+        self.edit_button.clicked.connect(self.edit_category)
+        self.toggle_button.clicked.connect(self.toggle_category)
+        self.table.itemSelectionChanged.connect(self._sync_actions)
         close_button.clicked.connect(self.accept)
 
         layout = QVBoxLayout(self)
@@ -61,7 +67,9 @@ class CategoryManagerDialog(QDialog):
         layout.addWidget(title)
         layout.addWidget(subtitle)
         card, card_layout = create_card()
-        card_layout.addWidget(toolbar(left=[add_button], right=[edit_button, toggle_button]))
+        card_layout.addWidget(
+            toolbar(left=[add_button], right=[self.edit_button, self.toggle_button])
+        )
         card_layout.addWidget(self.table, 1)
         layout.addWidget(card, 1)
         footer = QHBoxLayout()
@@ -74,12 +82,22 @@ class CategoryManagerDialog(QDialog):
         categories = self.service.list_categories(include_inactive=True)
         self.table.setRowCount(len(categories))
         for row, category in enumerate(categories):
-            values = (category.name, category.type.title(), "Active" if category.is_active else "Archived")
-            for column, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                if column == 0:
-                    item.setData(256, category.id)
-                self.table.setItem(row, column, item)
+            name = QTableWidgetItem(category.name)
+            name.setData(256, category.id)
+            self.table.setItem(row, 0, name)
+            self.table.setCellWidget(
+                row, 1, badge(pretty_type(category.type), badge_tone(category.type))
+            )
+            status = "Active" if category.is_active else "Archived"
+            self.table.setCellWidget(
+                row, 2, badge(status, "positive" if category.is_active else "muted")
+            )
+        self._sync_actions()
+
+    def _sync_actions(self) -> None:
+        selected = self._selected_category() is not None
+        self.edit_button.setEnabled(selected)
+        self.toggle_button.setEnabled(selected)
 
     def add_category(self) -> None:
         form = CategoryForm()
@@ -125,19 +143,30 @@ class CategoryManagerDialog(QDialog):
     def _changed(self, message: str) -> None:
         self.notify(message)
         self.refresh()
-        self.on_changed({"transactions"})
+        self.on_changed({"transactions", "upcoming"})
 
 
 class CategoryForm(QDialog):
-    def __init__(self, category: Category | None = None):
-        super().__init__()
+    def __init__(
+        self,
+        category: Category | None = None,
+        category_type: str | None = None,
+        lock_type: bool = False,
+        parent=None,
+    ):
+        super().__init__(parent)
         self.setWindowTitle("Category")
         self.setMinimumWidth(440)
         self.name = QLineEdit(category.name if category else "")
+        self.name.setPlaceholderText("Category name")
         self.type = QComboBox()
-        self.type.addItems(["income", "expense"])
+        self.type.addItem("Income", "income")
+        self.type.addItem("Expense", "expense")
         if category:
-            self.type.setCurrentText(category.type)
+            self.type.setCurrentIndex(self.type.findData(category.type))
+        elif category_type:
+            self.type.setCurrentIndex(self.type.findData(category_type))
+        self.type.setEnabled(not lock_type)
 
         title = QLabel("Edit category" if category else "New category")
         title.setProperty("role", "dialogTitle")
@@ -149,6 +178,7 @@ class CategoryForm(QDialog):
         form.addRow("Name", self.name)
         form.addRow("Type", self.type)
         save = primary_button("Save category")
+        save.setDefault(True)
         cancel = secondary_button("Cancel")
         save.clicked.connect(self.accept)
         cancel.clicked.connect(self.reject)
@@ -164,6 +194,22 @@ class CategoryForm(QDialog):
         layout.addWidget(subtitle)
         layout.addLayout(form)
         layout.addLayout(buttons)
+        self.name.setFocus()
 
     def values(self) -> dict:
-        return {"name": self.name.text(), "category_type": self.type.currentText()}
+        return {"name": self.name.text(), "category_type": self.type.currentData()}
+
+
+def create_category_dialog(
+    parent,
+    service: CategoryService,
+    category_type: str,
+) -> Category | None:
+    form = CategoryForm(category_type=category_type, lock_type=True, parent=parent)
+    if not form.exec():
+        return None
+    try:
+        return service.create_category(**form.values())
+    except (ValueError, sqlite3.IntegrityError) as exc:
+        QMessageBox.warning(parent, "Could not save category", str(exc))
+        return None

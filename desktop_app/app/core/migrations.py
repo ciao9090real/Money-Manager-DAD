@@ -6,7 +6,7 @@ from pathlib import Path
 from uuid import uuid4
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 5
 UTC_NOW_SQL = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"
 
 
@@ -36,6 +36,12 @@ def migrate(connection: sqlite3.Connection) -> None:
             finally:
                 connection.execute("PRAGMA foreign_keys = ON")
             version = 3
+        if version < 4:
+            _run_migration(connection, 4, _migrate_v4)
+            version = 4
+        if version < 5:
+            _run_migration(connection, 5, _migrate_v5)
+            version = 5
         assert_database_integrity(connection)
     except Exception:
         connection.rollback()
@@ -753,3 +759,191 @@ def _create_v3_triggers(connection: sqlite3.Connection) -> None:
             END;
             """
         )
+
+
+def _migrate_v4(connection: sqlite3.Connection) -> None:
+    _execute_script(
+        connection,
+        f"""
+        CREATE TABLE recurring_rules (
+            id TEXT PRIMARY KEY CHECK (length(id) = 36),
+            name TEXT NOT NULL,
+            kind TEXT NOT NULL CHECK (kind IN ('subscription', 'bill', 'other')),
+            amount_mode TEXT NOT NULL CHECK (amount_mode IN ('fixed', 'variable')),
+            amount_cents INTEGER,
+            account_id TEXT NOT NULL REFERENCES accounts(id),
+            category_id TEXT REFERENCES categories(id),
+            payment_method_id TEXT REFERENCES payment_methods(id),
+            frequency TEXT NOT NULL CHECK (frequency IN ('weekly', 'monthly', 'quarterly', 'yearly')),
+            start_date TEXT NOT NULL CHECK (start_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+            next_due_date TEXT NOT NULL CHECK (next_due_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+            end_date TEXT CHECK (end_date IS NULL OR end_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+            reminder_days INTEGER NOT NULL DEFAULT 3 CHECK (reminder_days BETWEEN 0 AND 90),
+            status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'paused', 'completed')),
+            last_recorded_date TEXT CHECK (
+                last_recorded_date IS NULL
+                OR last_recorded_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+            ),
+            notes TEXT,
+            created_at TEXT NOT NULL DEFAULT ({UTC_NOW_SQL}),
+            updated_at TEXT NOT NULL DEFAULT ({UTC_NOW_SQL}),
+            deleted_at TEXT,
+            revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
+            CHECK (
+                (amount_mode = 'fixed' AND amount_cents IS NOT NULL AND amount_cents > 0)
+                OR (amount_mode = 'variable' AND (amount_cents IS NULL OR amount_cents > 0))
+            ),
+            CHECK (next_due_date >= start_date),
+            CHECK (end_date IS NULL OR end_date >= start_date)
+        );
+
+        ALTER TABLE transactions
+            ADD COLUMN recurring_rule_id TEXT REFERENCES recurring_rules(id);
+
+        CREATE INDEX idx_recurring_rules_next_due
+            ON recurring_rules(status, next_due_date) WHERE deleted_at IS NULL;
+        CREATE INDEX idx_recurring_rules_account
+            ON recurring_rules(account_id) WHERE deleted_at IS NULL;
+        CREATE INDEX idx_transactions_recurring_rule
+            ON transactions(recurring_rule_id) WHERE deleted_at IS NULL;
+
+        CREATE TRIGGER validate_recurring_rules_update
+        BEFORE UPDATE ON recurring_rules
+        WHEN NEW.revision != OLD.revision + 1
+        BEGIN
+            SELECT RAISE(ABORT, 'invalid recurring rule revision');
+        END;
+
+        CREATE TRIGGER capture_recurring_rules_insert
+        AFTER INSERT ON recurring_rules
+        BEGIN
+            INSERT INTO change_log (
+                entity_type, entity_id, operation, revision, device_id
+            ) VALUES (
+                'recurring_rules', NEW.id, 'insert', NEW.revision,
+                (SELECT value FROM sync_metadata WHERE key = 'active_device_id')
+            );
+        END;
+
+        CREATE TRIGGER capture_recurring_rules_update
+        AFTER UPDATE ON recurring_rules
+        BEGIN
+            INSERT INTO change_log (
+                entity_type, entity_id, operation, revision, device_id
+            ) VALUES (
+                'recurring_rules', NEW.id,
+                CASE WHEN NEW.deleted_at IS NOT NULL AND OLD.deleted_at IS NULL
+                     THEN 'delete' ELSE 'update' END,
+                NEW.revision,
+                (SELECT value FROM sync_metadata WHERE key = 'active_device_id')
+            );
+        END;
+
+        CREATE TRIGGER prevent_recurring_rules_hard_delete
+        BEFORE DELETE ON recurring_rules
+        BEGIN
+            SELECT RAISE(ABORT, 'hard delete is not allowed; use a tombstone');
+        END;
+
+        CREATE TRIGGER tombstone_recurring_rules_delete
+        AFTER UPDATE OF deleted_at ON recurring_rules
+        WHEN NEW.deleted_at IS NOT NULL AND OLD.deleted_at IS NULL
+        BEGIN
+            INSERT INTO tombstones (
+                entity_type, entity_id, deleted_at, revision, device_id
+            ) VALUES (
+                'recurring_rules', NEW.id, NEW.deleted_at, NEW.revision,
+                (SELECT value FROM sync_metadata WHERE key = 'active_device_id')
+            )
+            ON CONFLICT(entity_type, entity_id) DO UPDATE SET
+                deleted_at = excluded.deleted_at,
+                revision = excluded.revision,
+                device_id = excluded.device_id;
+        END;
+        """,
+    )
+
+
+def _migrate_v5(connection: sqlite3.Connection) -> None:
+    _execute_script(
+        connection,
+        f"""
+        CREATE TABLE investments (
+            id TEXT PRIMARY KEY CHECK (length(id) = 36),
+            name TEXT NOT NULL,
+            kind TEXT NOT NULL CHECK (
+                kind IN ('fund', 'etf', 'stock', 'bond', 'crypto', 'other')
+            ),
+            symbol TEXT,
+            account_id TEXT NOT NULL UNIQUE REFERENCES accounts(id),
+            notes TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+            created_at TEXT NOT NULL DEFAULT ({UTC_NOW_SQL}),
+            updated_at TEXT NOT NULL DEFAULT ({UTC_NOW_SQL}),
+            deleted_at TEXT,
+            revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1)
+        );
+
+        ALTER TABLE transactions
+            ADD COLUMN investment_id TEXT REFERENCES investments(id);
+
+        CREATE INDEX idx_investments_account
+            ON investments(account_id) WHERE deleted_at IS NULL;
+        CREATE INDEX idx_transactions_investment
+            ON transactions(investment_id, date) WHERE deleted_at IS NULL;
+
+        CREATE TRIGGER validate_investments_update
+        BEFORE UPDATE ON investments
+        WHEN NEW.revision != OLD.revision + 1
+        BEGIN
+            SELECT RAISE(ABORT, 'invalid investment revision');
+        END;
+
+        CREATE TRIGGER capture_investments_insert
+        AFTER INSERT ON investments
+        BEGIN
+            INSERT INTO change_log (
+                entity_type, entity_id, operation, revision, device_id
+            ) VALUES (
+                'investments', NEW.id, 'insert', NEW.revision,
+                (SELECT value FROM sync_metadata WHERE key = 'active_device_id')
+            );
+        END;
+
+        CREATE TRIGGER capture_investments_update
+        AFTER UPDATE ON investments
+        BEGIN
+            INSERT INTO change_log (
+                entity_type, entity_id, operation, revision, device_id
+            ) VALUES (
+                'investments', NEW.id,
+                CASE WHEN NEW.deleted_at IS NOT NULL AND OLD.deleted_at IS NULL
+                     THEN 'delete' ELSE 'update' END,
+                NEW.revision,
+                (SELECT value FROM sync_metadata WHERE key = 'active_device_id')
+            );
+        END;
+
+        CREATE TRIGGER prevent_investments_hard_delete
+        BEFORE DELETE ON investments
+        BEGIN
+            SELECT RAISE(ABORT, 'hard delete is not allowed; use a tombstone');
+        END;
+
+        CREATE TRIGGER tombstone_investments_delete
+        AFTER UPDATE OF deleted_at ON investments
+        WHEN NEW.deleted_at IS NOT NULL AND OLD.deleted_at IS NULL
+        BEGIN
+            INSERT INTO tombstones (
+                entity_type, entity_id, deleted_at, revision, device_id
+            ) VALUES (
+                'investments', NEW.id, NEW.deleted_at, NEW.revision,
+                (SELECT value FROM sync_metadata WHERE key = 'active_device_id')
+            )
+            ON CONFLICT(entity_type, entity_id) DO UPDATE SET
+                deleted_at = excluded.deleted_at,
+                revision = excluded.revision,
+                device_id = excluded.device_id;
+        END;
+        """,
+    )

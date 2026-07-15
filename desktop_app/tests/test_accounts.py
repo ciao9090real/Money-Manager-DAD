@@ -21,7 +21,15 @@ def test_database_initialization(db):
         row["name"]
         for row in db.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()
     }
-    assert {"accounts", "payment_methods", "categories", "transactions", "settings"}.issubset(tables)
+    assert {
+        "accounts",
+        "payment_methods",
+        "categories",
+        "transactions",
+        "recurring_rules",
+        "investments",
+        "settings",
+    }.issubset(tables)
 
 
 def test_creating_account(db):
@@ -60,4 +68,3 @@ def test_rejecting_account_depth_over_three(db):
 
     with pytest.raises(ValueError, match="three levels"):
         service.create_account("Too deep", "wallet", parent_id=grandchild.id)
-

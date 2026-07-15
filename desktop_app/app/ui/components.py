@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QColor
+from collections.abc import Callable
+from decimal import Decimal
+
+from PySide6.QtCore import QRectF, QSize, Qt, QTimer
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
@@ -12,6 +15,8 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
     QTableWidget,
     QTableView,
     QTableWidgetItem,
@@ -23,6 +28,91 @@ from PySide6.QtWidgets import (
 from app.ui.theme import Colors, Spacing
 from app.ui.icons import icon
 from app.utils.money import format_money, to_decimal
+
+
+class FittedLabel(QLabel):
+    """A bold label that keeps long values visible inside compact cards."""
+
+    def __init__(self, text: str, maximum_size: int, minimum_size: int, parent=None):
+        super().__init__(text, parent)
+        self.maximum_size = maximum_size
+        self.minimum_size = minimum_size
+        self.setMinimumWidth(0)
+        self.setToolTip(text)
+        QTimer.singleShot(0, self._fit_text)
+
+    def setText(self, text: str) -> None:
+        super().setText(text)
+        self.setToolTip(text)
+        QTimer.singleShot(0, self._fit_text)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._fit_text()
+
+    def _fit_text(self) -> None:
+        available = max(1, self.contentsRect().width() - 2)
+        point_size = self.maximum_size
+        while point_size > self.minimum_size:
+            font = QFont(self.font())
+            font.setPixelSize(point_size)
+            font.setWeight(QFont.Weight.Bold)
+            if QFontMetrics(font).horizontalAdvance(self.text()) <= available:
+                break
+            point_size -= 1
+        font = QFont(self.font())
+        font.setPixelSize(point_size)
+        font.setWeight(QFont.Weight.Bold)
+        self.setFont(font)
+
+
+class BadgeDelegate(QStyledItemDelegate):
+    """Paint a subtle pill badge without replacing a model-backed table cell."""
+
+    TONES = {
+        "neutral": (Colors.NEUTRAL_BADGE_BG, Colors.NEUTRAL_BADGE_TEXT),
+        "positive": (Colors.POSITIVE_BADGE_BG, Colors.POSITIVE_BADGE_TEXT),
+        "negative": (Colors.NEGATIVE_BADGE_BG, Colors.NEGATIVE_BADGE_TEXT),
+        "info": (Colors.INFO_BADGE_BG, Colors.INFO_BADGE_TEXT),
+        "muted": (Colors.MUTED_BADGE_BG, Colors.MUTED_BADGE_TEXT),
+    }
+
+    def __init__(self, tone_for_text: Callable[[str], str] | None = None, parent=None):
+        super().__init__(parent)
+        self.tone_for_text = tone_for_text or (lambda _text: "neutral")
+
+    def paint(self, painter: QPainter, option: QStyleOptionViewItem, index) -> None:
+        text = str(index.data(Qt.ItemDataRole.DisplayRole) or "")
+        background_option = QStyleOptionViewItem(option)
+        background_option.text = ""
+        super().paint(painter, background_option, index)
+        if not text:
+            return
+
+        painter.save()
+        font = QFont(option.font)
+        font.setPixelSize(11)
+        font.setWeight(QFont.Weight.DemiBold)
+        metrics = QFontMetrics(font)
+        width = min(option.rect.width() - 16, metrics.horizontalAdvance(text) + 20)
+        badge_rect = QRectF(
+            option.rect.x() + 8,
+            option.rect.y() + (option.rect.height() - 24) / 2,
+            max(20, width),
+            24,
+        )
+        tone = self.tone_for_text(text)
+        background, foreground = self.TONES.get(tone, self.TONES["neutral"])
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(background))
+        painter.drawRoundedRect(badge_rect, 10, 10)
+        painter.setFont(font)
+        painter.setPen(QColor(foreground))
+        elided = metrics.elidedText(
+            text, Qt.TextElideMode.ElideRight, int(badge_rect.width() - 12)
+        )
+        painter.drawText(badge_rect, Qt.AlignmentFlag.AlignCenter, elided)
+        painter.restore()
 
 
 def page_header(title: str, subtitle: str, action: QWidget | None = None) -> QWidget:
@@ -86,6 +176,28 @@ def icon_label(icon: str, text: str) -> QWidget:
     return container
 
 
+def section_heading(title: str, subtitle: str | None = None, action: QWidget | None = None) -> QWidget:
+    container = QWidget()
+    layout = QHBoxLayout(container)
+    layout.setContentsMargins(1, 2, 1, 0)
+    layout.setSpacing(12)
+    labels = QVBoxLayout()
+    labels.setContentsMargins(0, 0, 0, 0)
+    labels.setSpacing(2)
+    title_label = QLabel(title)
+    title_label.setProperty("role", "sectionTitle")
+    labels.addWidget(title_label)
+    if subtitle:
+        subtitle_label = QLabel(subtitle)
+        subtitle_label.setProperty("role", "sectionSubtitle")
+        subtitle_label.setWordWrap(True)
+        labels.addWidget(subtitle_label)
+    layout.addLayout(labels, 1)
+    if action:
+        layout.addWidget(action, 0, Qt.AlignmentFlag.AlignTop)
+    return container
+
+
 def create_card(
     title: str | None = None,
     max_height: int | None = None,
@@ -127,11 +239,15 @@ def create_card(
 def metric_card(label: str, value: str, helper: str | None = None, tone: str | None = None) -> tuple[QFrame, QLabel]:
     card, layout = create_card(role="metricCard")
     card.setProperty("tone", tone or "neutral")
-    card.setMinimumHeight(122)
-    card.setMaximumHeight(145)
+    card.setMinimumWidth(0)
+    card.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+    card.setMinimumHeight(112)
+    card.setMaximumHeight(128)
     label_widget = QLabel(label)
     label_widget.setProperty("role", "metricLabel")
-    value_widget = QLabel(value)
+    label_widget.setWordWrap(True)
+    label_widget.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+    value_widget = FittedLabel(value, maximum_size=27, minimum_size=12)
     value_widget.setProperty("role", "metricValue")
     value_widget.setMinimumHeight(36)
     value_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -267,7 +383,7 @@ def badge(text: str, tone: str = "neutral") -> QLabel:
 
 
 def badge_tone(kind: str) -> str:
-    normalized = (kind or "").lower()
+    normalized = (kind or "").lower().replace(" ", "_")
     if normalized in {"income", "active"}:
         return "positive"
     if normalized in {"expense", "inactive"}:
@@ -280,6 +396,22 @@ def badge_tone(kind: str) -> str:
 def pretty_type(kind: str) -> str:
     normalized = (kind or "").replace("_", " ").strip()
     return normalized.title() if normalized else "Other"
+
+
+def compact_money(value: object) -> str:
+    """Keep dashboard metrics readable while preserving the full value in tooltips."""
+    amount = to_decimal(value)
+    magnitude = abs(amount)
+    for threshold, suffix in (
+        (Decimal("1000000000"), "B"),
+        (Decimal("1000000"), "M"),
+    ):
+        if magnitude >= threshold:
+            scaled = magnitude / threshold
+            number = f"{scaled:.2f}".rstrip("0").rstrip(".")
+            sign = "-" if amount < 0 else ""
+            return f"{sign}€{number}{suffix}"
+    return format_money(amount)
 
 
 def amount_item(value: object, neutral: bool = False) -> QTableWidgetItem:
@@ -330,6 +462,19 @@ def style_tree(tree: QTreeWidget, visible_rows: int | None = None) -> None:
     if visible_rows:
         tree.setMinimumHeight(44 + visible_rows * 44)
         tree.setMaximumHeight(44 + visible_rows * 44)
+
+
+def fit_item_view_height(view, row_count: int, minimum_rows: int = 1, maximum_rows: int = 8) -> None:
+    rows = max(minimum_rows, min(maximum_rows, row_count))
+    if hasattr(view, "horizontalHeader"):
+        header = view.horizontalHeader()
+        row_height = max(42, view.verticalHeader().defaultSectionSize())
+    else:
+        header = view.header()
+        row_height = 44
+    height = max(40, header.height()) + rows * row_height + 2
+    view.setMinimumHeight(height)
+    view.setMaximumHeight(height)
 
 
 def clear_layout(layout: QGridLayout) -> None:

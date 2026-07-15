@@ -1,14 +1,25 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QDate
-from PySide6.QtWidgets import QComboBox, QDateEdit, QDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QVBoxLayout
+from PySide6.QtCore import QDate, Qt
+from PySide6.QtWidgets import (
+    QComboBox,
+    QDateEdit,
+    QDialog,
+    QFormLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QVBoxLayout,
+    QWidget,
+)
 
 from app.models.account import Account
 from app.models.category import Category
 from app.models.payment_method import PaymentMethod
 from app.models.transaction import Transaction
-from app.ui.components import primary_button, secondary_button
-from app.ui.theme import Spacing
+from app.services.category_service import CategoryService
+from app.ui.category_manager import create_category_dialog
+from app.ui.components import ghost_button, primary_button, secondary_button
 
 
 class TransactionForm(QDialog):
@@ -20,11 +31,13 @@ class TransactionForm(QDialog):
         transaction: Transaction | None = None,
         transfer_source_id: str | None = None,
         transfer_target_id: str | None = None,
+        category_service: CategoryService | None = None,
     ):
         super().__init__()
         self.setWindowTitle("Transaction")
         self.setMinimumWidth(560)
         self.categories = categories or []
+        self.category_service = category_service
         self.payment_methods = payment_methods or []
         self.current_category_id = transaction.category_id if transaction else None
         self.current_payment_method_id = transaction.payment_method_id if transaction else None
@@ -38,12 +51,28 @@ class TransactionForm(QDialog):
             self.target_account.addItem(account.name, account.id)
         self.category = QComboBox()
         self.category.setEditable(True)
+        self.add_category_button = ghost_button("", "plus")
+        self.add_category_button.setFixedSize(42, 42)
+        self.add_category_button.setToolTip("Add category")
+        self.add_category_button.setVisible(category_service is not None)
+        self.add_category_button.clicked.connect(self._add_category)
+        self.category_row = QWidget()
+        category_layout = QHBoxLayout(self.category_row)
+        category_layout.setContentsMargins(0, 0, 0, 0)
+        category_layout.setSpacing(7)
+        category_layout.addWidget(self.category, 1)
+        category_layout.addWidget(self.add_category_button)
         self.payment_method = QComboBox()
         self.date = QDateEdit(QDate.currentDate())
         self.date.setCalendarPopup(True)
+        self.date.setDisplayFormat("dd MMM yyyy")
         self.amount = QLineEdit()
+        self.amount.setPlaceholderText("0.00")
+        self.amount.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.description = QLineEdit()
+        self.description.setPlaceholderText("Description")
         self.notes = QLineEdit()
+        self.notes.setPlaceholderText("Optional notes")
 
         title = QLabel("Edit transaction" if transaction else "Add transaction")
         title.setProperty("role", "dialogTitle")
@@ -57,7 +86,7 @@ class TransactionForm(QDialog):
         self.form.addRow("Type", self.type)
         self.form.addRow("Account", self.account)
         self.form.addRow("Transfer target", self.target_account)
-        self.form.addRow("Category", self.category)
+        self.form.addRow("Category", self.category_row)
         self.form.addRow("Payment method", self.payment_method)
         self.form.addRow("Date", self.date)
         self.form.addRow("Amount", self.amount)
@@ -65,6 +94,7 @@ class TransactionForm(QDialog):
         self.form.addRow("Notes", self.notes)
 
         save = primary_button("Save transaction" if transaction else "Add transaction")
+        save.setDefault(True)
         cancel = secondary_button("Cancel")
         save.clicked.connect(self.accept)
         cancel.clicked.connect(self.reject)
@@ -85,6 +115,7 @@ class TransactionForm(QDialog):
         if transaction:
             self._load_transaction(transaction, transfer_source_id, transfer_target_id)
         self._sync_type_fields()
+        self.amount.setFocus()
 
     def values(self) -> dict:
         category_data = self.category.currentData()
@@ -110,7 +141,7 @@ class TransactionForm(QDialog):
     def _sync_type_fields(self) -> None:
         transaction_type = self.type.currentData()
         self._set_row_visible(self.target_account, transaction_type == "transfer")
-        self._set_row_visible(self.category, transaction_type in {"income", "expense"})
+        self._set_row_visible(self.category_row, transaction_type in {"income", "expense"})
         self._set_row_visible(self.payment_method, transaction_type in {"income", "expense"})
         self._populate_categories(transaction_type)
         self._populate_payment_methods()
@@ -132,6 +163,18 @@ class TransactionForm(QDialog):
             self.category.setEditText(previous_text)
         self.current_category_id = None
         self.category.blockSignals(False)
+
+    def _add_category(self) -> None:
+        transaction_type = self.type.currentData()
+        if not self.category_service or transaction_type not in {"income", "expense"}:
+            return
+        category = create_category_dialog(self, self.category_service, transaction_type)
+        if not category:
+            return
+        if all(existing.id != category.id for existing in self.categories):
+            self.categories.append(category)
+        self.current_category_id = category.id
+        self._populate_categories(transaction_type)
 
     def _populate_payment_methods(self) -> None:
         previous_id = self.payment_method.currentData()

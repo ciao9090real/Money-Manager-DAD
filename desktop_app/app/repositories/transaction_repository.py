@@ -22,6 +22,8 @@ def row_to_transaction(row: sqlite3.Row) -> Transaction:
         description=row["description"],
         category_id=row["category_id"],
         transfer_group_id=row["transfer_group_id"],
+        recurring_rule_id=row["recurring_rule_id"],
+        investment_id=row["investment_id"],
         notes=row["notes"],
         status=row["status"],
         created_at=row["created_at"],
@@ -43,6 +45,8 @@ class TransactionRepository:
         account_id: str | None = None,
         account_ids: list[str] | tuple[str, ...] | set[str] | None = None,
         category_id: str | None = None,
+        recurring_rule_id: str | None = None,
+        investment_id: str | None = None,
         start_date: str | None = None,
         end_date: str | None = None,
         search_text: str | None = None,
@@ -69,6 +73,12 @@ class TransactionRepository:
         if category_id is not None:
             conditions.append("category_id = ?")
             params.append(category_id)
+        if recurring_rule_id is not None:
+            conditions.append("recurring_rule_id = ?")
+            params.append(recurring_rule_id)
+        if investment_id is not None:
+            conditions.append("investment_id = ?")
+            params.append(investment_id)
         if start_date:
             conditions.append("date >= ?")
             params.append(start_date)
@@ -125,8 +135,9 @@ class TransactionRepository:
             """
             INSERT INTO transactions (
                 id, date, type, account_id, payment_method_id, amount_cents,
-                description, category_id, transfer_group_id, notes, status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                description, category_id, transfer_group_id, recurring_rule_id,
+                investment_id, notes, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 transaction_id,
@@ -138,6 +149,8 @@ class TransactionRepository:
                 transaction.description,
                 transaction.category_id,
                 transaction.transfer_group_id,
+                transaction.recurring_rule_id,
+                transaction.investment_id,
                 transaction.notes,
                 transaction.status,
             ),
@@ -173,7 +186,8 @@ class TransactionRepository:
             f"""
             UPDATE transactions
             SET date = ?, type = ?, account_id = ?, payment_method_id = ?, amount_cents = ?,
-                description = ?, category_id = ?, transfer_group_id = ?, notes = ?, status = ?,
+                description = ?, category_id = ?, transfer_group_id = ?, recurring_rule_id = ?,
+                investment_id = ?, notes = ?, status = ?,
                 updated_at = {UTC_NOW}, revision = revision + 1
             WHERE id = ? AND deleted_at IS NULL
             """,
@@ -186,6 +200,8 @@ class TransactionRepository:
                 transaction.description,
                 transaction.category_id,
                 transaction.transfer_group_id,
+                transaction.recurring_rule_id,
+                transaction.investment_id,
                 transaction.notes,
                 transaction.status,
                 transaction.id,

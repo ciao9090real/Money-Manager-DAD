@@ -19,11 +19,28 @@ def _draw_icon(painter: QPainter, name: str, rect: QRectF, color: str) -> None:
         painter.drawRoundedRect(QRectF(x + w * 0.58, y, w * 0.42, h * 0.64), 2, 2)
         painter.drawRoundedRect(QRectF(x, y + h * 0.58, w * 0.42, h * 0.42), 2, 2)
         painter.drawRoundedRect(QRectF(x + w * 0.58, y + h * 0.80, w * 0.42, h * 0.20), 2, 2)
+    elif name == "upcoming":
+        painter.drawRoundedRect(QRectF(x + w * 0.06, y + h * 0.16, w * 0.88, h * 0.76), 3, 3)
+        painter.drawLine(QPointF(x + w * 0.06, y + h * 0.38), QPointF(x + w * 0.94, y + h * 0.38))
+        painter.drawLine(QPointF(x + w * 0.28, y), QPointF(x + w * 0.28, y + h * 0.26))
+        painter.drawLine(QPointF(x + w * 0.72, y), QPointF(x + w * 0.72, y + h * 0.26))
+        painter.drawEllipse(QPointF(x + w * 0.36, y + h * 0.61), w * 0.035, w * 0.035)
+        painter.drawEllipse(QPointF(x + w * 0.62, y + h * 0.61), w * 0.035, w * 0.035)
     elif name == "accounts":
         painter.drawRoundedRect(QRectF(x, y + h * 0.20, w, h * 0.72), 3, 3)
         painter.drawLine(QPointF(x, y + h * 0.40), QPointF(x + w, y + h * 0.40))
         painter.drawEllipse(QPointF(x + w * 0.76, y + h * 0.66), w * 0.06, w * 0.06)
         painter.drawLine(QPointF(x + w * 0.14, y + h * 0.08), QPointF(x + w * 0.78, y + h * 0.08))
+    elif name == "accounts_expand":
+        _draw_icon(painter, "accounts", QRectF(x, y + h * 0.10, w * 0.68, h * 0.80), color)
+        painter.drawLine(
+            QPointF(x + w * 0.78, y + h * 0.31),
+            QPointF(x + w * 0.96, y + h * 0.50),
+        )
+        painter.drawLine(
+            QPointF(x + w * 0.96, y + h * 0.50),
+            QPointF(x + w * 0.78, y + h * 0.69),
+        )
     elif name == "transactions":
         painter.drawLine(QPointF(x, y + h * 0.30), QPointF(x + w * 0.78, y + h * 0.30))
         painter.drawLine(QPointF(x + w * 0.78, y + h * 0.30), QPointF(x + w * 0.62, y + h * 0.12))
@@ -31,6 +48,29 @@ def _draw_icon(painter: QPainter, name: str, rect: QRectF, color: str) -> None:
         painter.drawLine(QPointF(x + w, y + h * 0.70), QPointF(x + w * 0.22, y + h * 0.70))
         painter.drawLine(QPointF(x + w * 0.22, y + h * 0.70), QPointF(x + w * 0.38, y + h * 0.52))
         painter.drawLine(QPointF(x + w * 0.22, y + h * 0.70), QPointF(x + w * 0.38, y + h * 0.88))
+    elif name == "investments":
+        painter.drawLine(QPointF(x + w * 0.08, y + h * 0.88), QPointF(x + w * 0.08, y + h * 0.18))
+        painter.drawLine(QPointF(x + w * 0.08, y + h * 0.88), QPointF(x + w * 0.92, y + h * 0.88))
+        path = QPainterPath()
+        path.moveTo(x + w * 0.18, y + h * 0.70)
+        path.lineTo(x + w * 0.40, y + h * 0.50)
+        path.lineTo(x + w * 0.58, y + h * 0.60)
+        path.lineTo(x + w * 0.86, y + h * 0.24)
+        painter.drawPath(path)
+        painter.drawLine(QPointF(x + w * 0.70, y + h * 0.25), QPointF(x + w * 0.86, y + h * 0.24))
+        painter.drawLine(QPointF(x + w * 0.86, y + h * 0.24), QPointF(x + w * 0.85, y + h * 0.40))
+    elif name in {"chevron_left", "chevron_right"}:
+        left = name == "chevron_left"
+        outer = 0.64 if left else 0.36
+        inner = 0.32 if left else 0.68
+        painter.drawLine(
+            QPointF(x + w * outer, y + h * 0.16),
+            QPointF(x + w * inner, y + h * 0.50),
+        )
+        painter.drawLine(
+            QPointF(x + w * inner, y + h * 0.50),
+            QPointF(x + w * outer, y + h * 0.84),
+        )
     elif name == "settings":
         painter.drawEllipse(QRectF(x + w * 0.33, y + h * 0.33, w * 0.34, h * 0.34))
         painter.drawEllipse(QRectF(x + w * 0.10, y + h * 0.10, w * 0.80, h * 0.80))
@@ -62,6 +102,20 @@ def _draw_icon(painter: QPainter, name: str, rect: QRectF, color: str) -> None:
         painter.drawLine(QPointF(x + w * 0.36, y + h * 0.08), QPointF(x + w * 0.64, y + h * 0.08))
         painter.drawLine(QPointF(x + w * 0.40, y + h * 0.40), QPointF(x + w * 0.40, y + h * 0.74))
         painter.drawLine(QPointF(x + w * 0.60, y + h * 0.40), QPointF(x + w * 0.60, y + h * 0.74))
+    elif name == "play":
+        path = QPainterPath()
+        path.moveTo(x + w * 0.24, y + h * 0.12)
+        path.lineTo(x + w * 0.84, y + h * 0.50)
+        path.lineTo(x + w * 0.24, y + h * 0.88)
+        path.closeSubpath()
+        painter.drawPath(path)
+    elif name == "pause":
+        painter.drawRoundedRect(QRectF(x + w * 0.20, y + h * 0.12, w * 0.20, h * 0.76), 1, 1)
+        painter.drawRoundedRect(QRectF(x + w * 0.60, y + h * 0.12, w * 0.20, h * 0.76), 1, 1)
+    elif name == "skip":
+        painter.drawLine(QPointF(x + w * 0.12, y + h * 0.18), QPointF(x + w * 0.58, y + h * 0.50))
+        painter.drawLine(QPointF(x + w * 0.58, y + h * 0.50), QPointF(x + w * 0.12, y + h * 0.82))
+        painter.drawLine(QPointF(x + w * 0.72, y + h * 0.18), QPointF(x + w * 0.72, y + h * 0.82))
     elif name == "search":
         painter.drawEllipse(QRectF(x + w * 0.08, y + h * 0.08, w * 0.62, h * 0.62))
         painter.drawLine(QPointF(x + w * 0.62, y + h * 0.62), QPointF(x + w * 0.94, y + h * 0.94))

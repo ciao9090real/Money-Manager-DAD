@@ -32,14 +32,14 @@ class Colors:
 
 
 class Spacing:
-    PAGE = 30
-    CARD = 22
-    GAP = 18
-    RADIUS = 16
+    PAGE = 26
+    CARD = 20
+    GAP = 16
+    RADIUS = 10
 
 
 class Fonts:
-    TITLE = 28
+    TITLE = 26
     SUBTITLE = 13
     SECTION = 17
     BODY = 13

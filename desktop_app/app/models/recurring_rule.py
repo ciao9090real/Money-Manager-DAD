@@ -5,20 +5,23 @@ from decimal import Decimal
 
 
 @dataclass
-class Transaction:
+class RecurringRule:
     id: str | None
-    date: str
-    type: str
+    name: str
+    kind: str
+    amount_mode: str
     account_id: str
-    amount: Decimal
-    payment_method_id: str | None = None
-    description: str = ""
+    frequency: str
+    start_date: str
+    next_due_date: str
+    amount: Decimal | None = None
     category_id: str | None = None
-    transfer_group_id: str | None = None
-    recurring_rule_id: str | None = None
-    investment_id: str | None = None
+    payment_method_id: str | None = None
+    end_date: str | None = None
+    reminder_days: int = 3
+    status: str = "active"
+    last_recorded_date: str | None = None
     notes: str | None = None
-    status: str = "cleared"
     created_at: str | None = None
     updated_at: str | None = None
     deleted_at: str | None = None

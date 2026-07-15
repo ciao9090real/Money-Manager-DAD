@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 
 from PySide6.QtCore import QTimer
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QFrame,
     QHeaderView,
@@ -20,6 +21,8 @@ from app.services.category_service import CategoryService
 from app.services.payment_method_service import PaymentMethodService
 from app.services.transaction_service import TransactionService
 from app.ui.components import (
+    BadgeDelegate,
+    badge_tone,
     chip_button,
     create_card,
     danger_button,
@@ -59,6 +62,8 @@ class TransactionsPage(QWidget):
         self.table_model = TransactionTableModel()
         self.table.setModel(self.table_model)
         style_table(self.table)
+        self.table.setItemDelegateForColumn(1, BadgeDelegate(badge_tone, self.table))
+        self.table.doubleClicked.connect(lambda _index: self.edit_transaction())
         header = self.table.horizontalHeader()
         for column in (0, 1, 2, 3, 5):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
@@ -78,6 +83,8 @@ class TransactionsPage(QWidget):
         self.search_timer.setInterval(250)
         self.search_timer.timeout.connect(self.refresh)
         self.search.textChanged.connect(lambda _text: self.search_timer.start())
+        self.find_shortcut = QShortcut(QKeySequence.StandardKey.Find, self)
+        self.find_shortcut.activated.connect(self._focus_search)
 
         layout = page_layout(
             self,
@@ -137,6 +144,10 @@ class TransactionsPage(QWidget):
         if refresh:
             self.refresh()
 
+    def _focus_search(self) -> None:
+        self.search.setFocus()
+        self.search.selectAll()
+
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         if hasattr(self, "table"):
@@ -185,6 +196,7 @@ class TransactionsPage(QWidget):
             accounts,
             self.categories.list_categories(),
             self.payment_methods.list_payment_methods(),
+            category_service=self.categories,
         )
         if form.exec():
             values = form.values()
@@ -222,6 +234,13 @@ class TransactionsPage(QWidget):
         transaction = self._selected_transaction()
         if not transaction:
             return
+        if transaction.investment_id:
+            QMessageBox.information(
+                self,
+                "Investment entry",
+                "Use the Investments page to change contributions or market values.",
+            )
+            return
         accounts = self.accounts.list(include_inactive=True)
         if not accounts:
             QMessageBox.information(self, "No accounts", "Create an account first.")
@@ -244,6 +263,7 @@ class TransactionsPage(QWidget):
             transaction=transaction,
             transfer_source_id=transfer_source_id,
             transfer_target_id=transfer_target_id,
+            category_service=self.categories,
         )
         if form.exec():
             values = form.values()
@@ -291,9 +311,17 @@ class TransactionsPage(QWidget):
         return self.table_model.transaction_at(self.table.currentIndex().row())
 
     def _sync_selection_actions(self) -> None:
-        has_selection = self._selected_transaction() is not None
-        self.edit_button.setEnabled(has_selection)
-        self.delete_button.setEnabled(has_selection)
+        transaction = self._selected_transaction()
+        editable = bool(transaction and not transaction.investment_id)
+        self.edit_button.setEnabled(editable)
+        self.delete_button.setEnabled(editable)
+        protected_tip = (
+            "Use the Investments page for this entry"
+            if transaction and transaction.investment_id
+            else ""
+        )
+        self.edit_button.setToolTip(protected_tip)
+        self.delete_button.setToolTip(protected_tip)
 
     @staticmethod
     def _cursor_for(transactions) -> tuple[str, str] | None:

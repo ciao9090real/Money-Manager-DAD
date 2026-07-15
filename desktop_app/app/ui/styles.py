@@ -19,8 +19,7 @@ def app_stylesheet() -> str:
     }}
 
     #Sidebar {{
-        background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-            stop:0 {Colors.SIDEBAR}, stop:1 {Colors.SIDEBAR_DEEP});
+        background: {Colors.SIDEBAR};
         border: none;
     }}
 
@@ -35,11 +34,17 @@ def app_stylesheet() -> str:
         font-size: 11px;
     }}
 
-    #LogoTile {{
-        background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-            stop:0 #6d6ee8, stop:1 #4f46c8);
+    QPushButton#LogoButton {{
+        background: {Colors.PRIMARY};
         border: 1px solid #7d7ef0;
-        border-radius: 12px;
+        border-radius: 10px;
+        padding: 0;
+        min-height: 0;
+    }}
+
+    QPushButton#LogoButton:hover {{
+        background: {Colors.PRIMARY_DARK};
+        border-color: #8b8df0;
     }}
 
     #SidebarStatus {{
@@ -55,8 +60,8 @@ def app_stylesheet() -> str:
 
     QPushButton {{
         border: 1px solid {Colors.BORDER};
-        border-radius: 10px;
-        padding: 9px 15px;
+        border-radius: 8px;
+        padding: 8px 14px;
         background: {Colors.CARD};
         color: {Colors.TEXT};
         font-weight: 600;
@@ -139,7 +144,7 @@ def app_stylesheet() -> str:
         color: #a9b3c2;
         text-align: left;
         padding: 11px 12px;
-        border-radius: 10px;
+        border-radius: 8px;
         font-weight: 600;
         min-height: 24px;
     }}
@@ -147,7 +152,7 @@ def app_stylesheet() -> str:
     QFrame[role="navItem"] {{
         background: transparent;
         border: none;
-        border-radius: 11px;
+        border-radius: 8px;
     }}
 
     QFrame[role="navItem"]:hover {{
@@ -157,6 +162,11 @@ def app_stylesheet() -> str:
     QFrame[role="navItem"][selected="true"] {{
         background: {Colors.SIDEBAR_SELECTED};
         border-left: 3px solid #818cf8;
+    }}
+
+    QFrame[role="navItem"][selected="true"][collapsed="true"] {{
+        border-left: none;
+        border: 1px solid rgba(129, 140, 248, 0.45);
     }}
 
     QLabel[role="navLabel"] {{
@@ -211,16 +221,21 @@ def app_stylesheet() -> str:
     }}
 
     QFrame[role="heroCard"] {{
-        background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-            stop:0 #5051cf, stop:0.55 #6263df, stop:1 #7778e8);
-        border: 1px solid #696ae0;
-        border-radius: 18px;
+        background: #4f50cf;
+        border: 1px solid #4647bd;
+        border-radius: 10px;
     }}
 
     QFrame[role="toolbar"] {{
         background: #f8fafc;
         border: 1px solid {Colors.BORDER_SOFT};
-        border-radius: 12px;
+        border-radius: 8px;
+    }}
+
+    QFrame[role="quickActions"] {{
+        background: {Colors.CARD};
+        border: 1px solid {Colors.BORDER};
+        border-radius: {Spacing.RADIUS}px;
     }}
 
     QFrame[role="iconTile"] {{
@@ -236,7 +251,7 @@ def app_stylesheet() -> str:
     }}
 
     QLabel[role="pageTitle"] {{
-        font-size: 28px;
+        font-size: 26px;
         font-weight: 700;
         color: {Colors.TEXT};
     }}
@@ -299,6 +314,12 @@ def app_stylesheet() -> str:
         font-size: 12px;
     }}
 
+    QLabel[role="count"] {{
+        color: {Colors.TEXT_SECONDARY};
+        font-size: 11px;
+        font-weight: 600;
+    }}
+
     QLabel[role="emptyTitle"] {{
         color: {Colors.TEXT};
         font-weight: 700;
@@ -337,6 +358,13 @@ def app_stylesheet() -> str:
         color: #344054;
     }}
 
+    QLineEdit[role="mono"] {{
+        background: #f8fafc;
+        border: 1px solid {Colors.BORDER};
+        font-family: Consolas;
+        color: #344054;
+    }}
+
     QLineEdit, QComboBox, QDateEdit {{
         background: white;
         border: 1px solid #d0d5dd;
@@ -371,6 +399,11 @@ def app_stylesheet() -> str:
         selection-background-color: {Colors.PRIMARY_SOFT};
         selection-color: {Colors.TEXT};
         outline: 0;
+    }}
+
+    QTableWidget::item:selected, QTableView::item:selected, QTreeWidget::item:selected {{
+        background: {Colors.PRIMARY_SOFT};
+        color: {Colors.TEXT};
     }}
 
     QHeaderView::section {{

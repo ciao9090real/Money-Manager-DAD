@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Property, QEasingCurve, QPropertyAnimation, Qt, Signal
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QVBoxLayout, QWidget
 
-from app.ui.icons import LineIcon
+from app.ui.icons import LineIcon, icon
 
 
 class SidebarNavItem(QFrame):
@@ -70,6 +70,7 @@ class SidebarNavItem(QFrame):
 
 class Sidebar(QFrame):
     page_selected = Signal(int)
+    state_changed = Signal(bool, bool)
 
     EXPANDED_WIDTH = 252
     COLLAPSED_WIDTH = 76
@@ -81,6 +82,9 @@ class Sidebar(QFrame):
         self.collapsed = False
         self.nav_buttons: list[SidebarNavItem] = []
         self.setFixedWidth(self.EXPANDED_WIDTH)
+        self.width_animation = QPropertyAnimation(self, b"sidebar_width", self)
+        self.width_animation.setDuration(170)
+        self.width_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
 
         self.root_layout = QVBoxLayout(self)
         self.root_layout.setContentsMargins(14, 18, 14, 16)
@@ -94,16 +98,20 @@ class Sidebar(QFrame):
 
     def _build_header(self) -> None:
         self.header = QWidget()
-        layout = QHBoxLayout(self.header)
+        header_layout = QVBoxLayout(self.header)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(8)
+        self.brand_row = QWidget()
+        layout = QHBoxLayout(self.brand_row)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
 
-        self.mark = QFrame()
-        self.mark.setObjectName("LogoTile")
+        self.mark = QPushButton()
+        self.mark.setObjectName("LogoButton")
         self.mark.setFixedSize(42, 42)
-        mark_layout = QHBoxLayout(self.mark)
-        mark_layout.setContentsMargins(10, 10, 10, 10)
-        mark_layout.addWidget(LineIcon("accounts", "#ffffff", 22))
+        self.mark.setIcon(icon("accounts", "#ffffff", 22))
+        self.mark.setIconSize(self.mark.size() * 0.52)
+        self.mark.setToolTip("Money Manager")
 
         self.title_block = QWidget()
         title_layout = QVBoxLayout(self.title_block)
@@ -118,6 +126,28 @@ class Sidebar(QFrame):
 
         layout.addWidget(self.mark, 0, Qt.AlignmentFlag.AlignTop)
         layout.addWidget(self.title_block, 1)
+
+        self.collapse_button = QPushButton()
+        self.collapse_button.setProperty("variant", "sidebarIcon")
+        self.collapse_button.setFixedSize(30, 30)
+        self.collapse_button.setIcon(icon("chevron_left", "#cbd5e1", 16))
+        self.collapse_button.setToolTip("Collapse sidebar (Ctrl+B)")
+        self.collapse_button.clicked.connect(self.toggle)
+        layout.addWidget(self.collapse_button, 0, Qt.AlignmentFlag.AlignVCenter)
+
+        self.expand_button = QPushButton()
+        self.expand_button.setProperty("variant", "sidebarIcon")
+        self.expand_button.setFixedSize(30, 30)
+        self.expand_button.setIcon(icon("chevron_right", "#cbd5e1", 16))
+        self.expand_button.setToolTip("Expand sidebar (Ctrl+B)")
+        self.expand_button.clicked.connect(self.toggle)
+        self.expand_button.setVisible(False)
+        header_layout.addWidget(self.brand_row)
+        header_layout.addWidget(
+            self.expand_button,
+            0,
+            Qt.AlignmentFlag.AlignHCenter,
+        )
         self.root_layout.addWidget(self.header)
 
     def _build_nav(self) -> None:
@@ -153,27 +183,48 @@ class Sidebar(QFrame):
         status_layout.addLayout(labels, 1)
         self.root_layout.addWidget(self.status)
 
-        collapse_row = QWidget()
-        collapse_layout = QHBoxLayout(collapse_row)
-        collapse_layout.setContentsMargins(0, 2, 0, 0)
-        collapse_layout.addStretch()
-        self.collapse_button = QPushButton("\u2039")
-        self.collapse_button.setProperty("variant", "sidebarIcon")
-        self.collapse_button.setFixedSize(34, 34)
-        self.collapse_button.setToolTip("Collapse sidebar")
-        self.collapse_button.clicked.connect(self.toggle)
-        collapse_layout.addWidget(self.collapse_button)
-        self.root_layout.addWidget(collapse_row)
-
     def toggle(self) -> None:
-        self.collapsed = not self.collapsed
-        self.setFixedWidth(self.COLLAPSED_WIDTH if self.collapsed else self.EXPANDED_WIDTH)
-        self.title_block.setVisible(not self.collapsed)
-        self.status.setVisible(not self.collapsed)
-        self.collapse_button.setText("\u203a" if self.collapsed else "\u2039")
-        self.collapse_button.setToolTip("Expand sidebar" if self.collapsed else "Collapse sidebar")
+        self.set_collapsed(not self.collapsed, animate=True, user_initiated=True)
+
+    def set_collapsed(
+        self,
+        collapsed: bool,
+        *,
+        animate: bool = True,
+        user_initiated: bool = False,
+    ) -> None:
+        collapsed = bool(collapsed)
+        target_width = self.COLLAPSED_WIDTH if collapsed else self.EXPANDED_WIDTH
+        if collapsed == self.collapsed and self.width() == target_width:
+            return
+
+        self.collapsed = collapsed
+        self.title_block.setVisible(not collapsed)
+        self.status.setVisible(not collapsed)
+        self.collapse_button.setVisible(not collapsed)
+        self.expand_button.setVisible(collapsed)
+        self.mark.setIcon(icon("accounts", "#ffffff", 22))
+        self.mark.setToolTip("Money Manager")
         for button in self.nav_buttons:
-            button.set_collapsed(self.collapsed)
+            button.set_collapsed(collapsed)
+
+        self.width_animation.stop()
+        if animate and self.isVisible():
+            self.width_animation.setStartValue(self.width())
+            self.width_animation.setEndValue(target_width)
+            self.width_animation.start()
+        else:
+            self.sidebar_width = target_width
+        self.state_changed.emit(collapsed, user_initiated)
+
+    def _get_sidebar_width(self) -> int:
+        return self.width()
+
+    def _set_sidebar_width(self, width: int) -> None:
+        self.setMinimumWidth(width)
+        self.setMaximumWidth(width)
+
+    sidebar_width = Property(int, _get_sidebar_width, _set_sidebar_width)
 
     def set_selected(self, index: int) -> None:
         for row, button in enumerate(self.nav_buttons):
