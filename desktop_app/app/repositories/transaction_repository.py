@@ -2,8 +2,13 @@ from __future__ import annotations
 
 import sqlite3
 from decimal import Decimal
+from uuid import uuid4
 
 from app.models.transaction import Transaction
+from app.utils.money import cents_to_decimal, decimal_to_cents
+
+
+UTC_NOW = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"
 
 
 def row_to_transaction(row: sqlite3.Row) -> Transaction:
@@ -13,11 +18,16 @@ def row_to_transaction(row: sqlite3.Row) -> Transaction:
         type=row["type"],
         account_id=row["account_id"],
         payment_method_id=row["payment_method_id"],
-        amount=Decimal(str(row["amount"])),
+        amount=cents_to_decimal(row["amount_cents"]),
         description=row["description"],
         category_id=row["category_id"],
         transfer_group_id=row["transfer_group_id"],
         notes=row["notes"],
+        status=row["status"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+        deleted_at=row["deleted_at"],
+        revision=row["revision"],
     )
 
 
@@ -30,15 +40,15 @@ class TransactionRepository:
         limit: int | None = None,
         *,
         transaction_type: str | None = None,
-        account_id: int | None = None,
-        category_id: int | None = None,
+        account_id: str | None = None,
+        category_id: str | None = None,
         start_date: str | None = None,
         end_date: str | None = None,
         search_text: str | None = None,
-        cursor: tuple[str, int] | None = None,
+        cursor: tuple[str, str] | None = None,
     ) -> list[Transaction]:
         query = "SELECT * FROM transactions"
-        conditions: list[str] = []
+        conditions: list[str] = ["deleted_at IS NULL"]
         params: list[object] = []
         if transaction_type == "transfer":
             conditions.append("type IN ('transfer_out', 'transfer_in')")
@@ -65,8 +75,7 @@ class TransactionRepository:
             cursor_date, cursor_id = cursor
             conditions.append("(date < ? OR (date = ? AND id < ?))")
             params.extend((cursor_date, cursor_date, cursor_id))
-        if conditions:
-            query += " WHERE " + " AND ".join(conditions)
+        query += " WHERE " + " AND ".join(conditions)
         query += " ORDER BY date DESC, id DESC"
         if limit is not None:
             if int(limit) <= 0:
@@ -79,47 +88,58 @@ class TransactionRepository:
         row = self.db.execute(
             """
             SELECT
-                COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) AS income,
-                COALESCE(SUM(CASE WHEN type = 'expense' THEN -amount ELSE 0 END), 0) AS expenses
+                COALESCE(SUM(CASE WHEN type = 'income' THEN amount_cents ELSE 0 END), 0) AS income_cents,
+                COALESCE(SUM(CASE WHEN type = 'expense' THEN -amount_cents ELSE 0 END), 0) AS expense_cents
             FROM transactions
-            WHERE date >= ? AND date < ?
+            WHERE date >= ? AND date < ? AND deleted_at IS NULL
             """,
             (start_date, end_date),
         ).fetchone()
-        return Decimal(str(row["income"] or 0)), Decimal(str(row["expenses"] or 0))
+        return cents_to_decimal(row["income_cents"]), cents_to_decimal(row["expense_cents"])
 
     def create(self, transaction: Transaction) -> Transaction:
-        cursor = self.db.execute(
+        transaction_id = transaction.id or str(uuid4())
+        self.db.execute(
             """
-            INSERT INTO transactions
-                (date, type, account_id, payment_method_id, amount, description, category_id, transfer_group_id, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO transactions (
+                id, date, type, account_id, payment_method_id, amount_cents,
+                description, category_id, transfer_group_id, notes, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
+                transaction_id,
                 transaction.date,
                 transaction.type,
                 transaction.account_id,
                 transaction.payment_method_id,
-                str(transaction.amount),
+                decimal_to_cents(transaction.amount),
                 transaction.description,
                 transaction.category_id,
                 transaction.transfer_group_id,
                 transaction.notes,
+                transaction.status,
             ),
         )
-        created = self.get(int(cursor.lastrowid))
+        created = self.get(transaction_id)
         assert created is not None
         return created
 
-    def get(self, transaction_id: int) -> Transaction | None:
-        row = self.db.execute("SELECT * FROM transactions WHERE id = ?", (transaction_id,)).fetchone()
+    def get(self, transaction_id: str) -> Transaction | None:
+        row = self.db.execute(
+            "SELECT * FROM transactions WHERE id = ? AND deleted_at IS NULL",
+            (transaction_id,),
+        ).fetchone()
         return row_to_transaction(row) if row else None
 
     def list_by_transfer_group(self, transfer_group_id: str) -> list[Transaction]:
         return [
             row_to_transaction(row)
             for row in self.db.execute(
-                "SELECT * FROM transactions WHERE transfer_group_id = ? ORDER BY amount",
+                """
+                SELECT * FROM transactions
+                WHERE transfer_group_id = ? AND deleted_at IS NULL
+                ORDER BY amount_cents
+                """,
                 (transfer_group_id,),
             )
         ]
@@ -128,23 +148,24 @@ class TransactionRepository:
         if transaction.id is None:
             raise ValueError("Transaction id is required")
         self.db.execute(
-            """
+            f"""
             UPDATE transactions
-            SET date = ?, type = ?, account_id = ?, payment_method_id = ?, amount = ?,
-                description = ?, category_id = ?, transfer_group_id = ?, notes = ?,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
+            SET date = ?, type = ?, account_id = ?, payment_method_id = ?, amount_cents = ?,
+                description = ?, category_id = ?, transfer_group_id = ?, notes = ?, status = ?,
+                updated_at = {UTC_NOW}, revision = revision + 1
+            WHERE id = ? AND deleted_at IS NULL
             """,
             (
                 transaction.date,
                 transaction.type,
                 transaction.account_id,
                 transaction.payment_method_id,
-                str(transaction.amount),
+                decimal_to_cents(transaction.amount),
                 transaction.description,
                 transaction.category_id,
                 transaction.transfer_group_id,
                 transaction.notes,
+                transaction.status,
                 transaction.id,
             ),
         )
@@ -152,8 +173,15 @@ class TransactionRepository:
         assert updated is not None
         return updated
 
-    def delete(self, transaction_id: int) -> None:
-        self.db.execute("DELETE FROM transactions WHERE id = ?", (transaction_id,))
+    def delete(self, transaction_id: str) -> None:
+        self.db.execute(
+            f"""
+            UPDATE transactions
+            SET deleted_at = {UTC_NOW}, updated_at = {UTC_NOW}, revision = revision + 1
+            WHERE id = ? AND deleted_at IS NULL
+            """,
+            (transaction_id,),
+        )
 
     @staticmethod
     def _escape_like(value: str) -> str:

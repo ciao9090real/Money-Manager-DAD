@@ -18,8 +18,8 @@ class TransactionForm(QDialog):
         categories: list[Category] | None = None,
         payment_methods: list[PaymentMethod] | None = None,
         transaction: Transaction | None = None,
-        transfer_source_id: int | None = None,
-        transfer_target_id: int | None = None,
+        transfer_source_id: str | None = None,
+        transfer_target_id: str | None = None,
     ):
         super().__init__()
         self.setWindowTitle("Transaction")
@@ -150,7 +150,7 @@ class TransactionForm(QDialog):
         self.current_payment_method_id = None
         self.payment_method.blockSignals(False)
 
-    def _load_transaction(self, transaction: Transaction, transfer_source_id: int | None, transfer_target_id: int | None) -> None:
+    def _load_transaction(self, transaction: Transaction, transfer_source_id: str | None, transfer_target_id: str | None) -> None:
         transaction_type = "transfer" if transaction.type in {"transfer_out", "transfer_in"} else transaction.type
         self._set_combo_by_data(self.type, transaction_type)
         account_id = transfer_source_id if transaction_type == "transfer" and transfer_source_id is not None else transaction.account_id

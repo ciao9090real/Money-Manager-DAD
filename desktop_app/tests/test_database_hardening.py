@@ -47,8 +47,16 @@ def test_legacy_fixture_migrates_with_backup(tmp_path, monkeypatch):
         assert migrated.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
         assert migrated.execute("SELECT COUNT(*) FROM transactions").fetchone()[0] == 4
         balances = AccountService(migrated)
-        assert balances.account_balance(1) == Decimal("95")
-        assert balances.account_balance(2) == Decimal("70")
+        account_ids = {
+            row["name"]: row["id"]
+            for row in migrated.execute("SELECT id, name FROM accounts")
+        }
+        assert all(len(account_id) == 36 for account_id in account_ids.values())
+        assert balances.account_balance(account_ids["Current"]) == Decimal("95")
+        assert balances.account_balance(account_ids["Savings"]) == Decimal("70")
+        assert migrated.execute(
+            "SELECT opening_balance_cents FROM accounts WHERE name = 'Current'"
+        ).fetchone()[0] == 10_000
         assert_database_integrity(migrated)
     finally:
         migrated.close()
@@ -200,7 +208,7 @@ def test_composite_indexes_are_used_for_filtered_lists(db):
         """
         EXPLAIN QUERY PLAN
         SELECT * FROM transactions
-        WHERE type = ?
+        WHERE type = ? AND deleted_at IS NULL
         ORDER BY date DESC, id DESC
         LIMIT 100
         """,
@@ -208,6 +216,18 @@ def test_composite_indexes_are_used_for_filtered_lists(db):
     ).fetchall()
     detail = " ".join(str(row[3]) for row in plans)
     assert "idx_transactions_type_date" in detail
+
+    latest_plans = db.execute(
+        """
+        EXPLAIN QUERY PLAN
+        SELECT * FROM transactions
+        WHERE deleted_at IS NULL
+        ORDER BY date DESC, id DESC
+        LIMIT 100
+        """
+    ).fetchall()
+    latest_detail = " ".join(str(row[3]) for row in latest_plans)
+    assert "idx_transactions_date" in latest_detail
 
     repository = TransactionRepository(db)
     assert repository.monthly_totals("2026-07-01", "2026-08-01") == (

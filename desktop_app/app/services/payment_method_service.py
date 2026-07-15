@@ -17,7 +17,7 @@ class PaymentMethodService:
         self.accounts = AccountRepository(db)
         self.payment_methods = PaymentMethodRepository(db)
 
-    def create_payment_method(self, name: str, account_id: int, payment_type: str) -> PaymentMethod:
+    def create_payment_method(self, name: str, account_id: str, payment_type: str) -> PaymentMethod:
         with unit_of_work(self.db):
             self._require_active_account(account_id)
             cleaned_name = require_text(name, "Payment method name")
@@ -37,9 +37,9 @@ class PaymentMethodService:
 
     def update_payment_method(
         self,
-        payment_method_id: int,
+        payment_method_id: str,
         name: str,
-        account_id: int,
+        account_id: str,
         payment_type: str,
     ) -> PaymentMethod:
         with unit_of_work(self.db):
@@ -54,12 +54,12 @@ class PaymentMethodService:
             method.type = self._require_type(payment_type)
             return self.payment_methods.update(method)
 
-    def archive_payment_method(self, payment_method_id: int) -> None:
+    def archive_payment_method(self, payment_method_id: str) -> None:
         with unit_of_work(self.db):
             self._require_method(payment_method_id)
             self.payment_methods.set_active(payment_method_id, False)
 
-    def restore_payment_method(self, payment_method_id: int) -> None:
+    def restore_payment_method(self, payment_method_id: str) -> None:
         with unit_of_work(self.db):
             method = self._require_method(payment_method_id)
             self._require_active_account(method.account_id)
@@ -70,13 +70,13 @@ class PaymentMethodService:
                 raise ValueError("An active payment method with this name already exists")
             self.payment_methods.set_active(payment_method_id, True)
 
-    def _require_method(self, payment_method_id: int) -> PaymentMethod:
+    def _require_method(self, payment_method_id: str) -> PaymentMethod:
         method = self.payment_methods.get(payment_method_id)
         if not method:
             raise ValueError("Payment method not found")
         return method
 
-    def _require_active_account(self, account_id: int) -> None:
+    def _require_active_account(self, account_id: str) -> None:
         account = self.accounts.get(account_id)
         if not account:
             raise ValueError("Account not found")

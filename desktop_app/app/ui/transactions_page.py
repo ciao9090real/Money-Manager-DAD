@@ -230,7 +230,8 @@ class TransactionsPage(QWidget):
         transfer_target_id = None
         if transaction.type in {"transfer_out", "transfer_in"}:
             try:
-                outgoing, incoming = self.service.transfer_pair(int(transaction.id))
+                assert transaction.id is not None
+                outgoing, incoming = self.service.transfer_pair(transaction.id)
             except ValueError as exc:
                 QMessageBox.warning(self, "Could not edit transaction", str(exc))
                 return
@@ -248,7 +249,7 @@ class TransactionsPage(QWidget):
             values = form.values()
             try:
                 self.service.update_transaction(
-                    int(transaction.id),
+                    transaction.id,
                     values["type"],
                     values["account_id"],
                     values["amount"],
@@ -279,7 +280,8 @@ class TransactionsPage(QWidget):
         if confirm != QMessageBox.StandardButton.Yes:
             return
         try:
-            self.service.delete_transaction(int(transaction.id))
+            assert transaction.id is not None
+            self.service.delete_transaction(transaction.id)
             self.notify("Transaction deleted")
             self.on_changed({"transactions", "accounts", "dashboard"})
         except ValueError as exc:
@@ -294,8 +296,8 @@ class TransactionsPage(QWidget):
         self.delete_button.setEnabled(has_selection)
 
     @staticmethod
-    def _cursor_for(transactions) -> tuple[str, int] | None:
+    def _cursor_for(transactions) -> tuple[str, str] | None:
         if not transactions:
             return None
         last = transactions[-1]
-        return (last.date, int(last.id))
+        return (last.date, str(last.id))

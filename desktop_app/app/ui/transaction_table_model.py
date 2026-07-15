@@ -16,8 +16,8 @@ class TransactionTableModel(QAbstractTableModel):
     def __init__(self):
         super().__init__()
         self.transactions: list[Transaction] = []
-        self.account_names: dict[int | None, str] = {}
-        self.category_names: dict[int | None, str] = {}
+        self.account_names: dict[str | None, str] = {}
+        self.category_names: dict[str | None, str] = {}
 
     def rowCount(self, parent=QModelIndex()) -> int:
         return 0 if parent.isValid() else len(self.transactions)
@@ -59,8 +59,8 @@ class TransactionTableModel(QAbstractTableModel):
     def replace(
         self,
         transactions: list[Transaction],
-        account_names: dict[int | None, str],
-        category_names: dict[int | None, str],
+        account_names: dict[str | None, str],
+        category_names: dict[str | None, str],
     ) -> None:
         self.beginResetModel()
         self.transactions = list(transactions)

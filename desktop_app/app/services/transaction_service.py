@@ -26,12 +26,12 @@ class TransactionService:
 
     def add_income(
         self,
-        account_id: int,
+        account_id: str,
         amount: object,
         date: str,
         description: str = "",
         category_id: object = None,
-        payment_method_id: int | None = None,
+        payment_method_id: str | None = None,
         notes: str | None = None,
     ) -> Transaction:
         with unit_of_work(self.db):
@@ -54,12 +54,12 @@ class TransactionService:
 
     def add_expense(
         self,
-        account_id: int,
+        account_id: str,
         amount: object,
         date: str,
         description: str = "",
         category_id: object = None,
-        payment_method_id: int | None = None,
+        payment_method_id: str | None = None,
         notes: str | None = None,
     ) -> Transaction:
         with unit_of_work(self.db):
@@ -82,7 +82,7 @@ class TransactionService:
 
     def add_adjustment(
         self,
-        account_id: int,
+        account_id: str,
         amount: object,
         date: str,
         description: str = "",
@@ -104,8 +104,8 @@ class TransactionService:
 
     def add_transfer(
         self,
-        source_account_id: int,
-        target_account_id: int,
+        source_account_id: str,
+        target_account_id: str,
         amount: object,
         date: str,
         description: str = "",
@@ -118,7 +118,7 @@ class TransactionService:
                 raise ValueError("Transfer accounts must be different")
             transfer_amount = require_positive(amount)
             transfer_date = require_iso_date(date)
-            group_id = uuid4().hex
+            group_id = str(uuid4())
             outgoing = self.transactions.create(
                 Transaction(
                     id=None,
@@ -148,10 +148,10 @@ class TransactionService:
     def list_transactions(self, limit: int | None = None, **filters) -> list[Transaction]:
         return self.transactions.list(limit=limit, **filters)
 
-    def get_transaction(self, transaction_id: int) -> Transaction | None:
+    def get_transaction(self, transaction_id: str) -> Transaction | None:
         return self.transactions.get(transaction_id)
 
-    def transfer_pair(self, transaction_id: int) -> tuple[Transaction, Transaction]:
+    def transfer_pair(self, transaction_id: str) -> tuple[Transaction, Transaction]:
         transaction = self._require_transaction(transaction_id)
         if not transaction.transfer_group_id:
             raise ValueError("Transaction is not a transfer")
@@ -166,15 +166,15 @@ class TransactionService:
 
     def update_transaction(
         self,
-        transaction_id: int,
+        transaction_id: str,
         transaction_type: str,
-        account_id: int,
+        account_id: str,
         amount: object,
         date: str,
         description: str = "",
-        target_account_id: int | None = None,
+        target_account_id: str | None = None,
         category_id: object = None,
-        payment_method_id: int | None = None,
+        payment_method_id: str | None = None,
         notes: str | None = None,
     ) -> Transaction | tuple[Transaction, Transaction]:
         with unit_of_work(self.db):
@@ -202,7 +202,7 @@ class TransactionService:
                 notes,
             )
 
-    def delete_transaction(self, transaction_id: int) -> None:
+    def delete_transaction(self, transaction_id: str) -> None:
         with unit_of_work(self.db):
             transaction = self._require_transaction(transaction_id)
             if transaction.transfer_group_id:
@@ -212,14 +212,14 @@ class TransactionService:
             else:
                 self.transactions.delete(transaction_id)
 
-    def _require_account(self, account_id: int, active: bool = False) -> None:
+    def _require_account(self, account_id: str, active: bool = False) -> None:
         account = self.accounts.get(account_id)
         if not account:
             raise ValueError("Account not found")
         if active and not account.is_active:
             raise ValueError("Account is inactive")
 
-    def _require_transaction(self, transaction_id: int) -> Transaction:
+    def _require_transaction(self, transaction_id: str) -> Transaction:
         transaction = self.transactions.get(transaction_id)
         if not transaction:
             raise ValueError("Transaction not found")
@@ -237,12 +237,12 @@ class TransactionService:
         self,
         existing: Transaction,
         transaction_type: str,
-        account_id: int,
+        account_id: str,
         amount: object,
         date: str,
         description: str,
         category_id: object,
-        payment_method_id: int | None,
+        payment_method_id: str | None,
         notes: str | None,
     ) -> Transaction:
         self._require_account(account_id, active=True)
@@ -276,8 +276,8 @@ class TransactionService:
     def _update_as_transfer(
         self,
         existing: Transaction,
-        source_account_id: int,
-        target_account_id: int | None,
+        source_account_id: str,
+        target_account_id: str | None,
         amount: object,
         date: str,
         description: str,
@@ -292,10 +292,11 @@ class TransactionService:
         transfer_amount = require_positive(amount)
         transfer_date = require_iso_date(date)
         description_value = description.strip()
-        group_id = existing.transfer_group_id or uuid4().hex
+        group_id = existing.transfer_group_id or str(uuid4())
 
         if existing.transfer_group_id:
-            outgoing, incoming = self.transfer_pair(int(existing.id))
+            assert existing.id is not None
+            outgoing, incoming = self.transfer_pair(existing.id)
             outgoing_id = outgoing.id
             incoming_id = incoming.id
         else:
@@ -347,13 +348,11 @@ class TransactionService:
             return -require_positive(amount)
         return to_decimal(amount)
 
-    def _resolve_category(self, value: object, transaction_type: str) -> int | None:
+    def _resolve_category(self, value: object, transaction_type: str) -> str | None:
         if value is None or (isinstance(value, str) and not value.strip()):
             return None
-        if isinstance(value, int):
-            category = self.categories.get(value)
-            if not category:
-                raise ValueError("Category not found")
+        category = self.categories.get(str(value)) if isinstance(value, (str, int)) else None
+        if category:
             if not category.is_active:
                 raise ValueError("Category is inactive")
             if category.type != transaction_type:
@@ -371,7 +370,7 @@ class TransactionService:
         )
         return created.id
 
-    def _validate_payment_method(self, payment_method_id: int | None, account_id: int) -> None:
+    def _validate_payment_method(self, payment_method_id: str | None, account_id: str) -> None:
         if payment_method_id is None:
             return
         method = self.payment_methods.get(payment_method_id)

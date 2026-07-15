@@ -10,6 +10,12 @@ The current desktop baseline is tagged `desktop-baseline-v1`. Dependencies are
 fully pinned in `requirements.lock`, and the Windows CI workflow compiles the
 source, runs the database/migration tests, and packages the executable.
 
+Schema version 3 is the synchronization-ready ledger foundation. Existing
+version 1 and 2 databases are backed up and migrated automatically on first
+launch. The migration gives every account, category, payment method, and
+transaction a UUID; stores money as exact integer cents; and adds UTC audit
+timestamps, per-record revisions, soft deletion, and tombstones.
+
 Data is stored outside the repository in:
 
 ```text
@@ -56,6 +62,12 @@ a 10-second busy timeout. Migrations create a timestamped SQLite snapshot first
 and run integrity and foreign-key checks before and after the schema change.
 Manual backups use SQLite's online backup API so WAL data is included.
 
+Every local mutation is recorded in an ordered `change_log` with its origin
+device. The database also contains paired-device cursors, conflict records, and
+content-hashed attachment metadata. These are foundations for the planned local
+Wi-Fi synchronizer; the current desktop build does not yet advertise a network
+service or synchronize with a phone.
+
 Keep `money_manager.db` on a local disk. Do not put it in OneDrive, Dropbox, a
 shared folder, SMB share, or any network filesystem. Each future phone or laptop
 installation must own an independent database; synchronization will exchange
@@ -84,3 +96,12 @@ cd desktop_app
 ```
 
 Preview images are written to the ignored repository-level `artifacts` folder.
+
+## Implementation Order
+
+The next product milestone is rich transaction detail: merchant/payee,
+counterparty, tags, receipt line items, and application-managed attachments.
+After that, account activity and reconciliation should be built on the same
+central balance calculations, followed by idempotent recurring and scheduled
+transactions. Credit-card statements and planning modules should build on those
+ledger and scheduling rules rather than introducing separate financial totals.

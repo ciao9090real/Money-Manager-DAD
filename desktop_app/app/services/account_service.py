@@ -21,7 +21,7 @@ class AccountService:
         self,
         name: str,
         account_type: str,
-        parent_id: int | None = None,
+        parent_id: str | None = None,
         opening_balance: object = "0",
         is_active: bool = True,
         display_order: int = 0,
@@ -42,10 +42,10 @@ class AccountService:
 
     def update_account(
         self,
-        account_id: int,
+        account_id: str,
         name: str,
         account_type: str,
-        parent_id: int | None,
+        parent_id: str | None,
         opening_balance: object,
         is_active: bool = True,
         display_order: int = 0,
@@ -63,7 +63,7 @@ class AccountService:
             existing.display_order = display_order
             return self.accounts.update(existing)
 
-    def deactivate_account(self, account_id: int) -> None:
+    def deactivate_account(self, account_id: str) -> None:
         with unit_of_work(self.db):
             self._require_account(account_id)
             if self.accounts.has_active_children(account_id):
@@ -73,7 +73,7 @@ class AccountService:
     def list_accounts(self, include_inactive: bool = False) -> list[Account]:
         return self.accounts.list(include_inactive=include_inactive)
 
-    def account_balance(self, account_id: int) -> Decimal:
+    def account_balance(self, account_id: str) -> Decimal:
         balance = self.accounts.balance(account_id)
         if balance is None:
             raise ValueError("Account not found")
@@ -114,13 +114,13 @@ class AccountService:
             rollup(root)
         return roots
 
-    def _require_account(self, account_id: int) -> Account:
+    def _require_account(self, account_id: str) -> Account:
         account = self.accounts.get(account_id)
         if not account:
             raise ValueError("Account not found")
         return account
 
-    def _validate_parent(self, parent_id: int | None, account_id: int | None = None) -> None:
+    def _validate_parent(self, parent_id: str | None, account_id: str | None = None) -> None:
         if parent_id is None:
             return
         if account_id and parent_id == account_id:
@@ -133,7 +133,7 @@ class AccountService:
         if self._depth(parent_id) + 1 > 3:
             raise ValueError("Account hierarchy can be at most three levels deep")
 
-    def _depth(self, account_id: int) -> int:
+    def _depth(self, account_id: str) -> int:
         depth = 1
         seen = {account_id}
         account = self._require_account(account_id)
@@ -145,13 +145,13 @@ class AccountService:
             depth += 1
         return depth
 
-    def _descendant_ids(self, account_id: int) -> set[int]:
+    def _descendant_ids(self, account_id: str) -> set[str]:
         rows = self.db.execute("SELECT id, parent_id FROM accounts").fetchall()
-        children: dict[int, list[int]] = {}
+        children: dict[str, list[str]] = {}
         for row in rows:
             if row["parent_id"] is not None:
                 children.setdefault(row["parent_id"], []).append(row["id"])
-        descendants: set[int] = set()
+        descendants: set[str] = set()
         stack = list(children.get(account_id, []))
         while stack:
             child_id = stack.pop()

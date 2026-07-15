@@ -4,6 +4,7 @@ import tempfile
 from datetime import date, timedelta
 from pathlib import Path
 from time import perf_counter
+from uuid import uuid4
 
 from app.core.database import connect
 from app.repositories.transaction_repository import TransactionRepository
@@ -36,7 +37,7 @@ def main() -> None:
                 """
                 EXPLAIN QUERY PLAN
                 SELECT * FROM transactions
-                WHERE type = ?
+                WHERE type = ? AND deleted_at IS NULL
                 ORDER BY date DESC, id DESC
                 LIMIT 100
                 """,
@@ -51,32 +52,38 @@ def main() -> None:
 
 def seed(db) -> None:
     with db:
+        account_rows = [
+            (str(uuid4()), f"Account {index:03}", index)
+            for index in range(ACCOUNT_COUNT)
+        ]
         db.executemany(
             """
-            INSERT INTO accounts (name, type, opening_balance, display_order)
-            VALUES (?, 'current_account', 1000, ?)
+            INSERT INTO accounts (id, name, type, opening_balance_cents, display_order)
+            VALUES (?, ?, 'current_account', 100000, ?)
             """,
-            ((f"Account {index:03}", index) for index in range(ACCOUNT_COUNT)),
+            account_rows,
         )
+        account_ids = [row[0] for row in account_rows]
         start = date(2024, 1, 1)
         rows = []
         for index in range(TRANSACTION_COUNT):
             transaction_type = "income" if index % 5 == 0 else "expense"
-            amount = "100" if transaction_type == "income" else "-12.34"
+            amount_cents = 10_000 if transaction_type == "income" else -1_234
             transaction_date = (start + timedelta(days=index % 1_000)).isoformat()
             rows.append(
                 (
+                    str(uuid4()),
                     transaction_date,
                     transaction_type,
-                    (index % ACCOUNT_COUNT) + 1,
-                    amount,
+                    account_ids[index % ACCOUNT_COUNT],
+                    amount_cents,
                     f"Benchmark transaction {index}",
                 )
             )
         db.executemany(
             """
-            INSERT INTO transactions (date, type, account_id, amount, description)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO transactions (id, date, type, account_id, amount_cents, description)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
             rows,
         )

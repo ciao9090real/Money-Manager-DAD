@@ -95,7 +95,7 @@ class AccountsPage(QWidget):
 
     def refresh(self) -> None:
         self.tree.clear()
-        methods_by_account: dict[int, list] = {}
+        methods_by_account: dict[str, list] = {}
         for method in self.payment_methods.list_payment_methods(include_inactive=True):
             methods_by_account.setdefault(method.account_id, []).append(method)
         tree = self.service.account_tree(include_inactive=False)
@@ -106,7 +106,7 @@ class AccountsPage(QWidget):
         self.tree.setVisible(bool(tree))
         self._sync_actions()
 
-    def _add_node(self, node: dict, parent: QTreeWidgetItem | None = None, methods_by_account: dict[int, list] | None = None) -> None:
+    def _add_node(self, node: dict, parent: QTreeWidgetItem | None = None, methods_by_account: dict[str, list] | None = None) -> None:
         account = node["account"]
         item = QTreeWidgetItem([account.name, "", format_money(node["rollup_balance"]), ""])
         item.setData(0, 256, account.id)
@@ -220,15 +220,15 @@ class AccountsPage(QWidget):
         except ValueError as exc:
             QMessageBox.warning(self, "Could not deactivate account", str(exc))
 
-    def _selected_account_id(self) -> int | None:
+    def _selected_account_id(self) -> str | None:
         item = self.tree.currentItem()
         value = item.data(0, 256) if item else None
-        return int(value) if value else None
+        return str(value) if value else None
 
-    def _selected_payment_method_id(self) -> int | None:
+    def _selected_payment_method_id(self) -> str | None:
         item = self.tree.currentItem()
         value = item.data(0, 257) if item else None
-        return int(value) if value else None
+        return str(value) if value else None
 
     def _sync_actions(self) -> None:
         has_account = self._selected_account_id() is not None

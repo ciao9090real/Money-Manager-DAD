@@ -20,6 +20,19 @@ def require_positive(value: object) -> Decimal:
     return amount
 
 
+def decimal_to_cents(value: object) -> int:
+    """Convert a display amount to the exact integer stored by SQLite."""
+    return int(to_decimal(value) * 100)
+
+
+def cents_to_decimal(value: object) -> Decimal:
+    """Convert an integer database amount to the UI/service Decimal contract."""
+    try:
+        return (Decimal(int(value or 0)) / 100).quantize(CENT)
+    except (TypeError, ValueError, InvalidOperation):
+        raise ValueError("Stored amount is not a valid integer-cent value")
+
+
 def format_money(value: object, currency: str = "EUR") -> str:
     amount = to_decimal(value)
     symbol = "\u20ac" if currency == "EUR" else f"{currency} "

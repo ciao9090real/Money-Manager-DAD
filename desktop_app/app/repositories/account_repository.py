@@ -2,8 +2,13 @@ from __future__ import annotations
 
 import sqlite3
 from decimal import Decimal
+from uuid import uuid4
 
 from app.models.account import Account
+from app.utils.money import cents_to_decimal, decimal_to_cents
+
+
+UTC_NOW = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"
 
 
 def row_to_account(row: sqlite3.Row) -> Account:
@@ -12,9 +17,13 @@ def row_to_account(row: sqlite3.Row) -> Account:
         name=row["name"],
         type=row["type"],
         parent_id=row["parent_id"],
-        opening_balance=Decimal(str(row["opening_balance"])),
+        opening_balance=cents_to_decimal(row["opening_balance_cents"]),
         is_active=bool(row["is_active"]),
         display_order=row["display_order"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+        deleted_at=row["deleted_at"],
+        revision=row["revision"],
     )
 
 
@@ -23,10 +32,10 @@ class AccountRepository:
         self.db = db
 
     def list(self, include_inactive: bool = False) -> list[Account]:
-        query = "SELECT * FROM accounts"
+        query = "SELECT * FROM accounts WHERE deleted_at IS NULL"
         params: list[object] = []
         if not include_inactive:
-            query += " WHERE is_active = 1"
+            query += " AND is_active = 1"
         query += " ORDER BY display_order, name"
         return [row_to_account(row) for row in self.db.execute(query, params)]
 
@@ -35,56 +44,63 @@ class AccountRepository:
     ) -> list[tuple[Account, Decimal]]:
         query = """
             WITH transaction_balances AS (
-                SELECT account_id, SUM(amount) AS total
+                SELECT account_id, SUM(amount_cents) AS total_cents
                 FROM transactions
+                WHERE deleted_at IS NULL
                 GROUP BY account_id
             )
-            SELECT a.*, a.opening_balance + COALESCE(b.total, 0) AS balance
+            SELECT a.*, a.opening_balance_cents + COALESCE(b.total_cents, 0) AS balance_cents
             FROM accounts a
             LEFT JOIN transaction_balances b ON b.account_id = a.id
+            WHERE a.deleted_at IS NULL
         """
         params: list[object] = []
         if not include_inactive:
-            query += " WHERE a.is_active = 1"
+            query += " AND a.is_active = 1"
         query += " ORDER BY a.display_order, a.name"
         return [
-            (row_to_account(row), Decimal(str(row["balance"] or 0)))
+            (row_to_account(row), cents_to_decimal(row["balance_cents"]))
             for row in self.db.execute(query, params)
         ]
 
-    def balance(self, account_id: int) -> Decimal | None:
+    def balance(self, account_id: str) -> Decimal | None:
         row = self.db.execute(
             """
-            SELECT a.opening_balance + COALESCE(SUM(t.amount), 0) AS balance
+            SELECT a.opening_balance_cents + COALESCE(SUM(t.amount_cents), 0) AS balance_cents
             FROM accounts a
-            LEFT JOIN transactions t ON t.account_id = a.id
-            WHERE a.id = ?
+            LEFT JOIN transactions t ON t.account_id = a.id AND t.deleted_at IS NULL
+            WHERE a.id = ? AND a.deleted_at IS NULL
             GROUP BY a.id
             """,
             (account_id,),
         ).fetchone()
-        return Decimal(str(row["balance"] or 0)) if row else None
+        return cents_to_decimal(row["balance_cents"]) if row else None
 
-    def get(self, account_id: int) -> Account | None:
-        row = self.db.execute("SELECT * FROM accounts WHERE id = ?", (account_id,)).fetchone()
+    def get(self, account_id: str) -> Account | None:
+        row = self.db.execute(
+            "SELECT * FROM accounts WHERE id = ? AND deleted_at IS NULL", (account_id,)
+        ).fetchone()
         return row_to_account(row) if row else None
 
     def create(self, account: Account) -> Account:
-        cursor = self.db.execute(
+        account_id = account.id or str(uuid4())
+        self.db.execute(
             """
-            INSERT INTO accounts (name, type, parent_id, opening_balance, is_active, display_order)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO accounts (
+                id, name, type, parent_id, opening_balance_cents, is_active, display_order
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
+                account_id,
                 account.name,
                 account.type,
                 account.parent_id,
-                str(account.opening_balance),
+                decimal_to_cents(account.opening_balance),
                 int(account.is_active),
                 account.display_order,
             ),
         )
-        created = self.get(int(cursor.lastrowid))
+        created = self.get(account_id)
         assert created is not None
         return created
 
@@ -92,17 +108,17 @@ class AccountRepository:
         if account.id is None:
             raise ValueError("Account id is required")
         self.db.execute(
-            """
+            f"""
             UPDATE accounts
-            SET name = ?, type = ?, parent_id = ?, opening_balance = ?, is_active = ?,
-                display_order = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
+            SET name = ?, type = ?, parent_id = ?, opening_balance_cents = ?, is_active = ?,
+                display_order = ?, updated_at = {UTC_NOW}, revision = revision + 1
+            WHERE id = ? AND deleted_at IS NULL
             """,
             (
                 account.name,
                 account.type,
                 account.parent_id,
-                str(account.opening_balance),
+                decimal_to_cents(account.opening_balance),
                 int(account.is_active),
                 account.display_order,
                 account.id,
@@ -112,15 +128,22 @@ class AccountRepository:
         assert updated is not None
         return updated
 
-    def deactivate(self, account_id: int) -> None:
+    def deactivate(self, account_id: str) -> None:
         self.db.execute(
-            "UPDATE accounts SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            f"""
+            UPDATE accounts
+            SET is_active = 0, updated_at = {UTC_NOW}, revision = revision + 1
+            WHERE id = ? AND deleted_at IS NULL
+            """,
             (account_id,),
         )
 
-    def has_active_children(self, account_id: int) -> bool:
+    def has_active_children(self, account_id: str) -> bool:
         row = self.db.execute(
-            "SELECT 1 FROM accounts WHERE parent_id = ? AND is_active = 1 LIMIT 1",
+            """
+            SELECT 1 FROM accounts
+            WHERE parent_id = ? AND is_active = 1 AND deleted_at IS NULL LIMIT 1
+            """,
             (account_id,),
         ).fetchone()
         return row is not None
