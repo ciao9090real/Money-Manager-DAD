@@ -8,6 +8,8 @@ from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
+    QDialog,
+    QFormLayout,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
@@ -117,6 +119,7 @@ class BadgeDelegate(QStyledItemDelegate):
 
 def page_header(title: str, subtitle: str, action: QWidget | None = None) -> QWidget:
     container = QWidget()
+    container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
     outer = QHBoxLayout(container)
     outer.setContentsMargins(0, 0, 0, 0)
     outer.setSpacing(Spacing.GAP)
@@ -138,6 +141,78 @@ def page_header(title: str, subtitle: str, action: QWidget | None = None) -> QWi
     if action:
         outer.addWidget(action, 0, Qt.AlignmentFlag.AlignTop)
     return container
+
+
+def dialog_shell(
+    dialog: QDialog,
+    title: str,
+    subtitle: str,
+    form: QFormLayout,
+    primary_text: str,
+    icon_name: str,
+    *,
+    minimum_width: int = 520,
+) -> tuple[QPushButton, QPushButton]:
+    dialog.setProperty("role", "sheet")
+    dialog.setMinimumWidth(minimum_width)
+
+    root = QVBoxLayout(dialog)
+    root.setContentsMargins(24, 22, 24, 22)
+    root.setSpacing(14)
+
+    header = QWidget()
+    header_layout = QHBoxLayout(header)
+    header_layout.setContentsMargins(0, 0, 0, 0)
+    header_layout.setSpacing(12)
+    icon_tile = QFrame()
+    icon_tile.setProperty("role", "dialogIcon")
+    icon_tile.setFixedSize(42, 42)
+    icon_label_widget = QLabel()
+    icon_label_widget.setPixmap(icon(icon_name, Colors.PRIMARY, 20).pixmap(20, 20))
+    icon_layout = QHBoxLayout(icon_tile)
+    icon_layout.setContentsMargins(0, 0, 0, 0)
+    icon_layout.addWidget(icon_label_widget, 0, Qt.AlignmentFlag.AlignCenter)
+
+    text_block = QWidget()
+    text_layout = QVBoxLayout(text_block)
+    text_layout.setContentsMargins(0, 0, 0, 0)
+    text_layout.setSpacing(3)
+    title_label = QLabel(title)
+    title_label.setProperty("role", "dialogTitle")
+    subtitle_label = QLabel(subtitle)
+    subtitle_label.setProperty("role", "subtitle")
+    subtitle_label.setWordWrap(True)
+    text_layout.addWidget(title_label)
+    text_layout.addWidget(subtitle_label)
+    header_layout.addWidget(icon_tile, 0, Qt.AlignmentFlag.AlignTop)
+    header_layout.addWidget(text_block, 1)
+    root.addWidget(header)
+
+    form.setContentsMargins(0, 0, 0, 0)
+    form.setHorizontalSpacing(16)
+    form.setVerticalSpacing(9)
+    form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+    form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+    surface = QFrame()
+    surface.setProperty("role", "formSurface")
+    surface_layout = QVBoxLayout(surface)
+    surface_layout.setContentsMargins(18, 16, 18, 16)
+    surface_layout.addLayout(form)
+    root.addWidget(surface)
+
+    save = primary_button(primary_text)
+    save.setDefault(True)
+    cancel = secondary_button("Cancel")
+    save.clicked.connect(dialog.accept)
+    cancel.clicked.connect(dialog.reject)
+    buttons = QHBoxLayout()
+    buttons.setContentsMargins(0, 2, 0, 0)
+    buttons.setSpacing(8)
+    buttons.addStretch()
+    buttons.addWidget(cancel)
+    buttons.addWidget(save)
+    root.addLayout(buttons)
+    return save, cancel
 
 
 def page_layout(root: QWidget, title: str, subtitle: str, action: QWidget | None = None) -> QVBoxLayout:
@@ -180,10 +255,13 @@ def icon_label(icon: str, text: str) -> QWidget:
 
 def section_heading(title: str, subtitle: str | None = None, action: QWidget | None = None) -> QWidget:
     container = QWidget()
+    container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
     layout = QHBoxLayout(container)
     layout.setContentsMargins(1, 2, 1, 0)
     layout.setSpacing(12)
-    labels = QVBoxLayout()
+    label_block = QWidget()
+    label_block.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    labels = QVBoxLayout(label_block)
     labels.setContentsMargins(0, 0, 0, 0)
     labels.setSpacing(2)
     title_label = QLabel(title)
@@ -193,8 +271,9 @@ def section_heading(title: str, subtitle: str | None = None, action: QWidget | N
         subtitle_label = QLabel(subtitle)
         subtitle_label.setProperty("role", "sectionSubtitle")
         subtitle_label.setWordWrap(True)
+        subtitle_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         labels.addWidget(subtitle_label)
-    layout.addLayout(labels, 1)
+    layout.addWidget(label_block, 1)
     if action:
         layout.addWidget(action, 0, Qt.AlignmentFlag.AlignTop)
     return container
@@ -214,12 +293,17 @@ def create_card(
         card.setMaximumHeight(max_height)
     layout = QVBoxLayout(card)
     layout.setContentsMargins(Spacing.CARD, Spacing.CARD, Spacing.CARD, Spacing.CARD)
-    layout.setSpacing(14)
+    layout.setSpacing(12)
     if title:
-        heading = QHBoxLayout()
+        heading_widget = QWidget()
+        heading_widget.setProperty("role", "cardHeader")
+        heading_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        heading = QHBoxLayout(heading_widget)
         heading.setContentsMargins(0, 0, 0, 0)
         heading.setSpacing(12)
-        labels = QVBoxLayout()
+        label_block = QWidget()
+        label_block.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        labels = QVBoxLayout(label_block)
         labels.setContentsMargins(0, 0, 0, 0)
         labels.setSpacing(3)
         label = QLabel(title)
@@ -229,12 +313,12 @@ def create_card(
             subtitle_label = QLabel(subtitle)
             subtitle_label.setProperty("role", "sectionSubtitle")
             subtitle_label.setWordWrap(True)
-            subtitle_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+            subtitle_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
             labels.addWidget(subtitle_label)
-        heading.addLayout(labels, 1)
+        heading.addWidget(label_block, 1)
         if action:
             heading.addWidget(action, 0, Qt.AlignmentFlag.AlignTop)
-        layout.addLayout(heading)
+        layout.addWidget(heading_widget)
     return card, layout
 
 
@@ -408,7 +492,7 @@ def badge_tone(kind: str) -> str:
         return "positive"
     if normalized in {"expense", "inactive"}:
         return "negative" if normalized == "expense" else "muted"
-    if normalized in {"transfer", "transfer_out", "transfer_in", "adjustment"}:
+    if normalized in {"transfer", "transfer_out", "transfer_in", "adjustment", "loan"}:
         return "info"
     return "neutral"
 

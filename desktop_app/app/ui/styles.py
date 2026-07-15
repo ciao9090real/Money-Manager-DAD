@@ -223,7 +223,7 @@ def app_stylesheet() -> str:
     QFrame[role="heroCard"] {{
         background: #4f50cf;
         border: 1px solid #4647bd;
-        border-radius: 10px;
+        border-radius: {Spacing.RADIUS}px;
     }}
 
     QFrame[role="toolbar"] {{
@@ -352,7 +352,7 @@ def app_stylesheet() -> str:
     QLabel[role="mono"] {{
         background: #f8fafc;
         border: 1px solid {Colors.BORDER};
-        border-radius: 10px;
+        border-radius: 8px;
         padding: 11px 12px;
         font-family: Consolas;
         color: #344054;
@@ -365,17 +365,19 @@ def app_stylesheet() -> str:
         color: #344054;
     }}
 
-    QLineEdit, QComboBox, QDateEdit {{
+    QLineEdit, QComboBox, QDateEdit, QSpinBox, QDoubleSpinBox {{
         background: white;
         border: 1px solid #d0d5dd;
-        border-radius: 10px;
+        border-radius: 8px;
         padding: 9px 11px;
         min-height: 22px;
         selection-background-color: {Colors.PRIMARY};
     }}
 
-    QLineEdit:hover, QComboBox:hover, QDateEdit:hover {{ border-color: #aeb5c0; }}
-    QLineEdit:focus, QComboBox:focus, QDateEdit:focus {{
+    QLineEdit:hover, QComboBox:hover, QDateEdit:hover,
+    QSpinBox:hover, QDoubleSpinBox:hover {{ border-color: #aeb5c0; }}
+    QLineEdit:focus, QComboBox:focus, QDateEdit:focus,
+    QSpinBox:focus, QDoubleSpinBox:focus {{
         border: 2px solid #8b8df0;
         padding: 8px 10px;
     }}
@@ -424,14 +426,41 @@ def app_stylesheet() -> str:
     QTableWidget::item:focus, QTableView::item:focus, QTreeWidget::item:focus {{ outline: none; }}
 
     QDialog {{ background: {Colors.BACKGROUND}; }}
-    QDialog QLabel[role="dialogTitle"] {{ font-size: 23px; font-weight: 700; }}
+    QDialog[role="sheet"] {{ background: #f6f7fb; }}
+    QDialog QLabel[role="dialogTitle"] {{
+        font-size: 21px;
+        font-weight: 700;
+        color: {Colors.TEXT};
+    }}
 
-    QStatusBar {{
-        background: #ffffff;
-        color: {Colors.TEXT_SECONDARY};
-        border-top: 1px solid {Colors.BORDER};
-        padding: 4px 12px;
-        font-size: 11px;
+    QFrame[role="dialogIcon"] {{
+        background: {Colors.PRIMARY_SOFT};
+        border: 1px solid #dfe1ff;
+        border-radius: 8px;
+    }}
+
+    QFrame[role="formSurface"] {{
+        background: white;
+        border: 1px solid {Colors.BORDER};
+        border-radius: 8px;
+    }}
+
+    QFrame[role="toast"] {{
+        background: #182230;
+        border: 1px solid #344054;
+        border-radius: 8px;
+    }}
+
+    QFrame[role="toastDot"] {{
+        background: #32d583;
+        border: none;
+        border-radius: 4px;
+    }}
+
+    QLabel[role="toastText"] {{
+        color: white;
+        font-size: 12px;
+        font-weight: 600;
     }}
 
     QScrollBar:vertical {{ background: transparent; width: 10px; margin: 3px; }}

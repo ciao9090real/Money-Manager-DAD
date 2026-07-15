@@ -59,6 +59,20 @@ def _draw_icon(painter: QPainter, name: str, rect: QRectF, color: str) -> None:
         painter.drawPath(path)
         painter.drawLine(QPointF(x + w * 0.70, y + h * 0.25), QPointF(x + w * 0.86, y + h * 0.24))
         painter.drawLine(QPointF(x + w * 0.86, y + h * 0.24), QPointF(x + w * 0.85, y + h * 0.40))
+    elif name == "loans":
+        roof = QPainterPath()
+        roof.moveTo(x + w * 0.08, y + h * 0.34)
+        roof.lineTo(x + w * 0.50, y + h * 0.08)
+        roof.lineTo(x + w * 0.92, y + h * 0.34)
+        roof.closeSubpath()
+        painter.drawPath(roof)
+        for column in (0.24, 0.50, 0.76):
+            painter.drawLine(
+                QPointF(x + w * column, y + h * 0.40),
+                QPointF(x + w * column, y + h * 0.78),
+            )
+        painter.drawLine(QPointF(x + w * 0.10, y + h * 0.82), QPointF(x + w * 0.90, y + h * 0.82))
+        painter.drawLine(QPointF(x + w * 0.04, y + h * 0.94), QPointF(x + w * 0.96, y + h * 0.94))
     elif name in {"chevron_left", "chevron_right"}:
         left = name == "chevron_left"
         outer = 0.64 if left else 0.36

@@ -12,6 +12,7 @@ from PySide6.QtTest import QTest
 from app.core.database import connect
 from app.services.account_service import AccountService
 from app.services.investment_service import InvestmentService
+from app.services.loan_service import LoanService
 from app.services.payment_method_service import PaymentMethodService
 from app.services.recurring_service import RecurringService
 from app.services.transaction_service import TransactionService
@@ -19,6 +20,7 @@ from app.services.category_service import CategoryService
 from app.ui.account_form import AccountForm
 from app.ui.main_window import MainWindow
 from app.ui.investment_form import InvestmentForm
+from app.ui.loan_form import LoanForm, LoanPaymentDialog
 from app.ui.recurring_form import RecurringRuleForm
 from app.ui.transaction_form import TransactionForm
 
@@ -41,6 +43,7 @@ def main() -> None:
                     "accounts",
                     "transactions",
                     "investments",
+                    "loans",
                     "upcoming",
                     "settings",
                 )
@@ -55,11 +58,19 @@ def main() -> None:
                 (0, "dashboard-compact"),
                 (2, "transactions-compact"),
                 (3, "investments-compact"),
-                (4, "upcoming-compact"),
+                (4, "loans-compact"),
+                (5, "upcoming-compact"),
             ):
                 window._select_page(index)
                 app.processEvents()
                 window.grab().save(str(output / f"ui-{name}.png"))
+            window.resize(1440, 900)
+            window._select_page(0)
+            dashboard_scroll = window.dashboard.page_scroll.verticalScrollBar()
+            dashboard_scroll.setValue(dashboard_scroll.maximum())
+            app.processEvents()
+            window.grab().save(str(output / "ui-dashboard-lower.png"))
+            dashboard_scroll.setValue(0)
             account_service = AccountService(db)
             payment_service = PaymentMethodService(db)
             account_form = AccountForm(account_service.list_accounts())
@@ -98,11 +109,36 @@ def main() -> None:
             app.processEvents()
             investment_form.grab().save(str(output / "ui-investment-form.png"))
             investment_form.close()
+            loan_service = LoanService(db)
+            loan_form = LoanForm(
+                [
+                    account
+                    for account in account_service.list_accounts()
+                    if account.type in loan_service.FUNDING_ACCOUNT_TYPES
+                ]
+            )
+            loan_form.show()
+            app.processEvents()
+            loan_form.grab().save(str(output / "ui-loan-form.png"))
+            loan_form.close()
+            loan_snapshot = loan_service.list_snapshots()[0]
+            payment_form = LoanPaymentDialog(
+                loan_snapshot,
+                [
+                    account
+                    for account in account_service.list_accounts()
+                    if account.type in loan_service.FUNDING_ACCOUNT_TYPES
+                ],
+            )
+            payment_form.show()
+            app.processEvents()
+            payment_form.grab().save(str(output / "ui-loan-payment-form.png"))
+            payment_form.close()
             recurring_service = RecurringService(db)
             for rule in recurring_service.list_rules():
                 recurring_service.delete_rule(rule.id)
             window.invalidate({"upcoming"})
-            window._select_page(4)
+            window._select_page(5)
             app.processEvents()
             window.grab().save(str(output / "ui-upcoming-empty.png"))
             window.close()
@@ -115,6 +151,7 @@ def seed(db) -> None:
     transactions = TransactionService(db)
     recurring = RecurringService(db)
     investments = InvestmentService(db)
+    loans = LoanService(db)
     payments = PaymentMethodService(db)
     bank = accounts.create_account("Everyday Banking", "bank")
     current = accounts.create_account(
@@ -155,6 +192,25 @@ def seed(db) -> None:
         "2026-07-06",
         current_value="1108.40",
         symbol="VWCE",
+    )
+    loans.create_loan(
+        "borrowed",
+        "Car loan",
+        "Community bank",
+        current.id,
+        "8500",
+        "2026-06-01",
+        due_date="2029-06-01",
+        interest_rate="4.25",
+    )
+    loans.create_loan(
+        "lent",
+        "Family loan",
+        "Alex",
+        savings.id,
+        "1200",
+        "2026-05-10",
+        due_date="2027-05-10",
     )
     recurring.create_rule(
         "Cloud storage",

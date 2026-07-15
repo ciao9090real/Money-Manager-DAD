@@ -6,7 +6,7 @@ from pathlib import Path
 from uuid import uuid4
 
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 UTC_NOW_SQL = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"
 
 
@@ -42,6 +42,9 @@ def migrate(connection: sqlite3.Connection) -> None:
         if version < 5:
             _run_migration(connection, 5, _migrate_v5)
             version = 5
+        if version < 6:
+            _run_migration(connection, 6, _migrate_v6)
+            version = 6
         assert_database_integrity(connection)
     except Exception:
         connection.rollback()
@@ -947,3 +950,131 @@ def _migrate_v5(connection: sqlite3.Connection) -> None:
         END;
         """,
     )
+
+
+def _migrate_v6(connection: sqlite3.Connection) -> None:
+    _execute_script(
+        connection,
+        f"""
+        CREATE TABLE loans (
+            id TEXT PRIMARY KEY CHECK (length(id) = 36),
+            direction TEXT NOT NULL CHECK (direction IN ('borrowed', 'lent')),
+            name TEXT NOT NULL,
+            counterparty TEXT NOT NULL,
+            principal_cents INTEGER NOT NULL CHECK (principal_cents > 0),
+            account_id TEXT NOT NULL REFERENCES accounts(id),
+            start_date TEXT NOT NULL CHECK (
+                start_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+            ),
+            due_date TEXT CHECK (
+                due_date IS NULL
+                OR due_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+            ),
+            interest_rate_bps INTEGER NOT NULL DEFAULT 0 CHECK (
+                interest_rate_bps BETWEEN 0 AND 10000
+            ),
+            notes TEXT,
+            status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'settled')),
+            created_at TEXT NOT NULL DEFAULT ({UTC_NOW_SQL}),
+            updated_at TEXT NOT NULL DEFAULT ({UTC_NOW_SQL}),
+            deleted_at TEXT,
+            revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
+            CHECK (due_date IS NULL OR due_date >= start_date)
+        );
+
+        ALTER TABLE transactions
+            ADD COLUMN loan_id TEXT REFERENCES loans(id);
+
+        CREATE TABLE loan_payments (
+            id TEXT PRIMARY KEY CHECK (length(id) = 36),
+            loan_id TEXT NOT NULL REFERENCES loans(id),
+            account_id TEXT NOT NULL REFERENCES accounts(id),
+            transaction_id TEXT NOT NULL UNIQUE REFERENCES transactions(id),
+            amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
+            date TEXT NOT NULL CHECK (
+                date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+            ),
+            notes TEXT,
+            created_at TEXT NOT NULL DEFAULT ({UTC_NOW_SQL}),
+            updated_at TEXT NOT NULL DEFAULT ({UTC_NOW_SQL}),
+            deleted_at TEXT,
+            revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1)
+        );
+
+        CREATE INDEX idx_loans_direction_status
+            ON loans(direction, status) WHERE deleted_at IS NULL;
+        CREATE INDEX idx_loans_account
+            ON loans(account_id) WHERE deleted_at IS NULL;
+        CREATE INDEX idx_loan_payments_loan
+            ON loan_payments(loan_id, date DESC) WHERE deleted_at IS NULL;
+        CREATE INDEX idx_transactions_loan
+            ON transactions(loan_id, date DESC) WHERE deleted_at IS NULL;
+
+        CREATE TRIGGER validate_loans_update
+        BEFORE UPDATE ON loans
+        WHEN NEW.revision != OLD.revision + 1
+        BEGIN
+            SELECT RAISE(ABORT, 'invalid loan revision');
+        END;
+
+        CREATE TRIGGER validate_loan_payments_update
+        BEFORE UPDATE ON loan_payments
+        WHEN NEW.revision != OLD.revision + 1
+        BEGIN
+            SELECT RAISE(ABORT, 'invalid loan payment revision');
+        END;
+        """,
+    )
+
+    for table in ("loans", "loan_payments"):
+        _execute_script(
+            connection,
+            f"""
+            CREATE TRIGGER capture_{table}_insert
+            AFTER INSERT ON {table}
+            BEGIN
+                INSERT INTO change_log (
+                    entity_type, entity_id, operation, revision, device_id
+                ) VALUES (
+                    '{table}', NEW.id, 'insert', NEW.revision,
+                    (SELECT value FROM sync_metadata WHERE key = 'active_device_id')
+                );
+            END;
+
+            CREATE TRIGGER capture_{table}_update
+            AFTER UPDATE ON {table}
+            BEGIN
+                INSERT INTO change_log (
+                    entity_type, entity_id, operation, revision, device_id
+                ) VALUES (
+                    '{table}', NEW.id,
+                    CASE WHEN NEW.deleted_at IS NOT NULL AND OLD.deleted_at IS NULL
+                         THEN 'delete' ELSE 'update' END,
+                    NEW.revision,
+                    (SELECT value FROM sync_metadata WHERE key = 'active_device_id')
+                );
+            END;
+
+            CREATE TRIGGER prevent_{table}_hard_delete
+            BEFORE DELETE ON {table}
+            BEGIN
+                SELECT RAISE(ABORT, 'hard delete is not allowed; use a tombstone');
+            END;
+
+            CREATE TRIGGER tombstone_{table}_delete
+            AFTER UPDATE OF deleted_at ON {table}
+            WHEN NEW.deleted_at IS NOT NULL AND OLD.deleted_at IS NULL
+            BEGIN
+                INSERT INTO tombstones (
+                    entity_type, entity_id, deleted_at, revision, device_id
+                ) VALUES (
+                    '{table}', NEW.id, NEW.deleted_at, NEW.revision,
+                    (SELECT value FROM sync_metadata WHERE key = 'active_device_id')
+                )
+                ON CONFLICT(entity_type, entity_id) DO UPDATE SET
+                    deleted_at = excluded.deleted_at,
+                    revision = excluded.revision,
+                    device_id = excluded.device_id;
+            END;
+            """,
+        )

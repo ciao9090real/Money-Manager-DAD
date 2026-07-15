@@ -8,10 +8,8 @@ from PySide6.QtWidgets import (
     QDialog,
     QFormLayout,
     QHBoxLayout,
-    QLabel,
     QLineEdit,
     QSpinBox,
-    QVBoxLayout,
     QWidget,
 )
 
@@ -21,7 +19,7 @@ from app.models.payment_method import PaymentMethod
 from app.models.recurring_rule import RecurringRule
 from app.services.category_service import CategoryService
 from app.ui.category_manager import create_category_dialog
-from app.ui.components import ghost_button, primary_button, secondary_button
+from app.ui.components import dialog_shell, ghost_button
 
 
 class RecurringRuleForm(QDialog):
@@ -35,7 +33,6 @@ class RecurringRuleForm(QDialog):
     ):
         super().__init__()
         self.setWindowTitle("Recurring payment")
-        self.setMinimumWidth(560)
         self.payment_methods = payment_methods
         self.categories = categories
         self.category_service = category_service
@@ -103,15 +100,7 @@ class RecurringRuleForm(QDialog):
         self.notes = QLineEdit()
         self.notes.setPlaceholderText("Optional notes")
 
-        title = QLabel("Edit recurring payment" if rule else "Add recurring payment")
-        title.setProperty("role", "dialogTitle")
-        subtitle = QLabel("Plan subscriptions and bills without posting them before payment.")
-        subtitle.setProperty("role", "subtitle")
-        subtitle.setWordWrap(True)
-
         self.form = QFormLayout()
-        self.form.setHorizontalSpacing(16)
-        self.form.setVerticalSpacing(11)
         self.form.addRow("Name", self.name)
         self.form.addRow("Type", self.kind)
         self.form.addRow("Amount behavior", self.amount_mode)
@@ -125,23 +114,15 @@ class RecurringRuleForm(QDialog):
         self.form.addRow("Reminder", self.reminder_days)
         self.form.addRow("Notes", self.notes)
 
-        save = primary_button("Save recurring payment")
-        save.setDefault(True)
-        cancel = secondary_button("Cancel")
-        save.clicked.connect(self.accept)
-        cancel.clicked.connect(self.reject)
-        buttons = QHBoxLayout()
-        buttons.addStretch()
-        buttons.addWidget(cancel)
-        buttons.addWidget(save)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(28, 26, 28, 26)
-        layout.setSpacing(17)
-        layout.addWidget(title)
-        layout.addWidget(subtitle)
-        layout.addLayout(self.form)
-        layout.addLayout(buttons)
+        dialog_shell(
+            self,
+            "Edit recurring payment" if rule else "Add recurring payment",
+            "Plan subscriptions and bills before they are paid.",
+            self.form,
+            "Save recurring payment",
+            "upcoming",
+            minimum_width=540,
+        )
 
         self.amount_mode.currentIndexChanged.connect(self._sync_amount_field)
         self.account.currentIndexChanged.connect(self._populate_payment_methods)
@@ -244,7 +225,6 @@ class RecordRecurringDialog(QDialog):
     def __init__(self, rule: RecurringRule):
         super().__init__()
         self.setWindowTitle("Record recurring payment")
-        self.setMinimumWidth(460)
         self.amount = QLineEdit(str(rule.amount) if rule.amount is not None else "")
         self.amount.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.amount.setPlaceholderText("Actual amount")
@@ -252,35 +232,19 @@ class RecordRecurringDialog(QDialog):
         self.date.setCalendarPopup(True)
         self.date.setDisplayFormat("dd MMM yyyy")
 
-        title = QLabel("Record payment")
-        title.setProperty("role", "dialogTitle")
-        subtitle = QLabel(rule.name)
-        subtitle.setProperty("role", "subtitle")
-
         form = QFormLayout()
-        form.setHorizontalSpacing(16)
-        form.setVerticalSpacing(12)
         amount_label = "Actual amount" if rule.amount_mode == "variable" else "Amount"
         form.addRow(amount_label, self.amount)
         form.addRow("Payment date", self.date)
-
-        save = primary_button("Record expense")
-        save.setDefault(True)
-        cancel = secondary_button("Cancel")
-        save.clicked.connect(self.accept)
-        cancel.clicked.connect(self.reject)
-        buttons = QHBoxLayout()
-        buttons.addStretch()
-        buttons.addWidget(cancel)
-        buttons.addWidget(save)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(28, 26, 28, 26)
-        layout.setSpacing(18)
-        layout.addWidget(title)
-        layout.addWidget(subtitle)
-        layout.addLayout(form)
-        layout.addLayout(buttons)
+        dialog_shell(
+            self,
+            "Record payment",
+            rule.name,
+            form,
+            "Record expense",
+            "upcoming",
+            minimum_width=460,
+        )
         self.amount.setFocus()
         self.amount.selectAll()
 

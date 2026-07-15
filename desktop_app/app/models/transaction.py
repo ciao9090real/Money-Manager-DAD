@@ -17,6 +17,7 @@ class Transaction:
     transfer_group_id: str | None = None
     recurring_rule_id: str | None = None
     investment_id: str | None = None
+    loan_id: str | None = None
     notes: str | None = None
     status: str = "cleared"
     created_at: str | None = None

@@ -76,9 +76,10 @@ class TransactionTableModel(QAbstractTableModel):
         column = index.column()
         if role == Qt.ItemDataRole.DisplayRole:
             transfer = transaction.transfer_group_id is not None
+            transaction_label = "Loan" if transaction.loan_id else pretty_type(transaction.type)
             values = (
                 format_display_date(transaction.date),
-                "Transfer" if transfer else pretty_type(transaction.type),
+                "Transfer" if transfer else transaction_label,
                 self._account_label(row),
                 "" if transfer else self.category_names.get(transaction.category_id, ""),
                 transaction.description or "No description",

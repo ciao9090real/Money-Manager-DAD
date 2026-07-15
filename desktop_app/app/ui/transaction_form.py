@@ -7,9 +7,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QFormLayout,
     QHBoxLayout,
-    QLabel,
     QLineEdit,
-    QVBoxLayout,
     QWidget,
 )
 
@@ -19,7 +17,7 @@ from app.models.payment_method import PaymentMethod
 from app.models.transaction import Transaction
 from app.services.category_service import CategoryService
 from app.ui.category_manager import create_category_dialog
-from app.ui.components import ghost_button, primary_button, secondary_button
+from app.ui.components import dialog_shell, ghost_button
 
 
 class TransactionForm(QDialog):
@@ -35,7 +33,6 @@ class TransactionForm(QDialog):
     ):
         super().__init__()
         self.setWindowTitle("Transaction")
-        self.setMinimumWidth(560)
         self.categories = categories or []
         self.category_service = category_service
         self.payment_methods = payment_methods or []
@@ -74,15 +71,7 @@ class TransactionForm(QDialog):
         self.notes = QLineEdit()
         self.notes.setPlaceholderText("Optional notes")
 
-        title = QLabel("Edit transaction" if transaction else "Add transaction")
-        title.setProperty("role", "dialogTitle")
-        subtitle = QLabel("Record income, spending, transfers, or an account balance adjustment.")
-        subtitle.setProperty("role", "subtitle")
-        subtitle.setWordWrap(True)
-
         self.form = QFormLayout()
-        self.form.setHorizontalSpacing(16)
-        self.form.setVerticalSpacing(12)
         self.form.addRow("Type", self.type)
         self.form.addRow("Account", self.account)
         self.form.addRow("Transfer target", self.target_account)
@@ -93,23 +82,15 @@ class TransactionForm(QDialog):
         self.form.addRow("Description", self.description)
         self.form.addRow("Notes", self.notes)
 
-        save = primary_button("Save transaction" if transaction else "Add transaction")
-        save.setDefault(True)
-        cancel = secondary_button("Cancel")
-        save.clicked.connect(self.accept)
-        cancel.clicked.connect(self.reject)
-        buttons = QHBoxLayout()
-        buttons.addStretch()
-        buttons.addWidget(cancel)
-        buttons.addWidget(save)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(28, 26, 28, 26)
-        layout.setSpacing(18)
-        layout.addWidget(title)
-        layout.addWidget(subtitle)
-        layout.addLayout(self.form)
-        layout.addLayout(buttons)
+        dialog_shell(
+            self,
+            "Edit transaction" if transaction else "Add transaction",
+            "Record income, spending, transfers, or a balance adjustment.",
+            self.form,
+            "Save transaction" if transaction else "Add transaction",
+            "transactions",
+            minimum_width=540,
+        )
         self.type.currentIndexChanged.connect(self._sync_type_fields)
         self.account.currentIndexChanged.connect(self._populate_payment_methods)
         if transaction:

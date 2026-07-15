@@ -4,6 +4,7 @@ import sqlite3
 from decimal import Decimal
 
 from app.repositories.account_repository import AccountRepository
+from app.repositories.loan_repository import LoanRepository
 from app.repositories.payment_method_repository import PaymentMethodRepository
 from app.repositories.transaction_repository import TransactionRepository
 from app.utils.dates import month_bounds
@@ -17,6 +18,7 @@ class DashboardService:
     def __init__(self, db: sqlite3.Connection):
         self.db = db
         self.accounts = AccountRepository(db)
+        self.loans = LoanRepository(db)
         self.payment_methods = PaymentMethodRepository(db)
         self.transactions = TransactionRepository(db)
 
@@ -26,6 +28,15 @@ class DashboardService:
     def global_snapshot(self) -> dict:
         account_rows = self.accounts.list_with_balances(include_inactive=False)
         account_summary = self._account_summary(account_rows)
+        loan_rows = self.loans.list_with_balances(include_settled=False)
+        borrowed_loans = sum(
+            (outstanding for loan, _paid, outstanding in loan_rows if loan.direction == "borrowed"),
+            Decimal("0"),
+        )
+        loan_receivables = sum(
+            (outstanding for loan, _paid, outstanding in loan_rows if loan.direction == "lent"),
+            Decimal("0"),
+        )
         asset_total = sum(
             (
                 row["balance"]
@@ -33,7 +44,7 @@ class DashboardService:
                 if row["type"] not in self.LIABILITY_TYPES and row["balance"] > 0
             ),
             Decimal("0"),
-        )
+        ) + loan_receivables
         liability_debt = sum(
             (
                 abs(row["balance"])
@@ -50,8 +61,12 @@ class DashboardService:
             ),
             Decimal("0"),
         )
-        debt_total = liability_debt + bank_overdraft
-        net_worth = sum((row["balance"] for row in account_summary), Decimal("0"))
+        debt_total = liability_debt + bank_overdraft + borrowed_loans
+        net_worth = (
+            sum((row["balance"] for row in account_summary), Decimal("0"))
+            + loan_receivables
+            - borrowed_loans
+        )
         liquidity = sum(
             (row["balance"] for row in account_summary if row["type"] in self.LIQUID_TYPES),
             Decimal("0"),
@@ -70,6 +85,8 @@ class DashboardService:
             "investments_property": investments_property,
             "bank_overdraft": bank_overdraft,
             "liability_debt": liability_debt,
+            "borrowed_loans": borrowed_loans,
+            "loan_receivables": loan_receivables,
             "total_debt": debt_total,
             "monthly_income": monthly_income,
             "monthly_expenses": monthly_expenses,

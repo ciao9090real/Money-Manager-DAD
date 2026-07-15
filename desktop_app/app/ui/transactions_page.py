@@ -258,6 +258,13 @@ class TransactionsPage(QWidget):
                 "Use the Investments page to change contributions or market values.",
             )
             return
+        if transaction.loan_id:
+            QMessageBox.information(
+                self,
+                "Loan entry",
+                "Use the Loans page to change loan details or record repayments.",
+            )
+            return
         accounts = self.accounts.list(include_inactive=True)
         if not accounts:
             QMessageBox.information(self, "No accounts", "Create an account first.")
@@ -329,14 +336,14 @@ class TransactionsPage(QWidget):
 
     def _sync_selection_actions(self) -> None:
         transaction = self._selected_transaction()
-        editable = bool(transaction and not transaction.investment_id)
+        editable = bool(transaction and not transaction.investment_id and not transaction.loan_id)
         self.edit_button.setEnabled(editable)
         self.delete_button.setEnabled(editable)
-        protected_tip = (
-            "Use the Investments page for this entry"
-            if transaction and transaction.investment_id
-            else ""
-        )
+        protected_tip = ""
+        if transaction and transaction.investment_id:
+            protected_tip = "Use the Investments page for this entry"
+        elif transaction and transaction.loan_id:
+            protected_tip = "Use the Loans page for this entry"
         self.edit_button.setToolTip(protected_tip)
         self.delete_button.setToolTip(protected_tip)
 

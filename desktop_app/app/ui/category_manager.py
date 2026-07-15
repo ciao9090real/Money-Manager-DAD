@@ -21,6 +21,7 @@ from app.ui.components import (
     badge,
     badge_tone,
     create_card,
+    dialog_shell,
     ghost_button,
     pretty_type,
     primary_button,
@@ -156,7 +157,6 @@ class CategoryForm(QDialog):
     ):
         super().__init__(parent)
         self.setWindowTitle("Category")
-        self.setMinimumWidth(440)
         self.name = QLineEdit(category.name if category else "")
         self.name.setPlaceholderText("Category name")
         self.type = QComboBox()
@@ -168,32 +168,18 @@ class CategoryForm(QDialog):
             self.type.setCurrentIndex(self.type.findData(category_type))
         self.type.setEnabled(not lock_type)
 
-        title = QLabel("Edit category" if category else "New category")
-        title.setProperty("role", "dialogTitle")
-        subtitle = QLabel("Categories make reports and transaction lists easier to understand.")
-        subtitle.setProperty("role", "subtitle")
-        subtitle.setWordWrap(True)
-
         form = QFormLayout()
         form.addRow("Name", self.name)
         form.addRow("Type", self.type)
-        save = primary_button("Save category")
-        save.setDefault(True)
-        cancel = secondary_button("Cancel")
-        save.clicked.connect(self.accept)
-        cancel.clicked.connect(self.reject)
-        buttons = QHBoxLayout()
-        buttons.addStretch()
-        buttons.addWidget(cancel)
-        buttons.addWidget(save)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(28, 26, 28, 26)
-        layout.setSpacing(18)
-        layout.addWidget(title)
-        layout.addWidget(subtitle)
-        layout.addLayout(form)
-        layout.addLayout(buttons)
+        dialog_shell(
+            self,
+            "Edit category" if category else "New category",
+            "Keep transaction groups consistent and easy to scan.",
+            form,
+            "Save category",
+            "tag",
+            minimum_width=440,
+        )
         self.name.setFocus()
 
     def values(self) -> dict:

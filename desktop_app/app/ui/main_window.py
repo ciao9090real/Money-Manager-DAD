@@ -2,14 +2,24 @@ from __future__ import annotations
 
 import sqlite3
 
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QKeySequence, QShortcut
-from PySide6.QtWidgets import QApplication, QMainWindow, QStackedWidget, QHBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QStackedWidget,
+    QWidget,
+)
 
 from app.core.database import unit_of_work
 from app.repositories.settings_repository import SettingsRepository
 from app.ui.accounts_page import AccountsPage
 from app.ui.dashboard_page import DashboardPage
 from app.ui.investments_page import InvestmentsPage
+from app.ui.loans_page import LoansPage
 from app.ui.settings_page import SettingsPage
 from app.ui.sidebar import Sidebar
 from app.ui.styles import app_stylesheet
@@ -40,6 +50,7 @@ class MainWindow(QMainWindow):
         self.accounts = AccountsPage(db, on_changed=self.invalidate, notify=self.show_status)
         self.transactions = TransactionsPage(db, on_changed=self.invalidate, notify=self.show_status)
         self.investments = InvestmentsPage(db, on_changed=self.invalidate, notify=self.show_status)
+        self.loans = LoansPage(db, on_changed=self.invalidate, notify=self.show_status)
         self.upcoming = UpcomingPage(db, on_changed=self.invalidate, notify=self.show_status)
         self.settings = SettingsPage(db, notify=self.show_status, on_changed=self.invalidate)
         self.dashboard = DashboardPage(
@@ -48,6 +59,7 @@ class MainWindow(QMainWindow):
             on_add_transfer=lambda: self.transactions.add_transaction("transfer"),
             on_add_account=self.accounts.add_account,
             on_add_investment=self.investments.add_investment,
+            on_add_loan=self.loans.add_loan,
             on_add_recurring=self.upcoming.add_rule,
             on_backup=self.settings.create_backup,
         )
@@ -57,6 +69,7 @@ class MainWindow(QMainWindow):
             ("Accounts", "accounts", self.accounts),
             ("Transactions", "transactions", self.transactions),
             ("Investments", "investments", self.investments),
+            ("Loans", "loans", self.loans),
             ("Upcoming", "upcoming", self.upcoming),
             ("Settings", "settings", self.settings),
         )
@@ -67,6 +80,7 @@ class MainWindow(QMainWindow):
             "accounts",
             "transactions",
             "investments",
+            "loans",
             "upcoming",
             "settings",
         )
@@ -75,6 +89,7 @@ class MainWindow(QMainWindow):
             "accounts",
             "transactions",
             "investments",
+            "loans",
             "upcoming",
         }
         self.settings_repository = SettingsRepository(db)
@@ -92,6 +107,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.sidebar)
         layout.addWidget(self.stack, 1)
         self.setCentralWidget(root)
+        self._build_status_toast(root)
         saved_sidebar_state = self.settings_repository.get(self.SIDEBAR_SETTING, "")
         self._sidebar_auto_mode = saved_sidebar_state == ""
         initial_collapsed = (
@@ -100,8 +116,29 @@ class MainWindow(QMainWindow):
             else saved_sidebar_state == "1"
         )
         self.sidebar.set_collapsed(initial_collapsed, animate=False)
-        self.statusBar().showMessage("Local database protected · Offline ready")
         self._select_page(0)
+
+    def _build_status_toast(self, parent: QWidget) -> None:
+        self.status_toast = QFrame(parent)
+        self.status_toast.setProperty("role", "toast")
+        self.status_toast.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        toast_layout = QHBoxLayout(self.status_toast)
+        toast_layout.setContentsMargins(13, 10, 14, 10)
+        toast_layout.setSpacing(9)
+
+        status_dot = QFrame()
+        status_dot.setProperty("role", "toastDot")
+        status_dot.setFixedSize(8, 8)
+        self.status_toast_label = QLabel()
+        self.status_toast_label.setProperty("role", "toastText")
+        self.status_toast_label.setMaximumWidth(380)
+        toast_layout.addWidget(status_dot, 0, Qt.AlignmentFlag.AlignVCenter)
+        toast_layout.addWidget(self.status_toast_label)
+
+        self.status_toast.hide()
+        self.status_toast_timer = QTimer(self)
+        self.status_toast_timer.setSingleShot(True)
+        self.status_toast_timer.timeout.connect(self.status_toast.hide)
 
     def _select_page(self, index: int) -> None:
         self.stack.setCurrentIndex(index)
@@ -110,7 +147,7 @@ class MainWindow(QMainWindow):
 
     def invalidate(self, tags: set[str]) -> None:
         self.dirty_pages.update(
-            tags & {"dashboard", "accounts", "transactions", "investments", "upcoming"}
+            tags & {"dashboard", "accounts", "transactions", "investments", "loans", "upcoming"}
         )
         self._refresh_selected_if_dirty()
 
@@ -128,7 +165,25 @@ class MainWindow(QMainWindow):
         self.dirty_pages.discard(key)
 
     def show_status(self, message: str) -> None:
-        self.statusBar().showMessage(message, 4500)
+        message = message.strip()
+        if not message:
+            return
+        self.status_toast_label.setText(message)
+        self.status_toast.adjustSize()
+        self._position_status_toast()
+        self.status_toast.show()
+        self.status_toast.raise_()
+        self.status_toast_timer.start(3500)
+
+    def _position_status_toast(self) -> None:
+        if not hasattr(self, "status_toast"):
+            return
+        self.status_toast.adjustSize()
+        parent = self.status_toast.parentWidget()
+        margin = 18
+        x = max(margin, parent.width() - self.status_toast.width() - margin)
+        y = max(margin, parent.height() - self.status_toast.height() - margin)
+        self.status_toast.move(x, y)
 
     def _sidebar_state_changed(self, collapsed: bool, user_initiated: bool) -> None:
         if not user_initiated:
@@ -139,6 +194,7 @@ class MainWindow(QMainWindow):
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
+        self._position_status_toast()
         if hasattr(self, "sidebar") and getattr(self, "_sidebar_auto_mode", False):
             self.sidebar.set_collapsed(
                 self.width() < self.SIDEBAR_AUTO_COLLAPSE_WIDTH,

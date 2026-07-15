@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QCheckBox, QComboBox, QDialog, QFormLayout, QLabel, QLineEdit, QHBoxLayout, QVBoxLayout
+from PySide6.QtWidgets import QCheckBox, QComboBox, QDialog, QFormLayout, QLineEdit
 
 from app.models.account import Account
-from app.ui.components import pretty_type, primary_button, secondary_button
+from app.ui.components import dialog_shell, pretty_type
 
 
 ACCOUNT_TYPES = [
@@ -28,7 +28,6 @@ class AccountForm(QDialog):
     def __init__(self, accounts: list[Account], account: Account | None = None):
         super().__init__()
         self.setWindowTitle("Account")
-        self.setMinimumWidth(500)
         self.account = account
         self.name = QLineEdit(account.name if account else "")
         self.name.setPlaceholderText("Account name")
@@ -57,39 +56,22 @@ class AccountForm(QDialog):
         self.active = QCheckBox("Active")
         self.active.setChecked(account.is_active if account else True)
 
-        title = QLabel("Edit account" if account else "Add account")
-        title.setProperty("role", "dialogTitle")
-        subtitle = QLabel("Create a clear structure for banks, wallets, savings, assets, and liabilities.")
-        subtitle.setProperty("role", "subtitle")
-        subtitle.setWordWrap(True)
-
         form = QFormLayout()
-        form.setLabelAlignment(form.labelAlignment())
-        form.setHorizontalSpacing(16)
-        form.setVerticalSpacing(12)
         form.addRow("Name", self.name)
         form.addRow("Type", self.type)
         form.addRow("Parent", self.parent)
         form.addRow("Opening balance", self.opening_balance)
         form.addRow("", self.active)
 
-        save = primary_button("Save account")
-        save.setDefault(True)
-        cancel = secondary_button("Cancel")
-        save.clicked.connect(self.accept)
-        cancel.clicked.connect(self.reject)
-        buttons = QHBoxLayout()
-        buttons.addStretch()
-        buttons.addWidget(cancel)
-        buttons.addWidget(save)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(28, 26, 28, 26)
-        layout.setSpacing(18)
-        layout.addWidget(title)
-        layout.addWidget(subtitle)
-        layout.addLayout(form)
-        layout.addLayout(buttons)
+        dialog_shell(
+            self,
+            "Edit account" if account else "Add account",
+            "Organize banks, wallets, savings, assets, and liabilities.",
+            form,
+            "Save account",
+            "accounts",
+            minimum_width=500,
+        )
         self.name.setFocus()
 
     def values(self) -> dict:

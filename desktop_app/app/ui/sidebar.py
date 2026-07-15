@@ -85,6 +85,7 @@ class Sidebar(QFrame):
         self.width_animation = QPropertyAnimation(self, b"sidebar_width", self)
         self.width_animation.setDuration(170)
         self.width_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self.width_animation.finished.connect(self._finish_width_animation)
 
         self.root_layout = QVBoxLayout(self)
         self.root_layout.setContentsMargins(14, 18, 14, 16)
@@ -223,6 +224,9 @@ class Sidebar(QFrame):
     def _set_sidebar_width(self, width: int) -> None:
         self.setMinimumWidth(width)
         self.setMaximumWidth(width)
+
+    def _finish_width_animation(self) -> None:
+        self.sidebar_width = self.COLLAPSED_WIDTH if self.collapsed else self.EXPANDED_WIDTH
 
     sidebar_width = Property(int, _get_sidebar_width, _set_sidebar_width)
 

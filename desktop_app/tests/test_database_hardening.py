@@ -188,7 +188,9 @@ def test_account_tree_and_dashboard_avoid_n_plus_one_queries(db):
         sql for sql in statements if sql.lstrip().upper().startswith(("SELECT", "WITH"))
     ]
     db.set_trace_callback(None)
-    assert len(dashboard_selects) == 3
+    # Accounts, active loans, monthly totals, and recent activity stay constant
+    # regardless of the number of account or loan rows.
+    assert len(dashboard_selects) == 4
 
 
 def test_dashboard_distinguishes_net_worth_and_liquidity(db):

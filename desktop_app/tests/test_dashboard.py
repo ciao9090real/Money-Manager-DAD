@@ -32,6 +32,8 @@ def test_dashboard_with_zero_data(db):
     assert summary["investments_property"] == Decimal("0")
     assert summary["bank_overdraft"] == Decimal("0")
     assert summary["liability_debt"] == Decimal("0")
+    assert summary["borrowed_loans"] == Decimal("0")
+    assert summary["loan_receivables"] == Decimal("0")
     assert summary["total_debt"] == Decimal("0")
     assert summary["monthly_income"] == Decimal("0")
     assert summary["monthly_expenses"] == Decimal("0")

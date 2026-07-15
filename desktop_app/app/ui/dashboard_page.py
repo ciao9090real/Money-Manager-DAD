@@ -50,6 +50,7 @@ class DashboardPage(QWidget):
         on_add_transfer=None,
         on_add_account=None,
         on_add_investment=None,
+        on_add_loan=None,
         on_add_recurring=None,
         on_backup=None,
     ):
@@ -72,7 +73,7 @@ class DashboardPage(QWidget):
 
         self.overview_grid = QGridLayout()
         self.overview_grid.setContentsMargins(0, 0, 0, 0)
-        self.overview_grid.setSpacing(18)
+        self.overview_grid.setSpacing(14)
         self.hero = self._build_hero()
         layout.addLayout(self.overview_grid)
 
@@ -80,6 +81,7 @@ class DashboardPage(QWidget):
             on_add_transfer,
             on_add_account,
             on_add_investment,
+            on_add_loan,
             on_add_recurring,
             on_backup,
         )
@@ -94,14 +96,14 @@ class DashboardPage(QWidget):
 
         self.global_metric_grid = QGridLayout()
         self.global_metric_grid.setContentsMargins(0, 0, 0, 0)
-        self.global_metric_grid.setSpacing(18)
+        self.global_metric_grid.setSpacing(14)
         self.global_metric_widgets: list[QWidget] = []
         global_metadata = {
-            "total_assets": ("Total assets", "Positive asset balances", None),
+            "total_assets": ("Total assets", "Assets and money lent", None),
             "liquidity": ("Available liquidity", "Cash and ready balances", None),
             "bank_overdraft": ("Bank overdraft", "Negative cash balances", "negative"),
             "investments_property": ("Investments & property", "Longer-term assets", None),
-            "total_debt": ("Total debt", "Overdrafts and liabilities", "negative"),
+            "total_debt": ("Total debt", "Overdrafts, loans and liabilities", "negative"),
             "monthly_net_flow": ("Monthly net cash flow", "Income minus spending", None),
         }
         for key in (
@@ -123,7 +125,7 @@ class DashboardPage(QWidget):
 
         self.scope_grid = QGridLayout()
         self.scope_grid.setContentsMargins(0, 0, 0, 0)
-        self.scope_grid.setSpacing(18)
+        self.scope_grid.setSpacing(14)
         self.scope_widgets: list[QWidget] = []
         scope_metadata = {
             "selected_balance": ("Selected balance", "Balance in this scope", None),
@@ -177,7 +179,7 @@ class DashboardPage(QWidget):
 
         self.content_grid = QGridLayout()
         self.content_grid.setContentsMargins(0, 0, 0, 0)
-        self.content_grid.setSpacing(18)
+        self.content_grid.setSpacing(14)
         self.recent_card = recent_card
         self.accounts_card = accounts_card
         layout.addLayout(self.content_grid)
@@ -216,6 +218,7 @@ class DashboardPage(QWidget):
         on_add_transfer,
         on_add_account,
         on_add_investment,
+        on_add_loan,
         on_add_recurring,
         on_backup,
     ) -> QFrame:
@@ -229,17 +232,20 @@ class DashboardPage(QWidget):
         add_transfer = soft_button("Transfer", "transactions")
         add_account = secondary_button("Account", "plus")
         add_investment = secondary_button("Investment", "investments")
+        add_loan = secondary_button("Loan", "loans")
         add_recurring = secondary_button("Recurring", "upcoming")
         backup = secondary_button("Backup", "backup")
         add_transfer.setToolTip("Record a transfer")
         add_account.setToolTip("Add account")
         add_investment.setToolTip("Add investment")
+        add_loan.setToolTip("Add borrowed or lent money")
         add_recurring.setToolTip("Add recurring payment")
         backup.setToolTip("Create backup")
         for button in (
             add_transfer,
             add_account,
             add_investment,
+            add_loan,
             add_recurring,
             backup,
         ):
@@ -247,6 +253,7 @@ class DashboardPage(QWidget):
         add_transfer.clicked.connect(on_add_transfer or (lambda: None))
         add_account.clicked.connect(on_add_account or (lambda: None))
         add_investment.clicked.connect(on_add_investment or (lambda: None))
+        add_loan.clicked.connect(on_add_loan or (lambda: None))
         add_recurring.clicked.connect(on_add_recurring or (lambda: None))
         backup.clicked.connect(on_backup or (lambda: None))
         self.quick_action_label = label
@@ -254,6 +261,7 @@ class DashboardPage(QWidget):
             add_transfer,
             add_account,
             add_investment,
+            add_loan,
             add_recurring,
             backup,
         )
@@ -445,8 +453,8 @@ class DashboardPage(QWidget):
                 row_index,
                 1,
                 badge(
-                    "Transfer" if is_transfer else pretty_type(transaction.type),
-                    badge_tone("transfer" if is_transfer else transaction.type),
+                    "Transfer" if is_transfer else "Loan" if transaction.loan_id else pretty_type(transaction.type),
+                    badge_tone("transfer" if is_transfer else "loan" if transaction.loan_id else transaction.type),
                 ),
             )
             self.recent.setItem(
