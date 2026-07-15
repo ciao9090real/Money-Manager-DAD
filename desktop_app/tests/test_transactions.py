@@ -9,6 +9,7 @@ from app.services.category_service import CategoryService
 from app.services.account_service import AccountService
 from app.services.dashboard_service import DashboardService
 from app.services.transaction_service import TransactionService
+from app.ui.transaction_table_model import TransactionTableModel
 
 
 @pytest.fixture()
@@ -51,6 +52,30 @@ def test_adding_transfer(services):
     assert incoming.type == "transfer_in"
     assert accounts.account_balance(source.id) == Decimal("70.00")
     assert accounts.account_balance(target.id) == Decimal("80.00")
+
+
+def test_transaction_table_groups_transfer_pair_into_one_row(services):
+    accounts, transactions, _dashboard, _categories = services
+    source = accounts.create_account("Current", "current_account", opening_balance="100")
+    target = accounts.create_account("Savings", "savings_account")
+    transactions.add_transfer(
+        source.id,
+        target.id,
+        "30",
+        "2026-07-10",
+        "Monthly savings",
+    )
+    model = TransactionTableModel()
+    model.replace(
+        transactions.list_transactions(),
+        {source.id: source.name, target.id: target.name},
+        {},
+    )
+
+    assert model.rowCount() == 1
+    assert model.data(model.index(0, 1)) == "Transfer"
+    assert model.data(model.index(0, 2)) == "Current → Savings"
+    assert model.transaction_at(0).type == "transfer_out"
 
 
 def test_transfer_does_not_change_net_worth(services):

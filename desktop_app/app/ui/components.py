@@ -120,7 +120,10 @@ def page_header(title: str, subtitle: str, action: QWidget | None = None) -> QWi
     outer = QHBoxLayout(container)
     outer.setContentsMargins(0, 0, 0, 0)
     outer.setSpacing(Spacing.GAP)
-    layout = QVBoxLayout()
+    text_block = QWidget()
+    text_block.setMinimumWidth(0)
+    text_block.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    layout = QVBoxLayout(text_block)
     layout.setContentsMargins(0, 0, 0, 0)
     layout.setSpacing(5)
     title_label = QLabel(title)
@@ -128,11 +131,10 @@ def page_header(title: str, subtitle: str, action: QWidget | None = None) -> QWi
     subtitle_label = QLabel(subtitle)
     subtitle_label.setProperty("role", "subtitle")
     subtitle_label.setWordWrap(True)
-    subtitle_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+    subtitle_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
     layout.addWidget(title_label)
     layout.addWidget(subtitle_label)
-    outer.addLayout(layout)
-    outer.addStretch()
+    outer.addWidget(text_block, 1)
     if action:
         outer.addWidget(action, 0, Qt.AlignmentFlag.AlignTop)
     return container
@@ -236,20 +238,36 @@ def create_card(
     return card, layout
 
 
-def metric_card(label: str, value: str, helper: str | None = None, tone: str | None = None) -> tuple[QFrame, QLabel]:
+def metric_card(
+    label: str,
+    value: str,
+    helper: str | None = None,
+    tone: str | None = None,
+    compact: bool = False,
+) -> tuple[QFrame, QLabel]:
     card, layout = create_card(role="metricCard")
     card.setProperty("tone", tone or "neutral")
     card.setMinimumWidth(0)
     card.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-    card.setMinimumHeight(112)
-    card.setMaximumHeight(128)
+    if compact:
+        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setSpacing(4)
+        card.setMinimumHeight(92)
+        card.setMaximumHeight(104)
+    else:
+        card.setMinimumHeight(112)
+        card.setMaximumHeight(128)
     label_widget = QLabel(label)
     label_widget.setProperty("role", "metricLabel")
     label_widget.setWordWrap(True)
     label_widget.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-    value_widget = FittedLabel(value, maximum_size=27, minimum_size=12)
+    value_widget = FittedLabel(
+        value,
+        maximum_size=23 if compact else 27,
+        minimum_size=12,
+    )
     value_widget.setProperty("role", "metricValue")
-    value_widget.setMinimumHeight(36)
+    value_widget.setMinimumHeight(28 if compact else 36)
     value_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
     if tone:
         value_widget.setProperty("tone", tone)
@@ -379,6 +397,8 @@ def badge(text: str, tone: str = "neutral") -> QLabel:
     label.setProperty("tone", tone)
     label.setAlignment(Qt.AlignmentFlag.AlignCenter)
     label.setMinimumHeight(24)
+    label.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+    label.setMaximumWidth(max(54, QFontMetrics(label.font()).horizontalAdvance(text) + 28))
     return label
 
 
@@ -455,10 +475,17 @@ def style_tree(tree: QTreeWidget, visible_rows: int | None = None) -> None:
     tree.setAnimated(True)
     tree.setItemsExpandable(True)
     tree.setExpandsOnDoubleClick(True)
-    tree.setStyleSheet(f"QTreeWidget::branch {{ color: {Colors.TEXT_SECONDARY}; }}")
+    tree.setStyleSheet(
+        f"""
+        QTreeWidget::branch {{ color: {Colors.TEXT_SECONDARY}; }}
+        QTreeWidget::item:selected {{
+            background: #e3e5ff;
+            color: {Colors.TEXT};
+        }}
+        """
+    )
     tree.header().setStretchLastSection(True)
     tree.header().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-    tree.setStyleSheet(f"QTreeWidget::branch {{ color: {Colors.TEXT_SECONDARY}; }}")
     if visible_rows:
         tree.setMinimumHeight(44 + visible_rows * 44)
         tree.setMaximumHeight(44 + visible_rows * 44)

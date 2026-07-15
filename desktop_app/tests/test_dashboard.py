@@ -30,6 +30,8 @@ def test_dashboard_with_zero_data(db):
     assert summary["total_assets"] == Decimal("0")
     assert summary["liquidity"] == Decimal("0")
     assert summary["investments_property"] == Decimal("0")
+    assert summary["bank_overdraft"] == Decimal("0")
+    assert summary["liability_debt"] == Decimal("0")
     assert summary["total_debt"] == Decimal("0")
     assert summary["monthly_income"] == Decimal("0")
     assert summary["monthly_expenses"] == Decimal("0")
@@ -50,7 +52,25 @@ def test_dashboard_debt_is_absolute_per_liability(db):
     summary = dashboard.global_snapshot()
 
     assert summary["net_worth"] == Decimal("600.00")
+    assert summary["liability_debt"] == Decimal("500.00")
+    assert summary["bank_overdraft"] == Decimal("0.00")
     assert summary["total_debt"] == Decimal("500.00")
+
+
+def test_dashboard_counts_negative_liquidity_as_bank_overdraft(db):
+    accounts = AccountService(db)
+    accounts.create_account("Current", "current_account", opening_balance="-9067.97")
+    accounts.create_account("Cash", "cash", opening_balance="90")
+    accounts.create_account("Property", "property", opening_balance="400000")
+
+    summary = DashboardService(db).global_snapshot()
+
+    assert summary["liquidity"] == Decimal("-8977.97")
+    assert summary["bank_overdraft"] == Decimal("9067.97")
+    assert summary["liability_debt"] == Decimal("0.00")
+    assert summary["total_debt"] == Decimal("9067.97")
+    assert summary["total_assets"] == Decimal("400090.00")
+    assert summary["net_worth"] == Decimal("391022.03")
 
 
 def test_dashboard_scope_includes_descendant_accounts_only(db):

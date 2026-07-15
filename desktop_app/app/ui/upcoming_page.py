@@ -30,6 +30,7 @@ from app.ui.components import (
     create_card,
     danger_button,
     empty_state,
+    fit_item_view_height,
     ghost_button,
     metric_card,
     page_layout,
@@ -65,6 +66,7 @@ class UpcomingPage(QWidget):
             "Subscriptions, bills, and payments that need attention",
             add_button,
         )
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         self.metric_grid = QGridLayout()
         self.metric_grid.setContentsMargins(0, 0, 0, 0)
@@ -90,6 +92,8 @@ class UpcomingPage(QWidget):
         header = self.table.horizontalHeader()
         for column in (0, 2, 3, 5, 6):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(2, 118)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         self.table.itemSelectionChanged.connect(self._sync_actions)
@@ -266,7 +270,15 @@ class UpcomingPage(QWidget):
         self.empty.setVisible(not has_rules)
         self.table.setVisible(has_rules)
         self.action_container.setVisible(has_rules)
-        self.schedule_card.setMaximumHeight(16777215 if has_rules else 330)
+        if has_rules and len(rules) <= 8:
+            fit_item_view_height(self.table, len(rules), maximum_rows=8)
+            self.schedule_card.setMaximumHeight(190 + self.table.maximumHeight())
+        elif has_rules:
+            self.table.setMaximumHeight(16777215)
+            self.table.setMinimumHeight(320)
+            self.schedule_card.setMaximumHeight(16777215)
+        else:
+            self.schedule_card.setMaximumHeight(330)
         self._sync_actions()
 
     @staticmethod

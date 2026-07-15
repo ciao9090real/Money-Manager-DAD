@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -36,12 +37,22 @@ from app.ui.components import (
     soft_button,
     style_table,
 )
+from app.ui.transaction_table_model import group_transaction_rows
 from app.utils.money import format_money
 from app.utils.dates import format_display_date
 
 
 class DashboardPage(QWidget):
-    def __init__(self, db: sqlite3.Connection, on_add_transaction=None, on_add_account=None, on_backup=None):
+    def __init__(
+        self,
+        db: sqlite3.Connection,
+        on_add_transaction=None,
+        on_add_transfer=None,
+        on_add_account=None,
+        on_add_investment=None,
+        on_add_recurring=None,
+        on_backup=None,
+    ):
         super().__init__()
         self.service = DashboardService(db)
         self.account_repo = AccountRepository(db)
@@ -66,7 +77,11 @@ class DashboardPage(QWidget):
         layout.addLayout(self.overview_grid)
 
         self.quick_actions = self._build_quick_actions(
-            on_add_transaction, on_add_account, on_backup
+            on_add_transfer,
+            on_add_account,
+            on_add_investment,
+            on_add_recurring,
+            on_backup,
         )
         layout.addWidget(self.quick_actions)
 
@@ -84,11 +99,19 @@ class DashboardPage(QWidget):
         global_metadata = {
             "total_assets": ("Total assets", "Positive asset balances", None),
             "liquidity": ("Available liquidity", "Cash and ready balances", None),
+            "bank_overdraft": ("Bank overdraft", "Negative cash balances", "negative"),
             "investments_property": ("Investments & property", "Longer-term assets", None),
-            "total_debt": ("Total debt", "Liability balances owed", "negative"),
+            "total_debt": ("Total debt", "Overdrafts and liabilities", "negative"),
             "monthly_net_flow": ("Monthly net cash flow", "Income minus spending", None),
         }
-        for key in ("total_assets", "liquidity", "investments_property", "total_debt", "monthly_net_flow"):
+        for key in (
+            "total_assets",
+            "liquidity",
+            "bank_overdraft",
+            "total_debt",
+            "investments_property",
+            "monthly_net_flow",
+        ):
             label, helper, tone = global_metadata[key]
             card, value = metric_card(label, format_money(0), helper, tone)
             self.global_cards[key] = value
@@ -112,7 +135,13 @@ class DashboardPage(QWidget):
         }
         for key in ("selected_balance", "liquidity", "monthly_income", "monthly_expenses", "monthly_net_flow", "scope_children"):
             label, helper, tone = scope_metadata[key]
-            card, value = metric_card(label, "0" if key == "scope_children" else format_money(0), helper, tone)
+            card, value = metric_card(
+                label,
+                "0" if key == "scope_children" else format_money(0),
+                helper,
+                tone,
+                compact=True,
+            )
             self.scope_cards[key] = value
             self.scope_widgets.append(card)
         layout.addLayout(self.scope_grid)
@@ -182,30 +211,52 @@ class DashboardPage(QWidget):
         layout.addLayout(bottom)
         return hero
 
-    def _build_quick_actions(self, on_add_transaction, on_add_account, on_backup) -> QFrame:
+    def _build_quick_actions(
+        self,
+        on_add_transfer,
+        on_add_account,
+        on_add_investment,
+        on_add_recurring,
+        on_backup,
+    ) -> QFrame:
         container = QFrame()
         container.setProperty("role", "quickActions")
-        row = QHBoxLayout(container)
-        row.setContentsMargins(14, 10, 14, 10)
-        row.setSpacing(8)
+        self.quick_action_layout = QGridLayout(container)
+        self.quick_action_layout.setContentsMargins(14, 10, 14, 10)
+        self.quick_action_layout.setSpacing(8)
         label = QLabel("Quick actions")
         label.setProperty("role", "metricLabel")
-        add_transaction = soft_button("Transaction", "plus")
+        add_transfer = soft_button("Transfer", "transactions")
         add_account = secondary_button("Account", "plus")
+        add_investment = secondary_button("Investment", "investments")
+        add_recurring = secondary_button("Recurring", "upcoming")
         backup = secondary_button("Backup", "backup")
-        add_transaction.setToolTip("Add transaction")
+        add_transfer.setToolTip("Record a transfer")
         add_account.setToolTip("Add account")
+        add_investment.setToolTip("Add investment")
+        add_recurring.setToolTip("Add recurring payment")
         backup.setToolTip("Create backup")
-        for button in (add_transaction, add_account, backup):
-            button.setMaximumWidth(175)
-        add_transaction.clicked.connect(on_add_transaction or (lambda: None))
+        for button in (
+            add_transfer,
+            add_account,
+            add_investment,
+            add_recurring,
+            backup,
+        ):
+            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        add_transfer.clicked.connect(on_add_transfer or (lambda: None))
         add_account.clicked.connect(on_add_account or (lambda: None))
+        add_investment.clicked.connect(on_add_investment or (lambda: None))
+        add_recurring.clicked.connect(on_add_recurring or (lambda: None))
         backup.clicked.connect(on_backup or (lambda: None))
-        row.addWidget(label)
-        row.addStretch()
-        row.addWidget(add_transaction)
-        row.addWidget(add_account)
-        row.addWidget(backup)
+        self.quick_action_label = label
+        self.quick_action_buttons = (
+            add_transfer,
+            add_account,
+            add_investment,
+            add_recurring,
+            backup,
+        )
         return container
 
     def _build_scope_selector(self) -> QFrame:
@@ -242,6 +293,7 @@ class DashboardPage(QWidget):
         if not hasattr(self, "overview_grid"):
             return
         width = max(1, self.width())
+        self._layout_quick_actions(width)
         clear_layout(self.overview_grid)
         for column in range(2):
             self.overview_grid.setColumnStretch(column, 0)
@@ -249,7 +301,7 @@ class DashboardPage(QWidget):
         self.overview_grid.setColumnStretch(0, 1)
 
         clear_layout(self.global_metric_grid)
-        global_columns = 5 if width >= 900 else 3 if width >= 620 else 2
+        global_columns = 6 if width >= 1100 else 3 if width >= 620 else 2
         for column in range(global_columns):
             self.global_metric_grid.setColumnStretch(column, 1)
         for index, card in enumerate(self.global_metric_widgets):
@@ -275,6 +327,26 @@ class DashboardPage(QWidget):
             self.content_grid.addWidget(self.accounts_card, 1, 0)
             self.content_grid.setColumnStretch(0, 1)
 
+    def _layout_quick_actions(self, width: int) -> None:
+        if not hasattr(self, "quick_action_layout"):
+            return
+        compact = width < 1050
+        if getattr(self, "_quick_actions_compact", None) == compact:
+            return
+        self._quick_actions_compact = compact
+        clear_layout(self.quick_action_layout)
+        if compact:
+            self.quick_action_layout.addWidget(self.quick_action_label, 0, 0, 1, 3)
+            for index, button in enumerate(self.quick_action_buttons):
+                self.quick_action_layout.addWidget(button, 1 + index // 3, index % 3)
+            for column in range(3):
+                self.quick_action_layout.setColumnStretch(column, 1)
+        else:
+            self.quick_action_layout.addWidget(self.quick_action_label, 0, 0)
+            for index, button in enumerate(self.quick_action_buttons, start=1):
+                self.quick_action_layout.addWidget(button, 0, index)
+                self.quick_action_layout.setColumnStretch(index, 1)
+
     def refresh(self) -> None:
         global_data = self.service.global_snapshot()
         self._populate_scope_selector()
@@ -285,6 +357,16 @@ class DashboardPage(QWidget):
             label.setToolTip(full_value)
             if key == "monthly_net_flow":
                 tone = "positive" if value >= 0 else "negative"
+                label.setProperty("tone", tone)
+                label.style().unpolish(label)
+                label.style().polish(label)
+            if key == "liquidity":
+                tone = "negative" if value < 0 else "neutral"
+                label.setProperty("tone", tone)
+                label.style().unpolish(label)
+                label.style().polish(label)
+            if key in {"bank_overdraft", "total_debt"}:
+                tone = "negative" if value > 0 else "neutral"
                 label.setProperty("tone", tone)
                 label.style().unpolish(label)
                 label.style().polish(label)
@@ -318,6 +400,11 @@ class DashboardPage(QWidget):
             full_value = format_money(data[key])
             label.setText(compact_money(data[key]))
             label.setToolTip(full_value)
+            if key in {"selected_balance", "liquidity"}:
+                tone = "negative" if data[key] < 0 else "neutral"
+                label.setProperty("tone", tone)
+                label.style().unpolish(label)
+                label.style().polish(label)
             if key == "monthly_net_flow":
                 tone = "positive" if data[key] >= 0 else "negative"
                 label.setProperty("tone", tone)
@@ -327,31 +414,52 @@ class DashboardPage(QWidget):
         account_names = {
             account.id: account.name for account in self.account_repo.list(include_inactive=True)
         }
-        self.recent.setRowCount(len(data["recent_transactions"]))
-        for row_index, transaction in enumerate(data["recent_transactions"]):
+        recent_rows = group_transaction_rows(data["recent_transactions"])
+        self.recent.setRowCount(len(recent_rows))
+        for row_index, display_row in enumerate(recent_rows):
+            transaction = display_row.selected_transaction()
+            is_transfer = transaction.transfer_group_id is not None
+            account_label = account_names.get(transaction.account_id, "Inactive account")
+            outgoing = next(
+                (item for item in display_row.transactions() if item.type == "transfer_out"),
+                None,
+            )
+            incoming = next(
+                (item for item in display_row.transactions() if item.type == "transfer_in"),
+                None,
+            )
+            if outgoing and incoming:
+                source = account_names.get(outgoing.account_id, "Inactive account")
+                target = account_names.get(incoming.account_id, "Inactive account")
+                account_label = f"{source} → {target}"
             values = [
                 format_display_date(transaction.date),
                 "",
                 transaction.description or "No description",
-                account_names.get(transaction.account_id, "Inactive account"),
+                account_label,
                 "",
             ]
             for col_index, value in enumerate(values):
                 self.recent.setItem(row_index, col_index, QTableWidgetItem(str(value)))
             self.recent.setCellWidget(
-                row_index, 1, badge(pretty_type(transaction.type), badge_tone(transaction.type))
+                row_index,
+                1,
+                badge(
+                    "Transfer" if is_transfer else pretty_type(transaction.type),
+                    badge_tone("transfer" if is_transfer else transaction.type),
+                ),
             )
             self.recent.setItem(
                 row_index,
                 4,
                 amount_item(
-                    transaction.amount,
-                    neutral=transaction.type in {"transfer_out", "transfer_in", "adjustment"},
+                    abs(transaction.amount) if is_transfer else transaction.amount,
+                    neutral=is_transfer or transaction.type == "adjustment",
                 ),
             )
-        self.recent.setVisible(bool(data["recent_transactions"]))
-        self.recent_empty.setVisible(not data["recent_transactions"])
-        fit_item_view_height(self.recent, len(data["recent_transactions"]), maximum_rows=6)
+        self.recent.setVisible(bool(recent_rows))
+        self.recent_empty.setVisible(not recent_rows)
+        fit_item_view_height(self.recent, len(recent_rows), maximum_rows=6)
 
         accounts = data["accounts"][:8]
         self.accounts.setRowCount(len(accounts))

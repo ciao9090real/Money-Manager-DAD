@@ -4,7 +4,15 @@ import sqlite3
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
-from PySide6.QtWidgets import QLabel, QMessageBox, QPushButton, QTreeWidget, QTreeWidgetItem, QWidget
+from PySide6.QtWidgets import (
+    QHeaderView,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QWidget,
+)
 
 from app.repositories.investment_repository import InvestmentRepository
 from app.services.account_service import AccountService
@@ -40,6 +48,11 @@ class AccountsPage(QWidget):
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(["Account", "Type", "Balance", "Status"])
         style_tree(self.tree, visible_rows=8)
+        header = self.tree.header()
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for column in (1, 2, 3):
+            header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
         add_button = primary_button("Add account", "plus")
         add_payment_button = soft_button("Add payment method", "plus")
         add_payment_button.setMaximumWidth(190)
@@ -71,6 +84,7 @@ class AccountsPage(QWidget):
             self.deactivate_button,
         ):
             button.setEnabled(False)
+            button.setVisible(False)
         self.tree.itemSelectionChanged.connect(self._sync_actions)
 
         layout = page_layout(
@@ -125,7 +139,7 @@ class AccountsPage(QWidget):
         fit_item_view_height(
             self.tree,
             account_count + method_count,
-            minimum_rows=2,
+            minimum_rows=1,
             maximum_rows=10,
         )
         self.empty.setVisible(not tree)
@@ -286,3 +300,7 @@ class AccountsPage(QWidget):
         self.deactivate_button.setEnabled(has_account and not managed_investment)
         self.edit_payment_button.setEnabled(has_method)
         self.toggle_payment_button.setEnabled(has_method)
+        self.edit_button.setVisible(has_account and not managed_investment)
+        self.deactivate_button.setVisible(has_account and not managed_investment)
+        self.edit_payment_button.setVisible(has_method)
+        self.toggle_payment_button.setVisible(has_method)

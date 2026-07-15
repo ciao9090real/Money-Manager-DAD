@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QFrame,
@@ -27,6 +27,7 @@ from app.ui.components import (
     create_card,
     danger_button,
     empty_state,
+    fit_item_view_height,
     ghost_button,
     page_layout,
     primary_button,
@@ -92,10 +93,12 @@ class TransactionsPage(QWidget):
             "Search and review every movement across your accounts",
             self.add_button,
         )
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         card, card_layout = create_card(
             "Activity",
             subtitle="Income, expenses, transfers, and balance adjustments",
         )
+        self.activity_card = card
         filters = []
         for key, label in (("all", "All"), ("income", "Income"), ("expense", "Expenses"), ("transfer", "Transfers")):
             button = chip_button(label)
@@ -167,9 +170,19 @@ class TransactionsPage(QWidget):
         self.next_cursor = self._cursor_for(transactions)
         self.load_more_button.setVisible(len(transactions) == self.PAGE_SIZE)
         suffix = "+" if len(transactions) == self.PAGE_SIZE else ""
-        self.result_label.setText(f"{len(transactions)}{suffix} shown")
+        self.result_label.setText(f"{self.table_model.rowCount()}{suffix} shown")
         self.empty.setVisible(not transactions)
         self.table.setVisible(bool(transactions))
+        displayed_rows = self.table_model.rowCount()
+        if transactions and displayed_rows <= 10:
+            fit_item_view_height(self.table, displayed_rows, maximum_rows=10)
+            self.activity_card.setMaximumHeight(190 + self.table.maximumHeight())
+        elif transactions:
+            self.table.setMaximumHeight(16777215)
+            self.table.setMinimumHeight(320)
+            self.activity_card.setMaximumHeight(16777215)
+        else:
+            self.activity_card.setMaximumHeight(350)
         self._sync_selection_actions()
 
     def load_more(self) -> None:
@@ -187,7 +200,7 @@ class TransactionsPage(QWidget):
         self.load_more_button.setVisible(len(transactions) == self.PAGE_SIZE)
         self.result_label.setText(f"{self.table_model.rowCount()} shown")
 
-    def add_transaction(self) -> None:
+    def add_transaction(self, initial_type: str | None = None) -> None:
         accounts = self.accounts.list(include_inactive=False)
         if not accounts:
             QMessageBox.information(self, "No accounts", "Create an account first.")
@@ -198,6 +211,10 @@ class TransactionsPage(QWidget):
             self.payment_methods.list_payment_methods(),
             category_service=self.categories,
         )
+        if initial_type:
+            index = form.type.findData(initial_type)
+            if index >= 0:
+                form.type.setCurrentIndex(index)
         if form.exec():
             values = form.values()
             try:

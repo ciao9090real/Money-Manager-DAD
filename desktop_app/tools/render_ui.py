@@ -7,6 +7,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication
+from PySide6.QtTest import QTest
 
 from app.core.database import connect
 from app.services.account_service import AccountService
@@ -48,6 +49,7 @@ def main() -> None:
                 app.processEvents()
                 window.grab().save(str(output / f"ui-{name}.png"))
             window.resize(1000, 720)
+            QTest.qWait(window.sidebar.width_animation.duration() + 40)
             app.processEvents()
             for index, name in (
                 (0, "dashboard-compact"),

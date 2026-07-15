@@ -34,7 +34,7 @@ class DashboardService:
             ),
             Decimal("0"),
         )
-        debt_total = sum(
+        liability_debt = sum(
             (
                 abs(row["balance"])
                 for row in account_summary
@@ -42,6 +42,15 @@ class DashboardService:
             ),
             Decimal("0"),
         )
+        bank_overdraft = sum(
+            (
+                abs(row["balance"])
+                for row in account_summary
+                if row["type"] in self.LIQUID_TYPES and row["balance"] < 0
+            ),
+            Decimal("0"),
+        )
+        debt_total = liability_debt + bank_overdraft
         net_worth = sum((row["balance"] for row in account_summary), Decimal("0"))
         liquidity = sum(
             (row["balance"] for row in account_summary if row["type"] in self.LIQUID_TYPES),
@@ -59,6 +68,8 @@ class DashboardService:
             "total_assets": asset_total,
             "liquidity": liquidity,
             "investments_property": investments_property,
+            "bank_overdraft": bank_overdraft,
+            "liability_debt": liability_debt,
             "total_debt": debt_total,
             "monthly_income": monthly_income,
             "monthly_expenses": monthly_expenses,

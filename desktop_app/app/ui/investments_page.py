@@ -27,6 +27,7 @@ from app.ui.components import (
     compact_money,
     create_card,
     empty_state,
+    fit_item_view_height,
     ghost_button,
     metric_card,
     page_layout,
@@ -60,6 +61,7 @@ class InvestmentsPage(QWidget):
             "Track contributions, current values, and portfolio performance",
             add_button,
         )
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         self.metric_grid = QGridLayout()
         self.metric_grid.setContentsMargins(0, 0, 0, 0)
@@ -193,7 +195,15 @@ class InvestmentsPage(QWidget):
         controls = self.edit_button.parentWidget()
         if controls:
             controls.setVisible(has_investments)
-        self.portfolio_card.setMaximumHeight(16777215 if has_investments else 300)
+        if has_investments and len(snapshots) <= 8:
+            fit_item_view_height(self.table, len(snapshots), maximum_rows=8)
+            self.portfolio_card.setMaximumHeight(175 + self.table.maximumHeight())
+        elif has_investments:
+            self.table.setMaximumHeight(16777215)
+            self.table.setMinimumHeight(320)
+            self.portfolio_card.setMaximumHeight(16777215)
+        else:
+            self.portfolio_card.setMaximumHeight(300)
         self._sync_actions()
 
     def add_investment(self) -> None:

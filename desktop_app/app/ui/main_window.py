@@ -45,7 +45,10 @@ class MainWindow(QMainWindow):
         self.dashboard = DashboardPage(
             db,
             on_add_transaction=self.transactions.add_transaction,
+            on_add_transfer=lambda: self.transactions.add_transaction("transfer"),
             on_add_account=self.accounts.add_account,
+            on_add_investment=self.investments.add_investment,
+            on_add_recurring=self.upcoming.add_rule,
             on_backup=self.settings.create_backup,
         )
 
