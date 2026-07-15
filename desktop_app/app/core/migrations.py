@@ -6,7 +6,7 @@ from pathlib import Path
 from uuid import uuid4
 
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 UTC_NOW_SQL = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"
 
 
@@ -45,6 +45,9 @@ def migrate(connection: sqlite3.Connection) -> None:
         if version < 6:
             _run_migration(connection, 6, _migrate_v6)
             version = 6
+        if version < 7:
+            _run_migration(connection, 7, _migrate_v7)
+            version = 7
         assert_database_integrity(connection)
     except Exception:
         connection.rollback()
@@ -105,6 +108,11 @@ def _backup_before_migration(connection: sqlite3.Connection, from_version: int) 
         connection.backup(destination)
     finally:
         destination.close()
+    backups = sorted(
+        backup_directory.glob("money_manager_pre_migration_v*.db"), reverse=True
+    )
+    for expired in backups[10:]:
+        expired.unlink(missing_ok=True)
     return target
 
 
@@ -1078,3 +1086,24 @@ def _migrate_v6(connection: sqlite3.Connection) -> None:
             END;
             """,
         )
+
+
+def _migrate_v7(connection: sqlite3.Connection) -> None:
+    _execute_script(
+        connection,
+        """
+        ALTER TABLE recurring_rules
+            ADD COLUMN transaction_type TEXT NOT NULL DEFAULT 'expense'
+            CHECK (transaction_type IN ('income', 'expense'));
+
+        DROP TRIGGER validate_recurring_rules_update;
+
+        CREATE TRIGGER validate_recurring_rules_update
+        BEFORE UPDATE ON recurring_rules
+        WHEN NEW.revision != OLD.revision + 1
+          OR NEW.transaction_type NOT IN ('income', 'expense')
+        BEGIN
+            SELECT RAISE(ABORT, 'invalid recurring rule values or revision');
+        END;
+        """,
+    )

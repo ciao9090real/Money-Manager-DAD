@@ -6,6 +6,7 @@ from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
+    QFileDialog,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -16,12 +17,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.core.paths import app_data_dir, database_path
+from app.core.app_info import APP_VERSION
+from app.core.paths import app_data_dir, backup_dir, database_path
 from app.services.backup_service import BackupService
 from app.services.export_service import ExportService
 from app.ui.category_manager import CategoryManagerDialog
 from app.ui.components import (
     badge,
+    actions_row,
     clear_layout,
     create_card,
     page_layout,
@@ -30,6 +33,8 @@ from app.ui.components import (
     soft_button,
 )
 from app.ui.icons import LineIcon
+from app.ui.recently_deleted_dialog import RecentlyDeletedDialog
+from app.ui.theme import Colors
 
 
 class SettingsPage(QWidget):
@@ -79,11 +84,13 @@ class SettingsPage(QWidget):
 
         backup_button = primary_button("Create backup", "backup")
         backup_button.clicked.connect(self.create_backup)
+        restore_button = secondary_button("Restore backup", "restore")
+        restore_button.clicked.connect(self.restore_backup)
         backup_card = self._tool_card(
             "Backup & recovery",
-            "Create a safe point-in-time copy including all WAL changes.",
+            "Daily snapshots are automatic. Create or restore a verified copy anytime.",
             "backup",
-            backup_button,
+            actions_row(backup_button, restore_button),
         )
 
         export_button = soft_button("Export CSV", "download")
@@ -104,7 +111,16 @@ class SettingsPage(QWidget):
             categories_button,
         )
 
-        self.tool_cards = [backup_card, export_card, categories_card]
+        deleted_button = soft_button("Open Recently Deleted", "restore")
+        deleted_button.clicked.connect(self.manage_recently_deleted)
+        deleted_card = self._tool_card(
+            "Recently deleted",
+            "Recover deleted transactions and recurring payments without bypassing sync history.",
+            "restore",
+            deleted_button,
+        )
+
+        self.tool_cards = [backup_card, export_card, categories_card, deleted_card]
         layout.addLayout(self.tools_grid)
 
         privacy_card, privacy_layout = create_card(
@@ -126,7 +142,7 @@ class SettingsPage(QWidget):
         chips.setSpacing(8)
         chips.addWidget(badge("Offline ready", "positive"))
         chips.addWidget(badge("SQLite + WAL", "info"))
-        chips.addWidget(badge("Version 0.2.0", "neutral"))
+        chips.addWidget(badge(f"Version {APP_VERSION}", "neutral"))
         chips.addStretch()
         privacy_text.addWidget(description)
         privacy_text.addLayout(chips)
@@ -142,10 +158,10 @@ class SettingsPage(QWidget):
         tile.setFixedSize(44, 44)
         tile_layout = QHBoxLayout(tile)
         tile_layout.setContentsMargins(11, 11, 11, 11)
-        tile_layout.addWidget(LineIcon(icon_name, "#5657d8", 22))
+        tile_layout.addWidget(LineIcon(icon_name, Colors.PRIMARY, 22))
         return tile
 
-    def _tool_card(self, title: str, description: str, icon_name: str, button) -> QFrame:
+    def _tool_card(self, title: str, description: str, icon_name: str, action) -> QFrame:
         card, card_layout = create_card(role="card")
         top = QHBoxLayout()
         top.addWidget(self._icon_tile(icon_name))
@@ -159,7 +175,7 @@ class SettingsPage(QWidget):
         card_layout.addWidget(title_label)
         card_layout.addWidget(description_label)
         card_layout.addStretch()
-        card_layout.addWidget(button, 0, Qt.AlignmentFlag.AlignLeft)
+        card_layout.addWidget(action, 0, Qt.AlignmentFlag.AlignLeft)
         card.setMinimumHeight(190)
         return card
 
@@ -170,12 +186,12 @@ class SettingsPage(QWidget):
     def _layout_tools(self) -> None:
         if not hasattr(self, "tools_grid"):
             return
-        columns = 3 if self.width() >= 1120 else 2 if self.width() >= 700 else 1
+        columns = 2 if self.width() >= 760 else 1
         if getattr(self, "_tool_columns", None) == columns:
             return
         self._tool_columns = columns
         clear_layout(self.tools_grid)
-        for column in range(3):
+        for column in range(2):
             self.tools_grid.setColumnStretch(column, 1 if column < columns else 0)
         for index, card in enumerate(self.tool_cards):
             self.tools_grid.addWidget(card, index // columns, index % columns)
@@ -196,6 +212,37 @@ class SettingsPage(QWidget):
         except (OSError, RuntimeError, sqlite3.Error) as exc:
             QMessageBox.warning(self, "Backup failed", str(exc))
 
+    def restore_backup(self) -> None:
+        source, _filter = QFileDialog.getOpenFileName(
+            self,
+            "Restore Money Manager backup",
+            str(backup_dir()),
+            "SQLite backup (*.db);;All files (*)",
+        )
+        if not source:
+            return
+        answer = QMessageBox.warning(
+            self,
+            "Restore backup",
+            "Restore this backup now? Your current database will be saved first, then all open pages will refresh.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            rollback = BackupService(self.db).restore_backup(source)
+            self.on_changed(
+                {"dashboard", "accounts", "transactions", "investments", "loans", "upcoming"}
+            )
+            self.notify("Backup restored")
+            QMessageBox.information(
+                self,
+                "Backup restored",
+                f"The backup was restored successfully.\n\nYour previous database was saved to:\n{rollback}",
+            )
+        except (OSError, ValueError, RuntimeError, sqlite3.Error) as exc:
+            QMessageBox.warning(self, "Restore failed", str(exc))
+
     def export_transactions(self) -> None:
         try:
             target = ExportService(self.db).export_transactions_csv()
@@ -206,3 +253,6 @@ class SettingsPage(QWidget):
 
     def manage_categories(self) -> None:
         CategoryManagerDialog(self.db, self.on_changed, self.notify).exec()
+
+    def manage_recently_deleted(self) -> None:
+        RecentlyDeletedDialog(self.db, self.on_changed, self.notify).exec()

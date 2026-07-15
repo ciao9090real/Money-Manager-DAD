@@ -63,7 +63,7 @@ class UpcomingPage(QWidget):
         layout = page_layout(
             self,
             "Upcoming",
-            "Subscriptions, bills, and payments that need attention",
+            "Wages, subscriptions, bills, and repeating money movements",
             add_button,
         )
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
@@ -74,10 +74,10 @@ class UpcomingPage(QWidget):
         self.metric_widgets: list[QWidget] = []
         self.metric_values: dict[str, QLabel] = {}
         for key, label, helper, tone in (
-            ("due_soon_count", "Due in 30 days", "Active upcoming payments", None),
+            ("due_soon_count", "Due in 30 days", "Income and payments", None),
             ("overdue_count", "Overdue", "Past their expected date", "negative"),
-            ("expected_30_days", "Expected amount", "Known amounts in 30 days", None),
-            ("variable_count", "Need confirmation", "Variable amounts due", "info"),
+            ("expected_income_30_days", "Scheduled income", "Known income in 30 days", "positive"),
+            ("expected_outgoings_30_days", "Scheduled out", "Known payments in 30 days", "negative"),
         ):
             card, value = metric_card(label, "0", helper, tone)
             self.metric_widgets.append(card)
@@ -121,6 +121,7 @@ class UpcomingPage(QWidget):
         filters = []
         for key, label in (
             ("all", "All"),
+            ("income", "Income"),
             ("subscription", "Subscriptions"),
             ("bill", "Bills"),
             ("paused", "Paused"),
@@ -161,16 +162,16 @@ class UpcomingPage(QWidget):
         controls_layout.addWidget(self.action_container)
 
         card, card_layout = create_card(
-            "Payment schedule",
-            subtitle="Review upcoming dates and record payments when they happen",
+            "Recurring schedule",
+            subtitle="Review expected money in and out, then record it when it happens",
         )
         self.schedule_card = card
         card_layout.addWidget(controls)
-        empty_action = primary_button("Add recurring payment", "plus")
+        empty_action = primary_button("Add recurring schedule", "plus")
         empty_action.clicked.connect(self.add_rule)
         self.empty = empty_state(
-            "No recurring payments yet",
-            "Add a subscription, bill, or other repeating payment.",
+            "No recurring schedules yet",
+            "Add a wage, subscription, bill, or other repeating amount.",
             empty_action,
         )
         card_layout.addWidget(self.empty)
@@ -214,7 +215,7 @@ class UpcomingPage(QWidget):
         summary = self.service.summary()
         for key, label in self.metric_values.items():
             value = summary[key]
-            if key == "expected_30_days":
+            if key in {"expected_income_30_days", "expected_outgoings_30_days"}:
                 label.setText(compact_money(value))
                 label.setToolTip(format_money(value))
             else:
@@ -223,6 +224,8 @@ class UpcomingPage(QWidget):
         filters = {}
         if self.current_filter == "paused":
             filters["status"] = "paused"
+        elif self.current_filter == "income":
+            filters["transaction_type"] = "income"
         elif self.current_filter in {"subscription", "bill"}:
             filters["kind"] = self.current_filter
         rules = self.service.list_rules(**filters)
@@ -242,7 +245,14 @@ class UpcomingPage(QWidget):
             self.table.setCellWidget(
                 row,
                 2,
-                badge(pretty_type(rule.kind), "info" if rule.kind == "subscription" else "neutral"),
+                badge(
+                    "Income" if rule.transaction_type == "income" else pretty_type(rule.kind),
+                    "positive"
+                    if rule.transaction_type == "income"
+                    else "info"
+                    if rule.kind == "subscription"
+                    else "neutral",
+                ),
             )
             self.table.setItem(row, 3, QTableWidgetItem(pretty_type(rule.frequency)))
             self.table.setItem(
@@ -260,6 +270,9 @@ class UpcomingPage(QWidget):
             amount_item = QTableWidgetItem(amount_text)
             amount_item.setTextAlignment(
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            )
+            amount_item.setForeground(
+                QColor(Colors.POSITIVE if rule.transaction_type == "income" else Colors.NEGATIVE)
             )
             self.table.setItem(row, 5, amount_item)
             status, tone = self._display_status(rule, today)
@@ -305,10 +318,10 @@ class UpcomingPage(QWidget):
         if form.exec():
             try:
                 self.service.create_rule(**form.values())
-                self.notify("Recurring payment created")
-                self.on_changed({"upcoming"})
+                self.notify("Recurring schedule created")
+                self.on_changed({"upcoming", "dashboard"})
             except ValueError as exc:
-                QMessageBox.warning(self, "Could not save recurring payment", str(exc))
+                QMessageBox.warning(self, "Could not save recurring schedule", str(exc))
 
     def edit_rule(self) -> None:
         rule = self._selected_rule()
@@ -324,10 +337,10 @@ class UpcomingPage(QWidget):
         if form.exec():
             try:
                 self.service.update_rule(rule.id, **form.values())
-                self.notify("Recurring payment updated")
-                self.on_changed({"upcoming"})
+                self.notify("Recurring schedule updated")
+                self.on_changed({"upcoming", "dashboard"})
             except ValueError as exc:
-                QMessageBox.warning(self, "Could not save recurring payment", str(exc))
+                QMessageBox.warning(self, "Could not save recurring schedule", str(exc))
 
     def record_payment(self) -> None:
         rule = self._selected_rule()
@@ -337,7 +350,7 @@ class UpcomingPage(QWidget):
         if dialog.exec():
             try:
                 self.service.record_payment(rule.id, **dialog.values())
-                self.notify("Recurring payment recorded")
+                self.notify("Recurring income recorded" if rule.transaction_type == "income" else "Recurring payment recorded")
                 self.on_changed({"upcoming", "transactions", "accounts", "dashboard"})
             except ValueError as exc:
                 QMessageBox.warning(self, "Could not record payment", str(exc))
@@ -358,7 +371,7 @@ class UpcomingPage(QWidget):
         try:
             self.service.skip_occurrence(rule.id)
             self.notify("Occurrence skipped")
-            self.on_changed({"upcoming"})
+            self.on_changed({"upcoming", "dashboard"})
         except ValueError as exc:
             QMessageBox.warning(self, "Could not skip occurrence", str(exc))
 
@@ -370,7 +383,7 @@ class UpcomingPage(QWidget):
             paused = rule.status == "active"
             self.service.set_paused(rule.id, paused)
             self.notify("Recurring payment paused" if paused else "Recurring payment resumed")
-            self.on_changed({"upcoming"})
+            self.on_changed({"upcoming", "dashboard"})
         except ValueError as exc:
             QMessageBox.warning(self, "Could not update recurring payment", str(exc))
 
@@ -390,7 +403,7 @@ class UpcomingPage(QWidget):
         try:
             self.service.delete_rule(rule.id)
             self.notify("Recurring payment removed")
-            self.on_changed({"upcoming"})
+            self.on_changed({"upcoming", "dashboard"})
         except ValueError as exc:
             QMessageBox.warning(self, "Could not remove recurring payment", str(exc))
 
@@ -413,7 +426,7 @@ class UpcomingPage(QWidget):
         self.remove_button.setEnabled(selected)
         if rule and rule.status == "paused":
             self.pause_button.setText("Resume")
-            self.pause_button.setIcon(icon("play", "#4f50c7", 17))
+            self.pause_button.setIcon(icon("play", Colors.PRIMARY_DARK, 17))
         else:
             self.pause_button.setText("Pause")
-            self.pause_button.setIcon(icon("pause", "#4f50c7", 17))
+            self.pause_button.setIcon(icon("pause", Colors.PRIMARY_DARK, 17))

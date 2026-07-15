@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.core.app_info import WINDOW_TITLE
 from app.core.database import unit_of_work
 from app.repositories.settings_repository import SettingsRepository
 from app.ui.accounts_page import AccountsPage
@@ -23,6 +24,7 @@ from app.ui.loans_page import LoansPage
 from app.ui.settings_page import SettingsPage
 from app.ui.sidebar import Sidebar
 from app.ui.styles import app_stylesheet
+from app.ui.theme import Colors
 from app.ui.transactions_page import TransactionsPage
 from app.ui.upcoming_page import UpcomingPage
 from app.ui.icons import icon
@@ -35,8 +37,8 @@ class MainWindow(QMainWindow):
     def __init__(self, db: sqlite3.Connection):
         super().__init__()
         self.db = db
-        self.setWindowTitle("Money Manager — Private Finance")
-        self.setWindowIcon(icon("accounts", "#5b5ce2", 32))
+        self.setWindowTitle(WINDOW_TITLE)
+        self.setWindowIcon(icon("accounts", Colors.PRIMARY, 32))
         self.resize(1280, 820)
         self.setMinimumSize(980, 680)
         application = QApplication.instance()

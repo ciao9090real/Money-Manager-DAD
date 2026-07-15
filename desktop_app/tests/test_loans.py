@@ -53,6 +53,26 @@ def test_borrowed_loan_increases_cash_without_increasing_net_worth(services):
     assert dashboard["net_worth"] == Decimal("1000.00")
 
 
+def test_reference_interest_rate_does_not_accrue_into_principal_balance(services):
+    _db, accounts, loans = services
+    current = accounts.create_account("Current", "current_account")
+
+    snapshot = loans.create_loan(
+        "borrowed",
+        "Reference-rate loan",
+        "Bank",
+        current.id,
+        "1000",
+        "2026-01-01",
+        due_date="2030-01-01",
+        interest_rate="12.5",
+    )
+
+    assert loans.CALCULATION_MODE == "principal_only"
+    assert snapshot.outstanding == Decimal("1000.00")
+    assert loans.summary()["borrowed"] == Decimal("1000.00")
+
+
 def test_lent_loan_creates_a_receivable_without_reducing_net_worth(services):
     db, accounts, loans = services
     current = accounts.create_account("Current", "current_account", opening_balance="1000")

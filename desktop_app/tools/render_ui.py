@@ -56,10 +56,12 @@ def main() -> None:
             app.processEvents()
             for index, name in (
                 (0, "dashboard-compact"),
+                (1, "accounts-compact"),
                 (2, "transactions-compact"),
                 (3, "investments-compact"),
                 (4, "loans-compact"),
                 (5, "upcoming-compact"),
+                (6, "settings-compact"),
             ):
                 window._select_page(index)
                 app.processEvents()
@@ -97,6 +99,11 @@ def main() -> None:
             recurring_form.show()
             app.processEvents()
             recurring_form.grab().save(str(output / "ui-recurring-form.png"))
+            recurring_form.transaction_type.setCurrentIndex(
+                recurring_form.transaction_type.findData("income")
+            )
+            app.processEvents()
+            recurring_form.grab().save(str(output / "ui-recurring-income-form.png"))
             recurring_form.close()
             investment_form = InvestmentForm(
                 [
@@ -211,6 +218,16 @@ def seed(db) -> None:
         "1200",
         "2026-05-10",
         due_date="2027-05-10",
+    )
+    recurring.create_rule(
+        "Monthly wage",
+        "other",
+        "fixed",
+        current.id,
+        "monthly",
+        "2026-08-01",
+        amount="3200",
+        transaction_type="income",
     )
     recurring.create_rule(
         "Cloud storage",

@@ -14,6 +14,7 @@ from app.utils.validators import require_text
 
 
 class LoanService:
+    CALCULATION_MODE = "principal_only"
     DIRECTIONS = {"borrowed", "lent"}
     FUNDING_ACCOUNT_TYPES = {
         "bank",
@@ -177,6 +178,7 @@ class LoanService:
         return self.loans.list_payments(loan_id)
 
     def summary(self) -> dict[str, Decimal | int]:
+        """Return principal positions; reference interest is not accrued."""
         active = self.list_snapshots(status="active")
         borrowed = sum(
             (item.outstanding for item in active if item.loan.direction == "borrowed"),

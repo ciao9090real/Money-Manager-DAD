@@ -54,7 +54,7 @@ class LoansPage(QWidget):
         layout = page_layout(
             self,
             "Loans",
-            "Track money borrowed and money lent, including principal repayments",
+            "Track principal borrowed and lent; reference interest rates are informational only",
             add_button,
         )
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
@@ -82,8 +82,8 @@ class LoansPage(QWidget):
                 "Direction",
                 "Counterparty",
                 "Principal",
-                "Outstanding",
-                "Rate",
+                "Principal outstanding",
+                "Reference rate",
                 "Due",
                 "Status",
             ]
@@ -153,7 +153,7 @@ class LoansPage(QWidget):
         self._layout_metrics()
         if hasattr(self, "table"):
             self.table.setColumnHidden(2, self.width() < 1050)
-            self.table.setColumnHidden(3, self.width() < 780)
+            self.table.setColumnHidden(3, self.width() < 1100)
             self.table.setColumnHidden(5, self.width() < 1050)
 
     def _layout_metrics(self) -> None:

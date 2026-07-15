@@ -21,6 +21,7 @@ class RecurringService:
     KINDS = {"subscription", "bill", "other"}
     AMOUNT_MODES = {"fixed", "variable"}
     FREQUENCIES = {"weekly", "monthly", "quarterly", "yearly"}
+    TRANSACTION_TYPES = {"income", "expense"}
 
     def __init__(self, db: sqlite3.Connection):
         self.db = db
@@ -44,9 +45,11 @@ class RecurringService:
         end_date: str | None = None,
         reminder_days: int = 3,
         notes: str | None = None,
+        transaction_type: str = "expense",
     ) -> RecurringRule:
         with unit_of_work(self.db):
             due_date = require_iso_date(next_due_date)
+            cleaned_transaction_type = self._transaction_type(transaction_type)
             return self.rules.create(
                 RecurringRule(
                     id=None,
@@ -55,11 +58,16 @@ class RecurringService:
                     amount_mode=self._amount_mode(amount_mode),
                     amount=self._amount(amount_mode, amount),
                     account_id=self._account(account_id),
-                    category_id=self._category(category_id),
-                    payment_method_id=self._payment_method(payment_method_id, account_id),
+                    category_id=self._category(category_id, cleaned_transaction_type),
+                    payment_method_id=(
+                        self._payment_method(payment_method_id, account_id)
+                        if cleaned_transaction_type == "expense"
+                        else None
+                    ),
                     frequency=self._frequency(frequency),
                     start_date=due_date,
                     next_due_date=due_date,
+                    transaction_type=cleaned_transaction_type,
                     end_date=self._end_date(end_date, due_date),
                     reminder_days=self._reminder_days(reminder_days),
                     notes=self._notes(notes),
@@ -81,6 +89,7 @@ class RecurringService:
         end_date: str | None = None,
         reminder_days: int = 3,
         notes: str | None = None,
+        transaction_type: str = "expense",
     ) -> RecurringRule:
         with unit_of_work(self.db):
             rule = self._rule(rule_id)
@@ -92,8 +101,13 @@ class RecurringService:
             rule.amount_mode = self._amount_mode(amount_mode)
             rule.amount = self._amount(amount_mode, amount)
             rule.account_id = self._account(account_id)
-            rule.category_id = self._category(category_id)
-            rule.payment_method_id = self._payment_method(payment_method_id, account_id)
+            rule.transaction_type = self._transaction_type(transaction_type)
+            rule.category_id = self._category(category_id, rule.transaction_type)
+            rule.payment_method_id = (
+                self._payment_method(payment_method_id, account_id)
+                if rule.transaction_type == "expense"
+                else None
+            )
             rule.frequency = self._frequency(frequency)
             rule.next_due_date = due_date
             rule.end_date = self._end_date(end_date, due_date)
@@ -102,9 +116,17 @@ class RecurringService:
             return self.rules.update(rule)
 
     def list_rules(
-        self, *, status: str | None = None, kind: str | None = None
+        self,
+        *,
+        status: str | None = None,
+        kind: str | None = None,
+        transaction_type: str | None = None,
     ) -> list[RecurringRule]:
-        return self.rules.list(status=status, kind=kind)
+        return self.rules.list(
+            status=status,
+            kind=kind,
+            transaction_type=transaction_type,
+        )
 
     def get_rule(self, rule_id: str) -> RecurringRule | None:
         return self.rules.get(rule_id)
@@ -119,14 +141,28 @@ class RecurringService:
             for rule in active
             if today <= date.fromisoformat(rule.next_due_date) <= horizon
         ]
-        known_total = sum(
-            (rule.amount for rule in due_soon if rule.amount is not None),
+        expected_outgoings = sum(
+            (
+                rule.amount
+                for rule in due_soon
+                if rule.amount is not None and rule.transaction_type == "expense"
+            ),
+            start=Decimal("0"),
+        )
+        expected_income = sum(
+            (
+                rule.amount
+                for rule in due_soon
+                if rule.amount is not None and rule.transaction_type == "income"
+            ),
             start=Decimal("0"),
         )
         return {
             "overdue_count": len(overdue),
             "due_soon_count": len(due_soon),
-            "expected_30_days": known_total,
+            "expected_30_days": expected_outgoings,
+            "expected_income_30_days": expected_income,
+            "expected_outgoings_30_days": expected_outgoings,
             "variable_count": sum(
                 1 for rule in overdue + due_soon if rule.amount_mode == "variable"
             ),
@@ -152,7 +188,12 @@ class RecurringService:
                 )
                 assert amount is not None
             recorded_date = require_iso_date(transaction_date or today_iso())
-            transaction = self.transactions.add_expense(
+            add_transaction = (
+                self.transactions.add_income
+                if rule.transaction_type == "income"
+                else self.transactions.add_expense
+            )
+            transaction = add_transaction(
                 rule.account_id,
                 amount,
                 recorded_date,
@@ -230,14 +271,14 @@ class RecurringService:
             raise ValueError("Account is inactive")
         return account_id
 
-    def _category(self, category_id: str | None) -> str | None:
+    def _category(self, category_id: str | None, transaction_type: str) -> str | None:
         if not category_id:
             return None
         category = self.categories.get(category_id)
         if not category or not category.is_active:
-            raise ValueError("Expense category is unavailable")
-        if category.type != "expense":
-            raise ValueError("Recurring payments require an expense category")
+            raise ValueError("Category is unavailable")
+        if category.type != self._transaction_type(transaction_type):
+            raise ValueError("Category type must match the recurring schedule")
         return category.id
 
     def _payment_method(self, method_id: str | None, account_id: str) -> str | None:
@@ -271,6 +312,11 @@ class RecurringService:
     def _frequency(self, value: str) -> str:
         if value not in self.FREQUENCIES:
             raise ValueError("Frequency is not supported")
+        return value
+
+    def _transaction_type(self, value: str) -> str:
+        if value not in self.TRANSACTION_TYPES:
+            raise ValueError("Recurring schedule must be income or expense")
         return value
 
     @staticmethod

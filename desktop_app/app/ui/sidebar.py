@@ -19,7 +19,7 @@ class SidebarNavItem(QFrame):
         self.setProperty("collapsed", "false")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setToolTip(label)
-        self.setFixedHeight(48)
+        self.setFixedHeight(46)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
 
@@ -27,7 +27,7 @@ class SidebarNavItem(QFrame):
         self.layout.setContentsMargins(12, 0, 12, 0)
         self.layout.setSpacing(10)
 
-        self.icon_widget = LineIcon(icon, "#94a3b8", 20)
+        self.icon_widget = LineIcon(icon, "#91a59f", 19)
         self.icon_container = QWidget()
         icon_layout = QHBoxLayout(self.icon_container)
         icon_layout.setContentsMargins(0, 0, 0, 0)
@@ -57,7 +57,7 @@ class SidebarNavItem(QFrame):
 
     def set_selected(self, selected: bool) -> None:
         self.setProperty("selected", "true" if selected else "false")
-        self.icon_widget.set_color("#ffffff" if selected else "#94a3b8")
+        self.icon_widget.set_color("#a7ead5" if selected else "#91a59f")
         self._refresh_style()
 
     def _refresh_style(self) -> None:
@@ -72,8 +72,8 @@ class Sidebar(QFrame):
     page_selected = Signal(int)
     state_changed = Signal(bool, bool)
 
-    EXPANDED_WIDTH = 252
-    COLLAPSED_WIDTH = 76
+    EXPANDED_WIDTH = 236
+    COLLAPSED_WIDTH = 72
 
     def __init__(self, pages: list[tuple[str, str]], parent: QWidget | None = None):
         super().__init__(parent)
@@ -88,11 +88,11 @@ class Sidebar(QFrame):
         self.width_animation.finished.connect(self._finish_width_animation)
 
         self.root_layout = QVBoxLayout(self)
-        self.root_layout.setContentsMargins(14, 18, 14, 16)
-        self.root_layout.setSpacing(8)
+        self.root_layout.setContentsMargins(12, 16, 12, 14)
+        self.root_layout.setSpacing(7)
 
         self._build_header()
-        self.root_layout.addSpacing(16)
+        self.root_layout.addSpacing(18)
         self._build_nav()
         self._build_footer()
         self.set_selected(0)
@@ -109,9 +109,9 @@ class Sidebar(QFrame):
 
         self.mark = QPushButton()
         self.mark.setObjectName("LogoButton")
-        self.mark.setFixedSize(42, 42)
-        self.mark.setIcon(icon("accounts", "#ffffff", 22))
-        self.mark.setIconSize(self.mark.size() * 0.52)
+        self.mark.setFixedSize(40, 40)
+        self.mark.setText("€")
+        self.mark.setProperty("role", "brandMark")
         self.mark.setToolTip("Money Manager")
 
         self.title_block = QWidget()
@@ -120,7 +120,7 @@ class Sidebar(QFrame):
         title_layout.setSpacing(1)
         self.title = QLabel("Money Manager")
         self.title.setObjectName("SidebarTitle")
-        self.subtitle = QLabel("Private finance hub")
+        self.subtitle = QLabel("LOCAL FINANCE")
         self.subtitle.setObjectName("SidebarSubtitle")
         title_layout.addWidget(self.title)
         title_layout.addWidget(self.subtitle)
@@ -174,9 +174,9 @@ class Sidebar(QFrame):
         labels = QVBoxLayout()
         labels.setContentsMargins(0, 0, 0, 0)
         labels.setSpacing(1)
-        local = QLabel("Local & private")
+        local = QLabel("Stored locally")
         local.setStyleSheet("color: white; font-weight: 600; font-size: 12px;")
-        offline = QLabel("Your data stays here")
+        offline = QLabel("Private on this device")
         offline.setProperty("role", "sidebarMeta")
         labels.addWidget(local)
         labels.addWidget(offline)
@@ -204,7 +204,7 @@ class Sidebar(QFrame):
         self.status.setVisible(not collapsed)
         self.collapse_button.setVisible(not collapsed)
         self.expand_button.setVisible(collapsed)
-        self.mark.setIcon(icon("accounts", "#ffffff", 22))
+        self.mark.setText("€")
         self.mark.setToolTip("Money Manager")
         for button in self.nav_buttons:
             button.set_collapsed(collapsed)

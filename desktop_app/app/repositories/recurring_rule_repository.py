@@ -27,6 +27,7 @@ def row_to_recurring_rule(row: sqlite3.Row) -> RecurringRule:
         frequency=row["frequency"],
         start_date=row["start_date"],
         next_due_date=row["next_due_date"],
+        transaction_type=row["transaction_type"],
         end_date=row["end_date"],
         reminder_days=row["reminder_days"],
         status=row["status"],
@@ -48,6 +49,7 @@ class RecurringRuleRepository:
         *,
         status: str | None = None,
         kind: str | None = None,
+        transaction_type: str | None = None,
     ) -> list[RecurringRule]:
         conditions = ["deleted_at IS NULL"]
         params: list[object] = []
@@ -57,6 +59,9 @@ class RecurringRuleRepository:
         if kind:
             conditions.append("kind = ?")
             params.append(kind)
+        if transaction_type:
+            conditions.append("transaction_type = ?")
+            params.append(transaction_type)
         rows = self.db.execute(
             f"""
             SELECT * FROM recurring_rules
@@ -83,8 +88,8 @@ class RecurringRuleRepository:
             INSERT INTO recurring_rules (
                 id, name, kind, amount_mode, amount_cents, account_id, category_id,
                 payment_method_id, frequency, start_date, next_due_date, end_date,
-                reminder_days, status, last_recorded_date, notes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                reminder_days, status, last_recorded_date, notes, transaction_type
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 rule_id,
@@ -103,6 +108,7 @@ class RecurringRuleRepository:
                 rule.status,
                 rule.last_recorded_date,
                 rule.notes,
+                rule.transaction_type,
             ),
         )
         created = self.get(rule_id)
@@ -118,7 +124,7 @@ class RecurringRuleRepository:
             SET name = ?, kind = ?, amount_mode = ?, amount_cents = ?, account_id = ?,
                 category_id = ?, payment_method_id = ?, frequency = ?, start_date = ?,
                 next_due_date = ?, end_date = ?, reminder_days = ?, status = ?,
-                last_recorded_date = ?, notes = ?, updated_at = {UTC_NOW},
+                last_recorded_date = ?, notes = ?, transaction_type = ?, updated_at = {UTC_NOW},
                 revision = revision + 1
             WHERE id = ? AND deleted_at IS NULL
             """,
@@ -138,6 +144,7 @@ class RecurringRuleRepository:
                 rule.status,
                 rule.last_recorded_date,
                 rule.notes,
+                rule.transaction_type,
                 rule.id,
             ),
         )

@@ -43,6 +43,9 @@ class LoanForm(QDialog):
         self.interest_rate.setDecimals(2)
         self.interest_rate.setSingleStep(0.25)
         self.interest_rate.setSuffix(" %")
+        self.interest_rate.setToolTip(
+            "Reference only. Outstanding balances and payments track principal, not accrued interest."
+        )
         self.start_date = QDateEdit(QDate.currentDate())
         self.start_date.setCalendarPopup(True)
         self.start_date.setDisplayFormat("dd MMM yyyy")
@@ -66,7 +69,7 @@ class LoanForm(QDialog):
         self.form.addRow("Lender", self.counterparty)
         self.form.addRow("Receive into", self.account)
         self.form.addRow("Principal", self.principal)
-        self.form.addRow("Annual interest", self.interest_rate)
+        self.form.addRow("Reference rate", self.interest_rate)
         self.form.addRow("Start date", self.start_date)
         self.form.addRow("Due", due_row)
         self.form.addRow("Notes", self.notes)
@@ -74,7 +77,7 @@ class LoanForm(QDialog):
         dialog_shell(
             self,
             "Edit loan" if loan else "Add loan",
-            "Track money borrowed or money lent without distorting net worth.",
+            "Principal-only tracking. The reference rate is informational and is not accrued.",
             self.form,
             "Save loan" if loan else "Add loan",
             "loans",

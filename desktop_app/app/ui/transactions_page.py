@@ -34,6 +34,7 @@ from app.ui.components import (
     style_table,
 )
 from app.ui.icons import icon
+from app.ui.theme import Colors
 from app.ui.transaction_form import TransactionForm
 from app.ui.transaction_table_model import TransactionTableModel
 
@@ -66,8 +67,11 @@ class TransactionsPage(QWidget):
         self.table.setItemDelegateForColumn(1, BadgeDelegate(badge_tone, self.table))
         self.table.doubleClicked.connect(lambda _index: self.edit_transaction())
         header = self.table.horizontalHeader()
-        for column in (0, 1, 2, 3, 5):
+        for column in (0, 1, 5):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
+        for column, width in ((2, 180), (3, 120)):
+            header.setSectionResizeMode(column, QHeaderView.ResizeMode.Interactive)
+            header.resizeSection(column, width)
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         self.table.selectionModel().selectionChanged.connect(self._sync_selection_actions)
         self.load_more_button = ghost_button("Load more transactions", "download")
@@ -78,7 +82,7 @@ class TransactionsPage(QWidget):
         self.search.setClearButtonEnabled(True)
         self.search.setMinimumWidth(220)
         self.search.setMaximumWidth(380)
-        self.search.addAction(icon("search", "#667085", 16), QLineEdit.ActionPosition.LeadingPosition)
+        self.search.addAction(icon("search", Colors.TEXT_SECONDARY, 16), QLineEdit.ActionPosition.LeadingPosition)
         self.search_timer = QTimer(self)
         self.search_timer.setSingleShot(True)
         self.search_timer.setInterval(250)

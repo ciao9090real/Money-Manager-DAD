@@ -4,12 +4,12 @@ from app.ui.theme import Colors, Spacing
 def app_stylesheet() -> str:
     return f"""
     QWidget {{
-        font-family: "Segoe UI";
+        font-family: "Segoe UI Variable", "Segoe UI";
         font-size: 13px;
         color: {Colors.TEXT};
     }}
 
-    QMainWindow, #AppRoot, #ContentRoot, #PageContent {{
+    QMainWindow, #AppRoot, #ContentRoot, #PageCanvas, #PageContent {{
         background: {Colors.BACKGROUND};
     }}
 
@@ -25,43 +25,46 @@ def app_stylesheet() -> str:
 
     #SidebarTitle {{
         color: white;
-        font-size: 17px;
+        font-size: 16px;
         font-weight: 700;
     }}
 
     #SidebarSubtitle, QLabel[role="sidebarMeta"] {{
         color: {Colors.SIDEBAR_MUTED};
-        font-size: 11px;
+        font-size: 10px;
     }}
 
     QPushButton#LogoButton {{
         background: {Colors.PRIMARY};
-        border: 1px solid #7d7ef0;
-        border-radius: 10px;
+        border: 1px solid #318671;
+        border-radius: 8px;
         padding: 0;
         min-height: 0;
+        color: white;
+        font-size: 20px;
+        font-weight: 700;
     }}
 
     QPushButton#LogoButton:hover {{
         background: {Colors.PRIMARY_DARK};
-        border-color: #8b8df0;
+        border-color: #55a48f;
     }}
 
     #SidebarStatus {{
-        background: rgba(255, 255, 255, 0.05);
-        border: 1px solid rgba(255, 255, 255, 0.07);
-        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 8px;
     }}
 
     #StatusDot {{
-        background: #32d583;
+        background: #55d6a9;
         border-radius: 4px;
     }}
 
     QPushButton {{
         border: 1px solid {Colors.BORDER};
-        border-radius: 8px;
-        padding: 8px 14px;
+        border-radius: 7px;
+        padding: 9px 14px;
         background: {Colors.CARD};
         color: {Colors.TEXT};
         font-weight: 600;
@@ -69,18 +72,18 @@ def app_stylesheet() -> str:
     }}
 
     QPushButton:hover {{
-        border-color: #cfd4dc;
-        background: #f9fafb;
+        border-color: #b9c9c3;
+        background: #f7faf8;
     }}
 
     QPushButton:pressed {{
-        background: #f2f4f7;
+        background: #edf3f0;
     }}
 
     QPushButton:disabled {{
-        background: #f9fafb;
-        color: #b1b7c2;
-        border-color: #edf0f4;
+        background: #f7f9f8;
+        color: #aab5b1;
+        border-color: #e9eeeb;
     }}
 
     QPushButton[variant="primary"] {{
@@ -98,8 +101,8 @@ def app_stylesheet() -> str:
 
     QPushButton[variant="soft"] {{
         background: {Colors.PRIMARY_SOFT};
-        border-color: #d9dcff;
-        color: #4647bd;
+        border-color: #c9e3da;
+        color: {Colors.PRIMARY_DARK};
     }}
 
     QPushButton[variant="ghost"] {{
@@ -109,19 +112,19 @@ def app_stylesheet() -> str:
     }}
 
     QPushButton[variant="ghost"]:hover {{
-        background: #f2f4f7;
+        background: #edf3f0;
         color: {Colors.TEXT};
     }}
 
     QPushButton[variant="danger"] {{
         background: #fff;
-        border-color: #fecdca;
+        border-color: #f1c6c3;
         color: {Colors.NEGATIVE};
     }}
 
     QPushButton[variant="danger"]:hover {{
-        background: #fef3f2;
-        border-color: #fda29b;
+        background: #fdf0ef;
+        border-color: #e9aaa5;
     }}
 
     QPushButton[variant="hero"] {{
@@ -152,25 +155,25 @@ def app_stylesheet() -> str:
     QFrame[role="navItem"] {{
         background: transparent;
         border: none;
-        border-radius: 8px;
+        border-radius: 7px;
     }}
 
     QFrame[role="navItem"]:hover {{
-        background: rgba(255, 255, 255, 0.06);
+        background: rgba(255, 255, 255, 0.055);
     }}
 
     QFrame[role="navItem"][selected="true"] {{
         background: {Colors.SIDEBAR_SELECTED};
-        border-left: 3px solid #818cf8;
+        border-left: 3px solid #67d4b2;
     }}
 
     QFrame[role="navItem"][selected="true"][collapsed="true"] {{
         border-left: none;
-        border: 1px solid rgba(129, 140, 248, 0.45);
+        border: 1px solid rgba(103, 212, 178, 0.45);
     }}
 
     QLabel[role="navLabel"] {{
-        color: #aab4c3;
+        color: #a7b9b3;
         font-size: 13px;
         font-weight: 600;
     }}
@@ -184,7 +187,7 @@ def app_stylesheet() -> str:
         background: rgba(255, 255, 255, 0.04);
         border: 1px solid rgba(255, 255, 255, 0.08);
         color: #cbd5e1;
-        border-radius: 9px;
+        border-radius: 7px;
         padding: 0;
         font-size: 17px;
     }}
@@ -198,60 +201,117 @@ def app_stylesheet() -> str:
         background: transparent;
         border: 1px solid transparent;
         color: {Colors.TEXT_SECONDARY};
-        border-radius: 9px;
-        padding: 6px 12px;
+        border-radius: 7px;
+        padding: 7px 12px;
         font-weight: 600;
         min-height: 20px;
     }}
 
     QPushButton[variant="chip"]:hover {{
-        background: #f2f4f7;
+        background: #edf3f0;
     }}
 
     QPushButton[variant="chip"][selected="true"] {{
         background: {Colors.PRIMARY_SOFT};
-        border-color: #d9dcff;
-        color: #4647bd;
+        border-color: #c9e3da;
+        color: {Colors.PRIMARY_DARK};
     }}
 
-    QFrame[role="card"], QFrame[role="metricCard"] {{
+    QFrame[role="card"], QFrame[role="metricCard"], QFrame[role="forecastCard"] {{
         background: {Colors.CARD};
         border: 1px solid {Colors.BORDER};
         border-radius: {Spacing.RADIUS}px;
     }}
 
+    QFrame[role="metricCard"] {{
+        border-top: 3px solid #d9e4e0;
+    }}
+
+    QFrame[role="metricCard"][tone="positive"] {{
+        border-top-color: {Colors.POSITIVE};
+    }}
+
+    QFrame[role="metricCard"][tone="negative"] {{
+        border-top-color: {Colors.NEGATIVE};
+    }}
+
+    QWidget[role="forecastMetric"] {{
+        border-left: 1px solid {Colors.BORDER_SOFT};
+    }}
+
+    QWidget[role="forecastStatus"][tone="positive"] {{
+        border-left: 4px solid {Colors.POSITIVE};
+    }}
+
+    QWidget[role="forecastStatus"][tone="negative"] {{
+        border-left: 4px solid {Colors.NEGATIVE};
+    }}
+
+    QWidget[role="forecastStatus"][tone="neutral"] {{
+        border-left: 4px solid {Colors.BORDER};
+    }}
+
+    QLabel[role="forecastMessage"] {{
+        color: {Colors.TEXT};
+        font-size: 17px;
+        font-weight: 700;
+    }}
+
     QFrame[role="heroCard"] {{
-        background: #4f50cf;
-        border: 1px solid #4647bd;
+        background: #1b493d;
+        border: 1px solid #285e50;
         border-radius: {Spacing.RADIUS}px;
     }}
 
     QFrame[role="toolbar"] {{
-        background: #f8fafc;
-        border: 1px solid {Colors.BORDER_SOFT};
-        border-radius: 8px;
+        background: {Colors.HEADER};
+        border: none;
+        border-radius: 7px;
     }}
 
     QFrame[role="quickActions"] {{
-        background: {Colors.CARD};
-        border: 1px solid {Colors.BORDER};
+        background: transparent;
+        border: none;
+    }}
+
+    QFrame[role="scopeBar"] {{
+        background: #edf3f0;
+        border: 1px solid #d8e4df;
         border-radius: {Spacing.RADIUS}px;
+    }}
+
+    QFrame[role="accountDetailCard"] {{
+        background: #f8fbf9;
+        border: 1px solid #d5e3de;
+        border-radius: {Spacing.RADIUS}px;
+    }}
+
+    QLabel[role="detailTitle"] {{
+        color: {Colors.TEXT};
+        font-size: 21px;
+        font-weight: 700;
+    }}
+
+    QLabel[role="detailBalance"] {{
+        color: {Colors.TEXT};
+        font-size: 28px;
+        font-weight: 700;
     }}
 
     QFrame[role="iconTile"] {{
         background: {Colors.PRIMARY_SOFT};
         border: none;
-        border-radius: 10px;
+        border-radius: 8px;
     }}
 
     QLabel[role="eyebrow"] {{
         color: {Colors.PRIMARY};
-        font-size: 11px;
+        font-size: 10px;
         font-weight: 700;
     }}
 
     QLabel[role="pageTitle"] {{
-        font-size: 26px;
+        font-size: 28px;
         font-weight: 700;
         color: {Colors.TEXT};
     }}
@@ -262,7 +322,7 @@ def app_stylesheet() -> str:
     }}
 
     QLabel[role="sectionTitle"] {{
-        font-size: 16px;
+        font-size: 15px;
         font-weight: 700;
         color: {Colors.TEXT};
     }}
@@ -275,17 +335,17 @@ def app_stylesheet() -> str:
     QLabel[role="metricLabel"] {{
         color: {Colors.TEXT_SECONDARY};
         font-size: 12px;
-        font-weight: 600;
+        font-weight: 700;
     }}
 
     QLabel[role="metricValue"] {{
-        font-size: 27px;
+        font-size: 25px;
         font-weight: 700;
         color: {Colors.TEXT};
     }}
 
     QLabel[role="heroLabel"] {{
-        color: rgba(255, 255, 255, 0.72);
+        color: rgba(222, 246, 238, 0.72);
         font-size: 11px;
         font-weight: 700;
     }}
@@ -297,7 +357,7 @@ def app_stylesheet() -> str:
     }}
 
     QLabel[role="heroHelper"] {{
-        color: rgba(255, 255, 255, 0.76);
+        color: rgba(222, 246, 238, 0.74);
         font-size: 12px;
     }}
 
@@ -327,8 +387,8 @@ def app_stylesheet() -> str:
     }}
 
     QLabel[role="badge"] {{
-        border-radius: 10px;
-        padding: 2px 9px;
+        border-radius: 8px;
+        padding: 3px 9px;
         font-size: 11px;
         font-weight: 600;
     }}
@@ -350,7 +410,7 @@ def app_stylesheet() -> str:
     }}
 
     QLabel[role="mono"] {{
-        background: #f8fafc;
+        background: {Colors.HEADER};
         border: 1px solid {Colors.BORDER};
         border-radius: 8px;
         padding: 11px 12px;
@@ -359,7 +419,7 @@ def app_stylesheet() -> str:
     }}
 
     QLineEdit[role="mono"] {{
-        background: #f8fafc;
+        background: {Colors.HEADER};
         border: 1px solid {Colors.BORDER};
         font-family: Consolas;
         color: #344054;
@@ -367,18 +427,18 @@ def app_stylesheet() -> str:
 
     QLineEdit, QComboBox, QDateEdit, QSpinBox, QDoubleSpinBox {{
         background: white;
-        border: 1px solid #d0d5dd;
-        border-radius: 8px;
+        border: 1px solid #cbd7d2;
+        border-radius: 7px;
         padding: 9px 11px;
-        min-height: 22px;
+        min-height: 24px;
         selection-background-color: {Colors.PRIMARY};
     }}
 
     QLineEdit:hover, QComboBox:hover, QDateEdit:hover,
-    QSpinBox:hover, QDoubleSpinBox:hover {{ border-color: #aeb5c0; }}
+    QSpinBox:hover, QDoubleSpinBox:hover {{ border-color: #91aaa1; }}
     QLineEdit:focus, QComboBox:focus, QDateEdit:focus,
     QSpinBox:focus, QDoubleSpinBox:focus {{
-        border: 2px solid #8b8df0;
+        border: 2px solid #58a78f;
         padding: 8px 10px;
     }}
 
@@ -389,7 +449,7 @@ def app_stylesheet() -> str:
 
     QCheckBox {{ spacing: 8px; color: {Colors.TEXT_SECONDARY}; }}
     QCheckBox::indicator {{
-        width: 17px; height: 17px; border: 1px solid #c7ccd4; border-radius: 5px; background: white;
+        width: 17px; height: 17px; border: 1px solid #bdcbc5; border-radius: 4px; background: white;
     }}
     QCheckBox::indicator:checked {{ background: {Colors.PRIMARY}; border-color: {Colors.PRIMARY}; }}
 
@@ -413,20 +473,20 @@ def app_stylesheet() -> str:
         color: {Colors.TEXT_SECONDARY};
         border: none;
         border-bottom: 1px solid {Colors.BORDER};
-        padding: 11px 12px;
+        padding: 12px 12px;
         font-size: 11px;
         font-weight: 700;
     }}
 
     QTableWidget::item, QTableView::item, QTreeWidget::item {{
-        padding: 8px 11px;
+        padding: 9px 12px;
         border-bottom: 1px solid {Colors.BORDER_SOFT};
     }}
 
     QTableWidget::item:focus, QTableView::item:focus, QTreeWidget::item:focus {{ outline: none; }}
 
     QDialog {{ background: {Colors.BACKGROUND}; }}
-    QDialog[role="sheet"] {{ background: #f6f7fb; }}
+    QDialog[role="sheet"] {{ background: {Colors.BACKGROUND}; }}
     QDialog QLabel[role="dialogTitle"] {{
         font-size: 21px;
         font-weight: 700;
@@ -435,7 +495,7 @@ def app_stylesheet() -> str:
 
     QFrame[role="dialogIcon"] {{
         background: {Colors.PRIMARY_SOFT};
-        border: 1px solid #dfe1ff;
+        border: 1px solid #cae3da;
         border-radius: 8px;
     }}
 
@@ -446,13 +506,13 @@ def app_stylesheet() -> str:
     }}
 
     QFrame[role="toast"] {{
-        background: #182230;
-        border: 1px solid #344054;
+        background: #14221e;
+        border: 1px solid #2d463e;
         border-radius: 8px;
     }}
 
     QFrame[role="toastDot"] {{
-        background: #32d583;
+        background: #55d6a9;
         border: none;
         border-radius: 4px;
     }}
@@ -464,15 +524,15 @@ def app_stylesheet() -> str:
     }}
 
     QScrollBar:vertical {{ background: transparent; width: 10px; margin: 3px; }}
-    QScrollBar::handle:vertical {{ background: #d0d5dd; min-height: 32px; border-radius: 4px; }}
-    QScrollBar::handle:vertical:hover {{ background: #aeb5c0; }}
+    QScrollBar::handle:vertical {{ background: #c8d3cf; min-height: 32px; border-radius: 4px; }}
+    QScrollBar::handle:vertical:hover {{ background: #9fb1aa; }}
     QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
     QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 3px; }}
-    QScrollBar::handle:horizontal {{ background: #d0d5dd; min-width: 32px; border-radius: 4px; }}
+    QScrollBar::handle:horizontal {{ background: #c8d3cf; min-width: 32px; border-radius: 4px; }}
     QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
 
     QToolTip {{
-        background: #101828;
+        background: #14221e;
         color: white;
         border: none;
         border-radius: 6px;

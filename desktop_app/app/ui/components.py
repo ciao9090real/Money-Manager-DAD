@@ -224,17 +224,29 @@ def page_layout(root: QWidget, title: str, subtitle: str, action: QWidget | None
     scroll.setWidgetResizable(True)
     scroll.setFrameShape(QFrame.Shape.NoFrame)
     scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    canvas = QWidget()
+    canvas.setObjectName("PageCanvas")
+    canvas_layout = QHBoxLayout(canvas)
+    canvas_layout.setContentsMargins(0, 0, 0, 0)
+    canvas_layout.setSpacing(0)
     content = QWidget()
     content.setObjectName("PageContent")
+    content.setMaximumWidth(1520)
+    content.setMinimumWidth(0)
+    content.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
     layout = QVBoxLayout(content)
     layout.setContentsMargins(Spacing.PAGE, Spacing.PAGE, Spacing.PAGE, Spacing.PAGE)
     layout.setSpacing(Spacing.GAP)
     header = page_header(title, subtitle, action)
     header.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
     layout.addWidget(header)
-    scroll.setWidget(content)
+    canvas_layout.addStretch(1)
+    canvas_layout.addWidget(content, 100)
+    canvas_layout.addStretch(1)
+    scroll.setWidget(canvas)
     outer.addWidget(scroll)
     root.page_scroll = scroll
+    root.page_canvas = canvas
     root.page_content = content
     return layout
 
@@ -334,13 +346,13 @@ def metric_card(
     card.setMinimumWidth(0)
     card.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
     if compact:
-        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setContentsMargins(17, 13, 17, 13)
         layout.setSpacing(4)
-        card.setMinimumHeight(92)
-        card.setMaximumHeight(104)
+        card.setMinimumHeight(94)
+        card.setMaximumHeight(106)
     else:
-        card.setMinimumHeight(112)
-        card.setMaximumHeight(128)
+        card.setMinimumHeight(108)
+        card.setMaximumHeight(122)
     label_widget = QLabel(label)
     label_widget.setProperty("role", "metricLabel")
     label_widget.setWordWrap(True)
@@ -383,7 +395,7 @@ def secondary_button(text: str, icon: str | None = None) -> QPushButton:
 def soft_button(text: str, icon_name: str | None = None) -> QPushButton:
     button = QPushButton(text)
     button.setProperty("variant", "soft")
-    _apply_button_icon(button, icon_name, "#4f50c7")
+    _apply_button_icon(button, icon_name, Colors.PRIMARY_DARK)
     return button
 
 
@@ -538,20 +550,20 @@ def style_table(table: QTableWidget | QTableView, visible_rows: int | None = Non
     table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
     table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
     table.setWordWrap(False)
-    table.verticalHeader().setDefaultSectionSize(44)
+    table.verticalHeader().setDefaultSectionSize(48)
     table.horizontalHeader().setStretchLastSection(True)
     table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
     table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
     if visible_rows:
-        table.setMinimumHeight(44 + visible_rows * 44)
-        table.setMaximumHeight(44 + visible_rows * 44)
+        table.setMinimumHeight(46 + visible_rows * 48)
+        table.setMaximumHeight(46 + visible_rows * 48)
 
 
 def style_tree(tree: QTreeWidget, visible_rows: int | None = None) -> None:
     tree.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Expanding)
     tree.setAlternatingRowColors(True)
     tree.setRootIsDecorated(True)
-    tree.setIndentation(22)
+    tree.setIndentation(24)
     tree.setUniformRowHeights(True)
     tree.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
     tree.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -563,7 +575,7 @@ def style_tree(tree: QTreeWidget, visible_rows: int | None = None) -> None:
         f"""
         QTreeWidget::branch {{ color: {Colors.TEXT_SECONDARY}; }}
         QTreeWidget::item:selected {{
-            background: #e3e5ff;
+            background: {Colors.PRIMARY_SOFT};
             color: {Colors.TEXT};
         }}
         """
@@ -571,18 +583,18 @@ def style_tree(tree: QTreeWidget, visible_rows: int | None = None) -> None:
     tree.header().setStretchLastSection(True)
     tree.header().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
     if visible_rows:
-        tree.setMinimumHeight(44 + visible_rows * 44)
-        tree.setMaximumHeight(44 + visible_rows * 44)
+        tree.setMinimumHeight(46 + visible_rows * 48)
+        tree.setMaximumHeight(46 + visible_rows * 48)
 
 
 def fit_item_view_height(view, row_count: int, minimum_rows: int = 1, maximum_rows: int = 8) -> None:
     rows = max(minimum_rows, min(maximum_rows, row_count))
     if hasattr(view, "horizontalHeader"):
         header = view.horizontalHeader()
-        row_height = max(42, view.verticalHeader().defaultSectionSize())
+        row_height = max(46, view.verticalHeader().defaultSectionSize())
     else:
         header = view.header()
-        row_height = 44
+        row_height = 48
     height = max(40, header.height()) + rows * row_height + 2
     view.setMinimumHeight(height)
     view.setMaximumHeight(height)

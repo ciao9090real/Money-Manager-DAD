@@ -110,6 +110,28 @@ def _draw_icon(painter: QPainter, name: str, rect: QRectF, color: str) -> None:
         painter.drawRoundedRect(QRectF(x + w * 0.10, y + h * 0.28, w * 0.80, h * 0.62), 2, 2)
         painter.drawRoundedRect(QRectF(x, y + h * 0.08, w, h * 0.24), 2, 2)
         painter.drawLine(QPointF(x + w * 0.36, y + h * 0.55), QPointF(x + w * 0.64, y + h * 0.55))
+    elif name == "restore":
+        path = QPainterPath()
+        path.moveTo(x + w * 0.20, y + h * 0.36)
+        path.cubicTo(
+            x + w * 0.38,
+            y + h * 0.06,
+            x + w * 0.84,
+            y + h * 0.16,
+            x + w * 0.86,
+            y + h * 0.54,
+        )
+        path.cubicTo(
+            x + w * 0.88,
+            y + h * 0.86,
+            x + w * 0.48,
+            y + h * 1.02,
+            x + w * 0.24,
+            y + h * 0.74,
+        )
+        painter.drawPath(path)
+        painter.drawLine(QPointF(x + w * 0.20, y + h * 0.36), QPointF(x + w * 0.20, y + h * 0.08))
+        painter.drawLine(QPointF(x + w * 0.20, y + h * 0.36), QPointF(x + w * 0.48, y + h * 0.36))
     elif name == "delete":
         painter.drawRoundedRect(QRectF(x + w * 0.20, y + h * 0.24, w * 0.60, h * 0.68), 2, 2)
         painter.drawLine(QPointF(x + w * 0.10, y + h * 0.20), QPointF(x + w * 0.90, y + h * 0.20))
@@ -197,7 +219,7 @@ class LineIcon(QWidget):
         )
 
 
-def icon(name: str, color: str = "#667085", size: int = 18) -> QIcon:
+def icon(name: str, color: str = "#60716b", size: int = 18) -> QIcon:
     ratio = 2
     pixmap = QPixmap(QSize(size * ratio, size * ratio))
     pixmap.fill(Qt.GlobalColor.transparent)

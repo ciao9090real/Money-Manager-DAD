@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import date
 from decimal import Decimal
+from uuid import uuid4
 
 import pytest
 
@@ -12,6 +13,9 @@ from app.core.migrations import (
     _create_initial_schema,
     _migrate_v2,
     _migrate_v3,
+    _migrate_v4,
+    _migrate_v5,
+    _migrate_v6,
     _run_migration,
 )
 from app.services.account_service import AccountService
@@ -157,8 +161,34 @@ def test_pause_skip_completion_and_summary(services):
         "overdue_count": 1,
         "due_soon_count": 1,
         "expected_30_days": Decimal("12.50"),
+        "expected_income_30_days": Decimal("0"),
+        "expected_outgoings_30_days": Decimal("12.50"),
         "variable_count": 1,
     }
+
+
+def test_recurring_wage_records_income(services):
+    db, accounts, recurring = services
+    account = accounts.create_account("Current", "current_account", opening_balance="100")
+    category = CategoryService(db).create_category("Salary", "income")
+    wage = recurring.create_rule(
+        "Monthly wage",
+        "other",
+        "fixed",
+        account.id,
+        "monthly",
+        "2027-02-01",
+        amount="2000",
+        category_id=category.id,
+        transaction_type="income",
+    )
+
+    transaction = recurring.record_payment(wage.id, transaction_date="2027-02-01")
+
+    assert transaction.type == "income"
+    assert transaction.amount == Decimal("2000.00")
+    assert accounts.account_balance(account.id) == Decimal("2100.00")
+    assert recurring.get_rule(wage.id).next_due_date == "2027-03-01"
 
 
 def test_recurring_rules_are_revisioned_and_soft_deleted(services):
@@ -218,5 +248,49 @@ def test_existing_v3_database_upgrades_to_recurring_schema(tmp_path, monkeypatch
             row["name"] for row in upgraded.execute("PRAGMA table_info(transactions)")
         }
         assert "recurring_rule_id" in transaction_columns
+    finally:
+        upgraded.close()
+
+
+def test_existing_v6_recurring_rules_default_to_expense(tmp_path, monkeypatch):
+    source = tmp_path / "version-6.db"
+    legacy = sqlite3.connect(source)
+    legacy.row_factory = sqlite3.Row
+    legacy.execute("PRAGMA foreign_keys = ON")
+    _run_migration(legacy, 1, _create_initial_schema)
+    _run_migration(legacy, 2, _migrate_v2)
+    legacy.execute("PRAGMA foreign_keys = OFF")
+    _run_migration(legacy, 3, _migrate_v3)
+    legacy.execute("PRAGMA foreign_keys = ON")
+    _run_migration(legacy, 4, _migrate_v4)
+    _run_migration(legacy, 5, _migrate_v5)
+    _run_migration(legacy, 6, _migrate_v6)
+    account_id = str(uuid4())
+    rule_id = str(uuid4())
+    legacy.execute(
+        "INSERT INTO accounts (id, name, type) VALUES (?, 'Current', 'current_account')",
+        (account_id,),
+    )
+    legacy.execute(
+        """
+        INSERT INTO recurring_rules (
+            id, name, kind, amount_mode, amount_cents, account_id,
+            frequency, start_date, next_due_date
+        ) VALUES (?, 'Existing bill', 'bill', 'fixed', 2500, ?, 'monthly',
+                  '2027-01-01', '2027-02-01')
+        """,
+        (rule_id, account_id),
+    )
+    legacy.commit()
+    legacy.close()
+
+    monkeypatch.setenv("MONEY_MANAGER_DAD_DATA_DIR", str(tmp_path / "app-data"))
+    upgraded = connect(source)
+    try:
+        assert upgraded.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+        row = upgraded.execute(
+            "SELECT transaction_type FROM recurring_rules WHERE id = ?", (rule_id,)
+        ).fetchone()
+        assert row["transaction_type"] == "expense"
     finally:
         upgraded.close()

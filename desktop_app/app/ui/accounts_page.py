@@ -5,12 +5,16 @@ import sqlite3
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
+    QFrame,
+    QGridLayout,
     QHeaderView,
+    QHBoxLayout,
     QLabel,
     QMessageBox,
     QPushButton,
     QTreeWidget,
     QTreeWidgetItem,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -94,19 +98,13 @@ class AccountsPage(QWidget):
             add_button,
         )
         card, card_layout = create_card(
-            "Account structure",
-            subtitle="Select an account or payment method to manage it",
+            "Account map",
+            subtitle="Banks, accounts, wallets, and linked payment methods",
         )
+        self.structure_card = card
         card_layout.addWidget(
             toolbar(
                 left=[add_payment_button, self.count_label],
-                right=[
-                    self.selection_label,
-                    self.edit_payment_button,
-                    self.toggle_payment_button,
-                    self.edit_button,
-                    self.deactivate_button,
-                ],
             )
         )
         empty_action = primary_button("Add account", "plus")
@@ -114,8 +112,90 @@ class AccountsPage(QWidget):
         self.empty = empty_state("No accounts yet", "Add your first bank, wallet, or cash account.", empty_action)
         card_layout.addWidget(self.empty)
         card_layout.addWidget(self.tree)
-        layout.addWidget(card)
+
+        details_card, details_layout = create_card(
+            "Selected item",
+            subtitle="Balance, classification, and available actions",
+            role="accountDetailCard",
+        )
+        self.details_card = details_card
+        self.details_empty = empty_state(
+            "Choose an account",
+            "Select a row in the account map to see its details.",
+        )
+        self.details_body = QWidget()
+        body_layout = QVBoxLayout(self.details_body)
+        body_layout.setContentsMargins(0, 4, 0, 0)
+        body_layout.setSpacing(10)
+        self.detail_eyebrow = QLabel("ACCOUNT")
+        self.detail_eyebrow.setProperty("role", "eyebrow")
+        self.detail_name = QLabel()
+        self.detail_name.setProperty("role", "detailTitle")
+        self.detail_name.setWordWrap(True)
+        self.detail_balance = QLabel()
+        self.detail_balance.setProperty("role", "detailBalance")
+        self.detail_context = QLabel()
+        self.detail_context.setProperty("role", "sectionSubtitle")
+        self.detail_context.setWordWrap(True)
+        self.detail_type = badge("Account", "neutral")
+        self.detail_type.setMaximumWidth(190)
+        self.detail_status = badge("Active", "positive")
+        self.detail_status.setMaximumWidth(100)
+        detail_badges = QHBoxLayout()
+        detail_badges.setSpacing(7)
+        detail_badges.addWidget(self.detail_type)
+        detail_badges.addWidget(self.detail_status)
+        detail_badges.addStretch()
+        account_actions = QHBoxLayout()
+        account_actions.setSpacing(7)
+        account_actions.addWidget(self.edit_payment_button)
+        account_actions.addWidget(self.toggle_payment_button)
+        account_actions.addWidget(self.edit_button)
+        account_actions.addWidget(self.deactivate_button)
+        account_actions.addStretch()
+        body_layout.addWidget(self.detail_eyebrow)
+        body_layout.addWidget(self.detail_name)
+        body_layout.addWidget(self.detail_balance)
+        body_layout.addWidget(self.detail_context)
+        body_layout.addLayout(detail_badges)
+        body_layout.addStretch()
+        body_layout.addLayout(account_actions)
+        details_layout.addWidget(self.details_empty)
+        details_layout.addWidget(self.details_body, 1)
+        self.details_body.setVisible(False)
+
+        self.account_grid = QGridLayout()
+        self.account_grid.setContentsMargins(0, 0, 0, 0)
+        self.account_grid.setSpacing(16)
+        layout.addLayout(self.account_grid)
         layout.addStretch()
+        self._layout_accounts()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._layout_accounts()
+
+    def _layout_accounts(self) -> None:
+        if not hasattr(self, "account_grid"):
+            return
+        wide = self.width() >= 1080
+        if getattr(self, "_accounts_wide", None) == wide:
+            return
+        self._accounts_wide = wide
+        while self.account_grid.count():
+            item = self.account_grid.takeAt(0)
+            if item.widget():
+                item.widget().setParent(None)
+        if wide:
+            self.account_grid.addWidget(self.structure_card, 0, 0)
+            self.account_grid.addWidget(self.details_card, 0, 1)
+            self.account_grid.setColumnStretch(0, 2)
+            self.account_grid.setColumnStretch(1, 1)
+        else:
+            self.account_grid.addWidget(self.structure_card, 0, 0)
+            self.account_grid.addWidget(self.details_card, 1, 0)
+            self.account_grid.setColumnStretch(0, 1)
+            self.account_grid.setColumnStretch(1, 0)
 
     def refresh(self) -> None:
         self.tree.clear()
@@ -304,3 +384,30 @@ class AccountsPage(QWidget):
         self.deactivate_button.setVisible(has_account and not managed_investment)
         self.edit_payment_button.setVisible(has_method)
         self.toggle_payment_button.setVisible(has_method)
+        self.details_empty.setVisible(selected is None)
+        self.details_body.setVisible(selected is not None)
+        if selected is None:
+            return
+        self.detail_name.setText(selected.text(0))
+        if has_account:
+            account = self.service.accounts.get(account_id)
+            self.detail_eyebrow.setText("ACCOUNT")
+            self.detail_balance.setText(selected.text(2))
+            self.detail_context.setText(
+                "Managed investment account" if managed_investment else "Included in your live financial position"
+            )
+            self.detail_type.setText(pretty_type(account.type) if account else "Account")
+            self.detail_status.setText("Active")
+            self.detail_status.setProperty("tone", "positive")
+        else:
+            parent_name = selected.parent().text(0) if selected.parent() else "account"
+            self.detail_eyebrow.setText("PAYMENT METHOD")
+            self.detail_balance.setText("Linked access")
+            self.detail_context.setText(f"Connected to {parent_name}")
+            self.detail_type.setText("Payment method")
+            method = self.payment_methods.payment_methods.get(self._selected_payment_method_id())
+            active = bool(method and method.is_active)
+            self.detail_status.setText("Active" if active else "Archived")
+            self.detail_status.setProperty("tone", "positive" if active else "muted")
+        self.detail_status.style().unpolish(self.detail_status)
+        self.detail_status.style().polish(self.detail_status)

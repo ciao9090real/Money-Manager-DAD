@@ -32,18 +32,19 @@ class RecurringRuleForm(QDialog):
         category_service: CategoryService | None = None,
     ):
         super().__init__()
-        self.setWindowTitle("Recurring payment")
+        self.setWindowTitle("Recurring schedule")
         self.payment_methods = payment_methods
         self.categories = categories
         self.category_service = category_service
         self.current_payment_method_id = rule.payment_method_id if rule else None
 
+        self.transaction_type = QComboBox()
+        self.transaction_type.addItem("Money out", "expense")
+        self.transaction_type.addItem("Money in", "income")
         self.name = QLineEdit(rule.name if rule else "")
-        self.name.setPlaceholderText("Payment name")
+        self.name.setPlaceholderText("Schedule name")
         self.kind = QComboBox()
-        self.kind.addItem("Subscription", "subscription")
-        self.kind.addItem("Bill", "bill")
-        self.kind.addItem("Other recurring", "other")
+        self._populate_kinds("expense")
         self.amount_mode = QComboBox()
         self.amount_mode.addItem("Fixed amount", "fixed")
         self.amount_mode.addItem("Variable amount", "variable")
@@ -101,6 +102,7 @@ class RecurringRuleForm(QDialog):
         self.notes.setPlaceholderText("Optional notes")
 
         self.form = QFormLayout()
+        self.form.addRow("Flow", self.transaction_type)
         self.form.addRow("Name", self.name)
         self.form.addRow("Type", self.kind)
         self.form.addRow("Amount behavior", self.amount_mode)
@@ -116,33 +118,40 @@ class RecurringRuleForm(QDialog):
 
         dialog_shell(
             self,
-            "Edit recurring payment" if rule else "Add recurring payment",
-            "Plan subscriptions and bills before they are paid.",
+            "Edit recurring schedule" if rule else "Add recurring schedule",
+            "Plan wages, subscriptions, and bills before they happen.",
             self.form,
-            "Save recurring payment",
+            "Save schedule",
             "upcoming",
             minimum_width=540,
         )
 
         self.amount_mode.currentIndexChanged.connect(self._sync_amount_field)
+        self.transaction_type.currentIndexChanged.connect(self._sync_transaction_type)
         self.account.currentIndexChanged.connect(self._populate_payment_methods)
         self.end_enabled.toggled.connect(self.end_date.setEnabled)
         if rule:
             self._load_rule(rule)
         else:
             self._populate_payment_methods()
+        self._sync_transaction_type()
         self._sync_amount_field()
         self.name.setFocus()
 
     def values(self) -> dict:
         return {
             "name": self.name.text(),
+            "transaction_type": self.transaction_type.currentData(),
             "kind": self.kind.currentData(),
             "amount_mode": self.amount_mode.currentData(),
             "amount": self.amount.text(),
             "account_id": self.account.currentData(),
             "category_id": self.category.currentData(),
-            "payment_method_id": self.payment_method.currentData(),
+            "payment_method_id": (
+                self.payment_method.currentData()
+                if self.transaction_type.currentData() == "expense"
+                else None
+            ),
             "frequency": self.frequency.currentData(),
             "next_due_date": self.next_due_date.date().toString("yyyy-MM-dd"),
             "end_date": (
@@ -155,6 +164,8 @@ class RecurringRuleForm(QDialog):
         }
 
     def _load_rule(self, rule: RecurringRule) -> None:
+        self._set_combo(self.transaction_type, rule.transaction_type)
+        self._sync_transaction_type(rule.kind)
         self._set_combo(self.kind, rule.kind)
         self._set_combo(self.amount_mode, rule.amount_mode)
         self._set_combo(self.account, rule.account_id)
@@ -181,6 +192,20 @@ class RecurringRuleForm(QDialog):
             label.setText("Expected amount" if variable else "Amount")
         self.amount.setPlaceholderText("Optional estimate" if variable else "0.00")
 
+    def _sync_transaction_type(self, selected_kind: str | None = None) -> None:
+        transaction_type = self.transaction_type.currentData() or "expense"
+        income = transaction_type == "income"
+        current_kind = selected_kind or self.kind.currentData()
+        self._populate_kinds(transaction_type, current_kind)
+        account_label = self.form.labelForField(self.account)
+        if account_label:
+            account_label.setText("Receive into" if income else "Pay from")
+        self.form.setRowVisible(self.payment_method, not income)
+        self.add_category_button.setToolTip(
+            f"Add {transaction_type} category"
+        )
+        self._populate_categories()
+
     def _populate_payment_methods(self) -> None:
         selected = self.current_payment_method_id or self.payment_method.currentData()
         account_id = self.account.currentData()
@@ -199,20 +224,34 @@ class RecurringRuleForm(QDialog):
         selected = selected_id if selected_id is not None else self.category.currentData()
         self.category.clear()
         self.category.addItem("No category", None)
+        transaction_type = self.transaction_type.currentData() or "expense"
         for category in self.categories:
-            if category.type == "expense" and category.is_active:
+            if category.type == transaction_type and category.is_active:
                 self.category.addItem(category.name, category.id)
         self._set_combo(self.category, selected)
 
     def _add_category(self) -> None:
         if not self.category_service:
             return
-        category = create_category_dialog(self, self.category_service, "expense")
+        transaction_type = self.transaction_type.currentData() or "expense"
+        category = create_category_dialog(self, self.category_service, transaction_type)
         if not category:
             return
         if all(existing.id != category.id for existing in self.categories):
             self.categories.append(category)
         self._populate_categories(category.id)
+
+    def _populate_kinds(self, transaction_type: str, selected: str | None = None) -> None:
+        self.kind.blockSignals(True)
+        self.kind.clear()
+        if transaction_type == "income":
+            self.kind.addItem("Wage / income", "other")
+        else:
+            self.kind.addItem("Subscription", "subscription")
+            self.kind.addItem("Bill", "bill")
+            self.kind.addItem("Other recurring", "other")
+        self._set_combo(self.kind, selected)
+        self.kind.blockSignals(False)
 
     @staticmethod
     def _set_combo(combo: QComboBox, value: object) -> None:
@@ -224,7 +263,8 @@ class RecurringRuleForm(QDialog):
 class RecordRecurringDialog(QDialog):
     def __init__(self, rule: RecurringRule):
         super().__init__()
-        self.setWindowTitle("Record recurring payment")
+        income = rule.transaction_type == "income"
+        self.setWindowTitle("Record recurring income" if income else "Record recurring payment")
         self.amount = QLineEdit(str(rule.amount) if rule.amount is not None else "")
         self.amount.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.amount.setPlaceholderText("Actual amount")
@@ -235,13 +275,13 @@ class RecordRecurringDialog(QDialog):
         form = QFormLayout()
         amount_label = "Actual amount" if rule.amount_mode == "variable" else "Amount"
         form.addRow(amount_label, self.amount)
-        form.addRow("Payment date", self.date)
+        form.addRow("Income date" if income else "Payment date", self.date)
         dialog_shell(
             self,
-            "Record payment",
+            "Record income" if income else "Record payment",
             rule.name,
             form,
-            "Record expense",
+            "Record income" if income else "Record expense",
             "upcoming",
             minimum_width=460,
         )

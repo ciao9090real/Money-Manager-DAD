@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 
 from app.repositories.account_repository import AccountRepository
 from app.services.dashboard_service import DashboardService
+from app.services.reporting_service import ReportingService
 from app.ui.components import (
     FittedLabel,
     amount_item,
@@ -56,6 +57,7 @@ class DashboardPage(QWidget):
     ):
         super().__init__()
         self.service = DashboardService(db)
+        self.reporting = ReportingService(db)
         self.account_repo = AccountRepository(db)
         self.global_cards: dict[str, QLabel] = {}
         self.scope_cards: dict[str, QLabel] = {}
@@ -83,14 +85,13 @@ class DashboardPage(QWidget):
             on_add_investment,
             on_add_loan,
             on_add_recurring,
-            on_backup,
         )
         layout.addWidget(self.quick_actions)
 
         layout.addWidget(
             section_heading(
-                "Portfolio overview",
-                "A global view across all active accounts and liabilities",
+                "Financial position",
+                "The numbers that define your position today",
             )
         )
 
@@ -119,6 +120,9 @@ class DashboardPage(QWidget):
             self.global_cards[key] = value
             self.global_metric_widgets.append(card)
         layout.addLayout(self.global_metric_grid)
+
+        self.forecast_card = self._build_forecast()
+        layout.addWidget(self.forecast_card)
 
         self.scope_selector_card = self._build_scope_selector()
         layout.addWidget(self.scope_selector_card)
@@ -189,10 +193,10 @@ class DashboardPage(QWidget):
     def _build_hero(self) -> QFrame:
         hero = QFrame()
         hero.setProperty("role", "heroCard")
-        hero.setMinimumHeight(158)
-        hero.setMaximumHeight(176)
+        hero.setMinimumHeight(152)
+        hero.setMaximumHeight(166)
         layout = QVBoxLayout(hero)
-        layout.setContentsMargins(25, 22, 25, 20)
+        layout.setContentsMargins(26, 22, 26, 20)
         layout.setSpacing(6)
         label = QLabel("TOTAL NET WORTH")
         label.setProperty("role", "heroLabel")
@@ -203,7 +207,7 @@ class DashboardPage(QWidget):
         self.hero_helper.setProperty("role", "heroHelper")
         bottom = QHBoxLayout()
         bottom.setContentsMargins(0, 8, 0, 0)
-        updated = QLabel("Local data · Updated just now")
+        updated = QLabel("Stored locally  |  Updated just now")
         updated.setProperty("role", "heroHelper")
         bottom.addWidget(updated)
         bottom.addStretch()
@@ -220,34 +224,30 @@ class DashboardPage(QWidget):
         on_add_investment,
         on_add_loan,
         on_add_recurring,
-        on_backup,
     ) -> QFrame:
         container = QFrame()
         container.setProperty("role", "quickActions")
         self.quick_action_layout = QGridLayout(container)
-        self.quick_action_layout.setContentsMargins(14, 10, 14, 10)
+        self.quick_action_layout.setContentsMargins(0, 0, 0, 0)
         self.quick_action_layout.setSpacing(8)
-        label = QLabel("Quick actions")
+        label = QLabel("CREATE")
         label.setProperty("role", "metricLabel")
         add_transfer = soft_button("Transfer", "transactions")
         add_account = secondary_button("Account", "plus")
         add_investment = secondary_button("Investment", "investments")
         add_loan = secondary_button("Loan", "loans")
-        add_recurring = secondary_button("Recurring", "upcoming")
-        backup = secondary_button("Backup", "backup")
+        add_recurring = secondary_button("Schedule", "upcoming")
         add_transfer.setToolTip("Record a transfer")
         add_account.setToolTip("Add account")
         add_investment.setToolTip("Add investment")
         add_loan.setToolTip("Add borrowed or lent money")
-        add_recurring.setToolTip("Add recurring payment")
-        backup.setToolTip("Create backup")
+        add_recurring.setToolTip("Add a recurring wage or payment")
         for button in (
             add_transfer,
             add_account,
             add_investment,
             add_loan,
             add_recurring,
-            backup,
         ):
             button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         add_transfer.clicked.connect(on_add_transfer or (lambda: None))
@@ -255,7 +255,6 @@ class DashboardPage(QWidget):
         add_investment.clicked.connect(on_add_investment or (lambda: None))
         add_loan.clicked.connect(on_add_loan or (lambda: None))
         add_recurring.clicked.connect(on_add_recurring or (lambda: None))
-        backup.clicked.connect(on_backup or (lambda: None))
         self.quick_action_label = label
         self.quick_action_buttons = (
             add_transfer,
@@ -263,13 +262,12 @@ class DashboardPage(QWidget):
             add_investment,
             add_loan,
             add_recurring,
-            backup,
         )
         return container
 
     def _build_scope_selector(self) -> QFrame:
         card = QFrame()
-        card.setProperty("role", "card")
+        card.setProperty("role", "scopeBar")
         layout = QVBoxLayout(card)
         layout.setContentsMargins(18, 16, 18, 16)
         layout.setSpacing(10)
@@ -293,6 +291,64 @@ class DashboardPage(QWidget):
         layout.addWidget(self.scope_caption)
         return card
 
+    def _build_forecast(self) -> QFrame:
+        card, layout = create_card(
+            "Cash forecast",
+            subtitle="Projected available liquidity from active recurring income and payments",
+            role="forecastCard",
+        )
+        self.forecast_grid = QGridLayout()
+        self.forecast_grid.setContentsMargins(0, 2, 0, 0)
+        self.forecast_grid.setHorizontalSpacing(24)
+        self.forecast_grid.setVerticalSpacing(14)
+
+        self.forecast_status = QWidget()
+        self.forecast_status.setProperty("role", "forecastStatus")
+        status_layout = QVBoxLayout(self.forecast_status)
+        status_layout.setContentsMargins(14, 8, 14, 8)
+        status_layout.setSpacing(5)
+        status_eyebrow = QLabel("6-MONTH DIRECTION")
+        status_eyebrow.setProperty("role", "eyebrow")
+        self.forecast_message = QLabel("No scheduled movement yet")
+        self.forecast_message.setProperty("role", "forecastMessage")
+        self.forecast_message.setWordWrap(True)
+        self.forecast_detail = QLabel()
+        self.forecast_detail.setProperty("role", "sectionSubtitle")
+        self.forecast_detail.setWordWrap(True)
+        status_layout.addWidget(status_eyebrow)
+        status_layout.addWidget(self.forecast_message)
+        status_layout.addWidget(self.forecast_detail)
+        status_layout.addStretch()
+
+        self.forecast_three, self.forecast_three_value, self.forecast_three_helper = (
+            self._forecast_metric("IN 3 MONTHS")
+        )
+        self.forecast_six, self.forecast_six_value, self.forecast_six_helper = (
+            self._forecast_metric("IN 6 MONTHS")
+        )
+        layout.addLayout(self.forecast_grid)
+        return card
+
+    @staticmethod
+    def _forecast_metric(title: str) -> tuple[QWidget, QLabel, QLabel]:
+        container = QWidget()
+        container.setProperty("role", "forecastMetric")
+        metric_layout = QVBoxLayout(container)
+        metric_layout.setContentsMargins(8, 8, 8, 8)
+        metric_layout.setSpacing(5)
+        title_label = QLabel(title)
+        title_label.setProperty("role", "metricLabel")
+        value = FittedLabel(format_money(0), maximum_size=27, minimum_size=14)
+        value.setProperty("role", "metricValue")
+        value.setMinimumHeight(34)
+        helper = QLabel("Scheduled change €0.00")
+        helper.setProperty("role", "helper")
+        metric_layout.addWidget(title_label)
+        metric_layout.addWidget(value)
+        metric_layout.addWidget(helper)
+        metric_layout.addStretch()
+        return container, value, helper
+
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._layout_dashboard()
@@ -302,6 +358,7 @@ class DashboardPage(QWidget):
             return
         width = max(1, self.width())
         self._layout_quick_actions(width)
+        self._layout_forecast(width)
         clear_layout(self.overview_grid)
         for column in range(2):
             self.overview_grid.setColumnStretch(column, 0)
@@ -309,7 +366,7 @@ class DashboardPage(QWidget):
         self.overview_grid.setColumnStretch(0, 1)
 
         clear_layout(self.global_metric_grid)
-        global_columns = 6 if width >= 1100 else 3 if width >= 620 else 2
+        global_columns = 3 if width >= 1000 else 2 if width >= 620 else 1
         for column in range(global_columns):
             self.global_metric_grid.setColumnStretch(column, 1)
         for index, card in enumerate(self.global_metric_widgets):
@@ -334,6 +391,28 @@ class DashboardPage(QWidget):
             self.content_grid.addWidget(self.recent_card, 0, 0)
             self.content_grid.addWidget(self.accounts_card, 1, 0)
             self.content_grid.setColumnStretch(0, 1)
+
+    def _layout_forecast(self, width: int) -> None:
+        if not hasattr(self, "forecast_grid"):
+            return
+        compact = width < 900
+        if getattr(self, "_forecast_compact", None) == compact:
+            return
+        self._forecast_compact = compact
+        clear_layout(self.forecast_grid)
+        if compact:
+            self.forecast_grid.addWidget(self.forecast_status, 0, 0, 1, 2)
+            self.forecast_grid.addWidget(self.forecast_three, 1, 0)
+            self.forecast_grid.addWidget(self.forecast_six, 1, 1)
+            self.forecast_grid.setColumnStretch(0, 1)
+            self.forecast_grid.setColumnStretch(1, 1)
+        else:
+            self.forecast_grid.addWidget(self.forecast_status, 0, 0)
+            self.forecast_grid.addWidget(self.forecast_three, 0, 1)
+            self.forecast_grid.addWidget(self.forecast_six, 0, 2)
+            self.forecast_grid.setColumnStretch(0, 2)
+            self.forecast_grid.setColumnStretch(1, 1)
+            self.forecast_grid.setColumnStretch(2, 1)
 
     def _layout_quick_actions(self, width: int) -> None:
         if not hasattr(self, "quick_action_layout"):
@@ -381,8 +460,71 @@ class DashboardPage(QWidget):
         self.hero_helper.setText(
             f"Across {len(global_data['accounts'])} active account{'s' if len(global_data['accounts']) != 1 else ''}, assets, and liabilities"
         )
+        self._refresh_forecast(
+            self.reporting.cash_forecast(starting_balance=global_data["liquidity"])
+        )
         scoped_data = self.service.scope_summary(self.current_scope_id)
         self._refresh_scope(scoped_data)
+
+    def _refresh_forecast(self, data: dict) -> None:
+        for value_label, helper_label, balance_key, change_key in (
+            (
+                self.forecast_three_value,
+                self.forecast_three_helper,
+                "three_month_balance",
+                "three_month_change",
+            ),
+            (
+                self.forecast_six_value,
+                self.forecast_six_helper,
+                "six_month_balance",
+                "six_month_change",
+            ),
+        ):
+            balance = data[balance_key]
+            change = data[change_key]
+            value_label.setText(compact_money(balance))
+            value_label.setToolTip(format_money(balance))
+            tone = "positive" if change > 0 else "negative" if change < 0 else "neutral"
+            value_label.setProperty("tone", tone)
+            value_label.style().unpolish(value_label)
+            value_label.style().polish(value_label)
+            signed_change = (
+                f"+{format_money(change)}" if change > 0 else format_money(change)
+            )
+            helper_label.setText(f"Scheduled change {signed_change}")
+
+        change = data["six_month_change"]
+        if data["known_schedule_count"] == 0:
+            tone = "neutral"
+            message = "No scheduled movement yet"
+            detail = "Add recurring wages and payments to calculate your direction."
+        elif change < 0:
+            tone = "negative"
+            message = "Your available balance is forecast to decrease"
+            detail = (
+                f"Scheduled payments exceed income by {format_money(abs(change))} "
+                "over the next six months."
+            )
+        elif change > 0:
+            tone = "positive"
+            message = "Your available balance is forecast to grow"
+            detail = (
+                f"Scheduled income exceeds payments by {format_money(change)} "
+                "over the next six months."
+            )
+        else:
+            tone = "neutral"
+            message = "Your available balance is forecast to stay level"
+            detail = "Scheduled income and payments are currently balanced."
+        if data["unknown_amount_count"]:
+            count = data["unknown_amount_count"]
+            detail += f" {count} schedule{'s' if count != 1 else ''} without an estimate excluded."
+        self.forecast_status.setProperty("tone", tone)
+        self.forecast_status.style().unpolish(self.forecast_status)
+        self.forecast_status.style().polish(self.forecast_status)
+        self.forecast_message.setText(message)
+        self.forecast_detail.setText(detail)
 
     def _refresh_scope(self, data: dict) -> None:
         self.scope_title.setText(f"Viewing: {data['scope_label']}")

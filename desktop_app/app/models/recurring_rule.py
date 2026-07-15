@@ -14,6 +14,7 @@ class RecurringRule:
     frequency: str
     start_date: str
     next_due_date: str
+    transaction_type: str = "expense"
     amount: Decimal | None = None
     category_id: str | None = None
     payment_method_id: str | None = None
