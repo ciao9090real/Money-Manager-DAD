@@ -51,6 +51,16 @@ def main() -> None:
                 window._select_page(index)
                 app.processEvents()
                 window.grab().save(str(output / f"ui-{name}.png"))
+            window._select_page(3)
+            window.investments.history_selector.setCurrentIndex(
+                window.investments.history_selector.count() - 1
+            )
+            app.processEvents()
+            window.grab().save(str(output / "ui-investment-detail.png"))
+            window.investments._set_history_interval("weekly")
+            app.processEvents()
+            window.grab().save(str(output / "ui-investment-weekly.png"))
+            window.investments._set_history_interval("monthly")
             window.resize(1000, 720)
             QTest.qWait(window.sidebar.width_animation.duration() + 40)
             app.processEvents()
@@ -191,14 +201,26 @@ def seed(db) -> None:
     transactions.add_adjustment(
         brokerage.id, "124.35", "2026-07-07", "Portfolio valuation"
     )
-    investments.create_investment(
+    index_fund = investments.create_investment(
         "Global equity index",
         "etf",
         current.id,
         "1000",
-        "2026-07-06",
+        "2026-03-06",
         current_value="1108.40",
         symbol="VWCE",
+    )
+    investments.update_value(index_fund.investment.id, "1136.20", "2026-04-10")
+    investments.add_funds(index_fund.investment.id, current.id, "250", "2026-05-08")
+    investments.update_value(index_fund.investment.id, "1392.80", "2026-06-12")
+    investments.update_value(index_fund.investment.id, "1424.75", "2026-07-14")
+    investments.create_investment(
+        "European bond ladder",
+        "bond",
+        savings.id,
+        "650",
+        "2026-05-08",
+        current_value="662.30",
     )
     loans.create_loan(
         "borrowed",

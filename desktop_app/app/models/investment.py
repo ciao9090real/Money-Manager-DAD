@@ -26,3 +26,19 @@ class InvestmentSnapshot:
     current_value: Decimal
     gain_loss: Decimal
     return_percent: Decimal
+
+
+@dataclass(frozen=True)
+class InvestmentValuePoint:
+    id: str
+    investment_id: str
+    date: str
+    value: Decimal
+    recorded_at: str | None = None
+
+
+@dataclass(frozen=True)
+class InvestmentPerformancePoint:
+    date: str
+    contributed: Decimal
+    current_value: Decimal

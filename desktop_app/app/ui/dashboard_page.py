@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 from app.repositories.account_repository import AccountRepository
 from app.services.dashboard_service import DashboardService
 from app.services.reporting_service import ReportingService
+from app.ui.charts import CashFlowChart
 from app.ui.components import (
     FittedLabel,
     amount_item,
@@ -151,6 +152,14 @@ class DashboardPage(QWidget):
             self.scope_cards[key] = value
             self.scope_widgets.append(card)
         layout.addLayout(self.scope_grid)
+
+        cash_flow_card, cash_flow_layout = create_card(
+            "Six-month cash flow",
+            subtitle="Recorded income and expenses; transfers are excluded",
+        )
+        self.cash_flow_chart = CashFlowChart()
+        cash_flow_layout.addWidget(self.cash_flow_chart)
+        layout.addWidget(cash_flow_card)
 
         add_account = secondary_button("Add account", "plus")
         add_account.clicked.connect(on_add_account or (lambda: None))
@@ -463,6 +472,13 @@ class DashboardPage(QWidget):
         self._refresh_forecast(
             self.reporting.cash_forecast(starting_balance=global_data["liquidity"])
         )
+        cash_flow = self.reporting.monthly_cash_flow()
+        self.cash_flow_chart.set_data(
+            [
+                (item["label"], item["income"], item["expenses"])
+                for item in cash_flow
+            ]
+        )
         scoped_data = self.service.scope_summary(self.current_scope_id)
         self._refresh_scope(scoped_data)
 
@@ -610,6 +626,9 @@ class DashboardPage(QWidget):
         self.recent.setVisible(bool(recent_rows))
         self.recent_empty.setVisible(not recent_rows)
         fit_item_view_height(self.recent, len(recent_rows), maximum_rows=6)
+        self.recent_card.setMaximumHeight(
+            225 if not recent_rows else 112 + self.recent.maximumHeight()
+        )
 
         accounts = data["accounts"][:8]
         self.accounts.setRowCount(len(accounts))
@@ -622,6 +641,9 @@ class DashboardPage(QWidget):
         self.accounts.setVisible(bool(accounts))
         self.accounts_empty.setVisible(not accounts)
         fit_item_view_height(self.accounts, len(accounts), maximum_rows=6)
+        self.accounts_card.setMaximumHeight(
+            225 if not accounts else 112 + self.accounts.maximumHeight()
+        )
 
     def _populate_scope_selector(self) -> None:
         selected = self.current_scope_id

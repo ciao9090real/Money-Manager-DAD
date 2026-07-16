@@ -8,14 +8,60 @@ from decimal import Decimal
 from app.models.recurring_rule import RecurringRule
 from app.repositories.recurring_rule_repository import RecurringRuleRepository
 from app.services.dashboard_service import DashboardService
+from app.utils.money import cents_to_decimal
 
 
 class ReportingService:
     """Deterministic projections derived from current balances and active schedules."""
 
     def __init__(self, db: sqlite3.Connection):
+        self.db = db
         self.dashboard = DashboardService(db)
         self.rules = RecurringRuleRepository(db)
+
+    def monthly_cash_flow(
+        self,
+        months: int = 6,
+        reference_date: date | None = None,
+    ) -> list[dict[str, str | Decimal]]:
+        if months < 1:
+            raise ValueError("Months must be at least 1")
+        reference = reference_date or date.today()
+        month_keys: list[str] = []
+        for offset in reversed(range(months)):
+            month_index = reference.year * 12 + reference.month - 1 - offset
+            year, zero_based_month = divmod(month_index, 12)
+            month_keys.append(f"{year:04d}-{zero_based_month + 1:02d}")
+
+        rows = self.db.execute(
+            """
+            SELECT substr(date, 1, 7) AS month,
+                   SUM(CASE WHEN type = 'income' THEN amount_cents ELSE 0 END)
+                       AS income_cents,
+                   SUM(CASE WHEN type = 'expense' THEN abs(amount_cents) ELSE 0 END)
+                       AS expense_cents
+            FROM transactions
+            WHERE deleted_at IS NULL
+              AND type IN ('income', 'expense')
+              AND date >= ? AND date < ?
+            GROUP BY substr(date, 1, 7)
+            """,
+            (f"{month_keys[0]}-01", self._month_after(month_keys[-1])),
+        ).fetchall()
+        by_month = {row["month"]: row for row in rows}
+        result: list[dict[str, str | Decimal]] = []
+        for month_key in month_keys:
+            row = by_month.get(month_key)
+            month_date = date.fromisoformat(f"{month_key}-01")
+            result.append(
+                {
+                    "month": month_key,
+                    "label": month_date.strftime("%b"),
+                    "income": cents_to_decimal(row["income_cents"] if row else 0),
+                    "expenses": cents_to_decimal(row["expense_cents"] if row else 0),
+                }
+            )
+        return result
 
     def cash_forecast(
         self,
@@ -104,3 +150,10 @@ class ReportingService:
         month = zero_based_month + 1
         day = min(anchor_day, calendar.monthrange(year, month)[1])
         return date(year, month, day)
+
+    @staticmethod
+    def _month_after(month_key: str) -> str:
+        value = date.fromisoformat(f"{month_key}-01")
+        month_index = value.year * 12 + value.month
+        year, zero_based_month = divmod(month_index, 12)
+        return f"{year:04d}-{zero_based_month + 1:02d}-01"

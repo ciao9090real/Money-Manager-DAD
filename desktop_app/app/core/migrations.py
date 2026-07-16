@@ -6,7 +6,7 @@ from pathlib import Path
 from uuid import uuid4
 
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 9
 UTC_NOW_SQL = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"
 
 
@@ -48,6 +48,12 @@ def migrate(connection: sqlite3.Connection) -> None:
         if version < 7:
             _run_migration(connection, 7, _migrate_v7)
             version = 7
+        if version < 8:
+            _run_migration(connection, 8, _migrate_v8)
+            version = 8
+        if version < 9:
+            _run_migration(connection, 9, _migrate_v9)
+            version = 9
         assert_database_integrity(connection)
     except Exception:
         connection.rollback()
@@ -1107,3 +1113,149 @@ def _migrate_v7(connection: sqlite3.Connection) -> None:
         END;
         """,
     )
+
+
+def _migrate_v8(connection: sqlite3.Connection) -> None:
+    _execute_script(
+        connection,
+        f"""
+        CREATE TABLE investment_value_history (
+            id TEXT PRIMARY KEY CHECK (length(id) = 36),
+            investment_id TEXT NOT NULL REFERENCES investments(id),
+            date TEXT NOT NULL CHECK (
+                date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+            ),
+            value_cents INTEGER NOT NULL CHECK (value_cents >= 0),
+            created_at TEXT NOT NULL DEFAULT ({UTC_NOW_SQL}),
+            updated_at TEXT NOT NULL DEFAULT ({UTC_NOW_SQL}),
+            UNIQUE (investment_id, date)
+        );
+
+        CREATE INDEX idx_investment_value_history
+            ON investment_value_history(investment_id, date);
+        """,
+    )
+
+    investments = connection.execute(
+        """
+        SELECT i.id, i.account_id, i.created_at, a.opening_balance_cents
+        FROM investments i
+        JOIN accounts a ON a.id = i.account_id
+        WHERE i.deleted_at IS NULL AND a.deleted_at IS NULL
+        """
+    ).fetchall()
+    for investment in investments:
+        running_value = int(investment["opening_balance_cents"] or 0)
+        transactions = connection.execute(
+            """
+            SELECT date, amount_cents
+            FROM transactions
+            WHERE account_id = ? AND deleted_at IS NULL
+            ORDER BY date, created_at, id
+            """,
+            (investment["account_id"],),
+        ).fetchall()
+        values_by_date: dict[str, int] = {}
+        for transaction in transactions:
+            running_value += int(transaction["amount_cents"] or 0)
+            values_by_date[transaction["date"]] = max(running_value, 0)
+        if not values_by_date:
+            values_by_date[str(investment["created_at"])[:10]] = max(running_value, 0)
+        for value_date, value_cents in values_by_date.items():
+            connection.execute(
+                """
+                INSERT INTO investment_value_history (
+                    id, investment_id, date, value_cents
+                ) VALUES (?, ?, ?, ?)
+                """,
+                (str(uuid4()), investment["id"], value_date, value_cents),
+            )
+
+
+def _migrate_v9(connection: sqlite3.Connection) -> None:
+    _execute_script(
+        connection,
+        f"""
+        DROP INDEX idx_investment_value_history;
+        ALTER TABLE investment_value_history
+            RENAME TO investment_value_history_v8;
+
+        CREATE TABLE investment_value_history (
+            id TEXT PRIMARY KEY CHECK (length(id) = 36),
+            investment_id TEXT NOT NULL REFERENCES investments(id),
+            date TEXT NOT NULL CHECK (
+                date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+            ),
+            value_cents INTEGER NOT NULL CHECK (value_cents >= 0),
+            created_at TEXT NOT NULL DEFAULT ({UTC_NOW_SQL}),
+            updated_at TEXT NOT NULL DEFAULT ({UTC_NOW_SQL})
+        );
+
+        INSERT INTO investment_value_history (
+            id, investment_id, date, value_cents, created_at, updated_at
+        )
+        SELECT id, investment_id, date, value_cents, updated_at, updated_at
+        FROM investment_value_history_v8;
+
+        DROP TABLE investment_value_history_v8;
+
+        CREATE INDEX idx_investment_value_history
+            ON investment_value_history(investment_id, date, created_at);
+        """,
+    )
+
+    investments = connection.execute(
+        """
+        SELECT i.id, i.account_id, a.opening_balance_cents
+        FROM investments i
+        JOIN accounts a ON a.id = i.account_id
+        WHERE i.deleted_at IS NULL AND a.deleted_at IS NULL
+        """
+    ).fetchall()
+    for investment in investments:
+        existing = {
+            (row["date"], int(row["value_cents"]))
+            for row in connection.execute(
+                """
+                SELECT date, value_cents
+                FROM investment_value_history
+                WHERE investment_id = ?
+                """,
+                (investment["id"],),
+            )
+        }
+        running_value = int(investment["opening_balance_cents"] or 0)
+        transactions = connection.execute(
+            """
+            SELECT date, amount_cents, created_at
+            FROM transactions
+            WHERE account_id = ? AND deleted_at IS NULL
+            ORDER BY date, created_at, id
+            """,
+            (investment["account_id"],),
+        ).fetchall()
+        for transaction in transactions:
+            running_value = max(
+                0,
+                running_value + int(transaction["amount_cents"] or 0),
+            )
+            signature = (transaction["date"], running_value)
+            if signature in existing:
+                continue
+            connection.execute(
+                """
+                INSERT INTO investment_value_history (
+                    id, investment_id, date, value_cents,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(uuid4()),
+                    investment["id"],
+                    transaction["date"],
+                    running_value,
+                    transaction["created_at"],
+                    transaction["created_at"],
+                ),
+            )
+            existing.add(signature)

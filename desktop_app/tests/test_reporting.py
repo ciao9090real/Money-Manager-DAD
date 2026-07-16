@@ -9,6 +9,7 @@ from app.core.database import connect
 from app.services.account_service import AccountService
 from app.services.recurring_service import RecurringService
 from app.services.reporting_service import ReportingService
+from app.services.transaction_service import TransactionService
 
 
 @pytest.fixture()
@@ -113,3 +114,22 @@ def test_paused_schedules_do_not_affect_forecast(services):
     assert forecast["six_month_change"] == Decimal("0")
     assert forecast["six_month_balance"] == Decimal("100.00")
     assert forecast["known_schedule_count"] == 0
+
+
+def test_monthly_cash_flow_fills_empty_months_and_excludes_transfers(services):
+    db, accounts, _recurring, reporting = services
+    transactions = TransactionService(db)
+    current = accounts.create_account("Current", "current_account", opening_balance="1000")
+    savings = accounts.create_account("Savings", "savings_account")
+    transactions.add_income(current.id, "2000", "2026-04-01", "Wage")
+    transactions.add_expense(current.id, "450", "2026-04-12", "Rent")
+    transactions.add_transfer(current.id, savings.id, "200", "2026-05-01", "Save")
+    transactions.add_expense(current.id, "75", "2026-06-05", "Utilities")
+
+    months = reporting.monthly_cash_flow(3, date(2026, 6, 15))
+
+    assert [(item["month"], item["income"], item["expenses"]) for item in months] == [
+        ("2026-04", Decimal("2000.00"), Decimal("450.00")),
+        ("2026-05", Decimal("0.00"), Decimal("0.00")),
+        ("2026-06", Decimal("0.00"), Decimal("75.00")),
+    ]

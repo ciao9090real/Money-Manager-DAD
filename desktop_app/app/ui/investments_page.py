@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import date
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QFrame,
+    QComboBox,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
@@ -20,9 +22,11 @@ from PySide6.QtWidgets import (
 from app.models.investment import InvestmentSnapshot
 from app.repositories.account_repository import AccountRepository
 from app.services.investment_service import InvestmentService
+from app.ui.charts import AllocationChart, PerformanceChart
 from app.ui.components import (
     amount_item,
     badge,
+    chip_button,
     clear_layout,
     compact_money,
     create_card,
@@ -42,6 +46,7 @@ from app.ui.investment_form import (
     UpdateInvestmentValueDialog,
 )
 from app.ui.theme import Colors
+from app.utils.dates import format_display_date
 from app.utils.money import format_money
 
 
@@ -52,6 +57,8 @@ class InvestmentsPage(QWidget):
         self.accounts = AccountRepository(db)
         self.on_changed = on_changed
         self.notify = notify or (lambda _message: None)
+        self.history_interval = "monthly"
+        self.interval_buttons = {}
 
         add_button = primary_button("Add investment", "plus")
         add_button.clicked.connect(self.add_investment)
@@ -78,6 +85,54 @@ class InvestmentsPage(QWidget):
             self.metric_widgets.append(card)
             self.metric_values[key] = value
         layout.addLayout(self.metric_grid)
+
+        self.history_selector = QComboBox()
+        self.history_selector.setMinimumWidth(180)
+        self.history_selector.setMaximumWidth(280)
+        self.history_selector.currentIndexChanged.connect(self._refresh_history_chart)
+        history_card, history_layout = create_card(
+            "Value history",
+            subtitle="Recorded market values over time",
+            action=self.history_selector,
+        )
+        self.history_card = history_card
+        self.history_caption = QLabel("Choose a portfolio or investment")
+        self.history_caption.setProperty("role", "helper")
+        interval_row = QHBoxLayout()
+        interval_row.setSpacing(5)
+        interval_label = QLabel("Period")
+        interval_label.setProperty("role", "metricLabel")
+        interval_row.addWidget(interval_label)
+        for key, label in (
+            ("monthly", "Monthly"),
+            ("biweekly", "Biweekly"),
+            ("weekly", "Weekly"),
+            ("daily", "Daily"),
+        ):
+            button = chip_button(label)
+            button.clicked.connect(
+                lambda _checked=False, value=key: self._set_history_interval(value)
+            )
+            self.interval_buttons[key] = button
+            interval_row.addWidget(button)
+        interval_row.addStretch()
+        self.history_chart = PerformanceChart()
+        history_layout.addWidget(self.history_caption)
+        history_layout.addLayout(interval_row)
+        history_layout.addWidget(self.history_chart)
+
+        allocation_card, allocation_layout = create_card(
+            "Current allocation",
+            subtitle="How today’s portfolio value is distributed",
+        )
+        self.allocation_card = allocation_card
+        self.allocation_chart = AllocationChart()
+        allocation_layout.addWidget(self.allocation_chart)
+
+        self.chart_grid = QGridLayout()
+        self.chart_grid.setContentsMargins(0, 0, 0, 0)
+        self.chart_grid.setSpacing(16)
+        layout.addLayout(self.chart_grid)
 
         self.table = QTableWidget(0, 6)
         self.table.setHorizontalHeaderLabels(
@@ -130,10 +185,13 @@ class InvestmentsPage(QWidget):
         card_layout.addWidget(self.table, 1)
         layout.addWidget(card, 1)
         self._layout_metrics()
+        self._layout_charts()
+        self._set_history_interval("monthly", refresh=False)
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._layout_metrics()
+        self._layout_charts()
         if hasattr(self, "table"):
             self.table.setColumnHidden(1, self.width() < 980)
             self.table.setColumnHidden(2, self.width() < 860)
@@ -151,6 +209,25 @@ class InvestmentsPage(QWidget):
         for index, card in enumerate(self.metric_widgets):
             self.metric_grid.addWidget(card, index // columns, index % columns)
 
+    def _layout_charts(self) -> None:
+        if not hasattr(self, "chart_grid"):
+            return
+        wide = self.width() >= 1100
+        if getattr(self, "_charts_wide", None) == wide:
+            return
+        self._charts_wide = wide
+        clear_layout(self.chart_grid)
+        if wide:
+            self.chart_grid.addWidget(self.history_card, 0, 0)
+            self.chart_grid.addWidget(self.allocation_card, 0, 1)
+            self.chart_grid.setColumnStretch(0, 2)
+            self.chart_grid.setColumnStretch(1, 1)
+        else:
+            self.chart_grid.addWidget(self.history_card, 0, 0)
+            self.chart_grid.addWidget(self.allocation_card, 1, 0)
+            self.chart_grid.setColumnStretch(0, 1)
+            self.chart_grid.setColumnStretch(1, 0)
+
     def refresh(self) -> None:
         summary = self.service.summary()
         for key in ("current_value", "contributed", "gain_loss"):
@@ -163,6 +240,27 @@ class InvestmentsPage(QWidget):
         self._set_performance_tone(self.metric_values["return_percent"], return_value)
 
         snapshots = self.service.list_snapshots()
+        selected_history = self.history_selector.currentData() or "portfolio"
+        self.history_selector.blockSignals(True)
+        self.history_selector.clear()
+        self.history_selector.addItem("Portfolio total", "portfolio")
+        for snapshot in snapshots:
+            investment = snapshot.investment
+            label = f"{investment.symbol} · {investment.name}" if investment.symbol else investment.name
+            self.history_selector.addItem(label, investment.id)
+        selected_index = self.history_selector.findData(selected_history)
+        self.history_selector.setCurrentIndex(max(0, selected_index))
+        self.history_selector.blockSignals(False)
+        self.allocation_chart.set_data(
+            [
+                (
+                    snapshot.investment.symbol or snapshot.investment.name,
+                    snapshot.current_value,
+                )
+                for snapshot in snapshots
+            ]
+        )
+        self._refresh_history_chart()
         self.table.setRowCount(len(snapshots))
         for row, snapshot in enumerate(snapshots):
             investment = snapshot.investment
@@ -280,10 +378,76 @@ class InvestmentsPage(QWidget):
         return self.service.get_snapshot(str(investment_id)) if investment_id else None
 
     def _sync_actions(self) -> None:
-        selected = self._selected_snapshot() is not None
+        snapshot = self._selected_snapshot()
+        selected = snapshot is not None
         self.edit_button.setEnabled(selected)
         self.add_funds_button.setEnabled(selected)
         self.update_value_button.setEnabled(selected)
+        if snapshot and self.history_selector.currentData() != snapshot.investment.id:
+            index = self.history_selector.findData(snapshot.investment.id)
+            if index >= 0:
+                self.history_selector.setCurrentIndex(index)
+
+    def _refresh_history_chart(self, _index: int | None = None) -> None:
+        if not hasattr(self, "history_chart"):
+            return
+        investment_id = self.history_selector.currentData()
+        if not investment_id or investment_id == "portfolio":
+            raw_points = self.service.portfolio_history()
+            points = self.service.performance_history(
+                interval=self.history_interval,
+            )
+            subject = "portfolio"
+        else:
+            raw_points = self.service.value_history(str(investment_id))
+            points = self.service.performance_history(
+                str(investment_id),
+                self.history_interval,
+            )
+            subject = self.history_selector.currentText()
+        self.history_chart.set_data(
+            [
+                (
+                    self._period_label(point.date),
+                    point.contributed,
+                    point.current_value,
+                )
+                for point in points
+            ]
+        )
+        if not points:
+            self.history_caption.setText(f"No recorded values for {subject}")
+        else:
+            interval_name = self.history_interval.title()
+            period_word = "period" if len(points) == 1 else "periods"
+            update_word = "update" if len(raw_points) == 1 else "updates"
+            self.history_caption.setText(
+                f"{len(raw_points)} saved {update_word} · "
+                f"{len(points)} {interval_name.lower()} {period_word} · "
+                f"{format_display_date(points[0].date)} to "
+                f"{format_display_date(points[-1].date)}"
+            )
+
+    def _set_history_interval(self, value: str, refresh: bool = True) -> None:
+        self.history_interval = value
+        for key, button in self.interval_buttons.items():
+            selected = key == value
+            button.setChecked(selected)
+            button.setProperty("selected", "true" if selected else "false")
+            button.style().unpolish(button)
+            button.style().polish(button)
+        if refresh:
+            self._refresh_history_chart()
+
+    def _period_label(self, value: str) -> str:
+        point_date = date.fromisoformat(value)
+        if self.history_interval == "monthly":
+            return point_date.strftime("%b %Y")
+        if self.history_interval == "weekly":
+            return point_date.strftime("Week %d %b")
+        if self.history_interval == "biweekly":
+            return point_date.strftime("2w %d %b")
+        return point_date.strftime("%d %b")
 
     def _changed(self, message: str) -> None:
         self.notify(message)

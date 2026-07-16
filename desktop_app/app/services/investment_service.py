@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import date as Date, timedelta
 from decimal import Decimal
 
 from app.core.database import unit_of_work
-from app.models.investment import Investment, InvestmentSnapshot
+from app.models.investment import (
+    Investment,
+    InvestmentPerformancePoint,
+    InvestmentSnapshot,
+    InvestmentValuePoint,
+)
 from app.repositories.account_repository import AccountRepository
 from app.repositories.investment_repository import InvestmentRepository
 from app.services.account_service import AccountService
@@ -16,6 +22,7 @@ from app.utils.validators import require_text
 
 class InvestmentService:
     KINDS = {"fund", "etf", "stock", "bond", "crypto", "other"}
+    PERFORMANCE_INTERVALS = {"daily", "weekly", "biweekly", "monthly"}
     FUNDING_ACCOUNT_TYPES = {
         "bank",
         "current_account",
@@ -80,6 +87,7 @@ class InvestmentService:
                     f"Set {cleaned_name} market value",
                     investment_id=investment.id,
                 )
+            self.investments.record_value(investment.id, transaction_date, value)
             return self._snapshot(investment.id)
 
     def update_investment(
@@ -124,13 +132,21 @@ class InvestmentService:
             self._funding_account(source_account_id)
             if source_account_id == investment.account_id:
                 raise ValueError("Funding and investment accounts must be different")
+            transaction_date = require_iso_date(date)
+            self._require_current_timeline_date(investment.id, transaction_date)
             self.transactions.add_transfer(
                 source_account_id,
                 investment.account_id,
                 require_positive(amount),
-                require_iso_date(date),
+                transaction_date,
                 f"Add funds to {investment.name}",
                 investment_id=investment.id,
+            )
+            current_value = self.accounts.account_balance(investment.account_id)
+            self.investments.record_value(
+                investment.id,
+                transaction_date,
+                current_value,
             )
             return self._snapshot(investment_id)
 
@@ -143,16 +159,19 @@ class InvestmentService:
         with unit_of_work(self.db):
             investment = self._investment(investment_id)
             target = self._value(current_value)
+            transaction_date = require_iso_date(date)
+            self._require_current_timeline_date(investment.id, transaction_date)
             current = self.accounts.account_balance(investment.account_id)
             difference = target - current
             if difference:
                 self.transactions.add_adjustment(
                     investment.account_id,
                     difference,
-                    require_iso_date(date),
+                    transaction_date,
                     f"Update {investment.name} market value",
                     investment_id=investment.id,
                 )
+            self.investments.record_value(investment.id, transaction_date, target)
             return self._snapshot(investment_id)
 
     def list_snapshots(self) -> list[InvestmentSnapshot]:
@@ -170,6 +189,99 @@ class InvestmentService:
             ),
             None,
         )
+
+    def value_history(self, investment_id: str) -> list[InvestmentValuePoint]:
+        self._investment(investment_id)
+        return self.investments.list_value_history(investment_id)
+
+    def portfolio_history(self) -> list[InvestmentValuePoint]:
+        active_ids = {
+            investment.id
+            for investment in self.investments.list()
+            if investment.id is not None
+        }
+        latest_values: dict[str, Decimal] = {}
+        portfolio: list[InvestmentValuePoint] = []
+        for point in self.investments.list_value_history():
+            if point.investment_id not in active_ids:
+                continue
+            latest_values[point.investment_id] = point.value
+            portfolio.append(
+                InvestmentValuePoint(
+                    id=f"portfolio-{point.id}",
+                    investment_id="portfolio",
+                    date=point.date,
+                    value=sum(latest_values.values(), Decimal("0")),
+                    recorded_at=point.recorded_at,
+                )
+            )
+        return portfolio
+
+    def performance_history(
+        self,
+        investment_id: str | None = None,
+        interval: str = "monthly",
+        reference_date: Date | None = None,
+    ) -> list[InvestmentPerformancePoint]:
+        if interval not in self.PERFORMANCE_INTERVALS:
+            raise ValueError("Performance interval is not supported")
+        if investment_id is not None:
+            investment = self._investment(investment_id)
+            active_ids = {investment.id}
+        else:
+            active_ids = {
+                investment.id
+                for investment in self.investments.list()
+                if investment.id is not None
+            }
+
+        value_points = [
+            point
+            for point in self.investments.list_value_history(investment_id)
+            if point.investment_id in active_ids
+        ]
+        contributions = [
+            contribution
+            for contribution in self.investments.list_contributions(investment_id)
+            if contribution[0] in active_ids
+        ]
+        event_dates = [Date.fromisoformat(point.date) for point in value_points]
+        event_dates.extend(Date.fromisoformat(item[1]) for item in contributions)
+        if not event_dates:
+            return []
+
+        horizon = max(reference_date or Date.today(), max(event_dates))
+        period_start = self._period_start(min(event_dates), interval)
+        contribution_index = 0
+        value_index = 0
+        contributed = Decimal("0")
+        latest_values: dict[str, Decimal] = {}
+        series: list[InvestmentPerformancePoint] = []
+
+        while period_start <= horizon:
+            next_period = self._next_period(period_start, interval)
+            cutoff = min(next_period - timedelta(days=1), horizon)
+            while contribution_index < len(contributions):
+                contribution = contributions[contribution_index]
+                if Date.fromisoformat(contribution[1]) > cutoff:
+                    break
+                contributed += contribution[2]
+                contribution_index += 1
+            while value_index < len(value_points):
+                point = value_points[value_index]
+                if Date.fromisoformat(point.date) > cutoff:
+                    break
+                latest_values[point.investment_id] = point.value
+                value_index += 1
+            series.append(
+                InvestmentPerformancePoint(
+                    date=cutoff.isoformat(),
+                    contributed=contributed,
+                    current_value=sum(latest_values.values(), Decimal("0")),
+                )
+            )
+            period_start = next_period
+        return series
 
     def summary(self) -> dict[str, Decimal | int]:
         snapshots = self.list_snapshots()
@@ -221,6 +333,18 @@ class InvestmentService:
             raise ValueError("Investment not found")
         return investment
 
+    def _require_current_timeline_date(
+        self,
+        investment_id: str,
+        value_date: str,
+    ) -> None:
+        history = self.investments.list_value_history(investment_id)
+        if history and value_date < history[-1].date:
+            raise ValueError(
+                "Date cannot be earlier than the latest recorded investment value "
+                f"({history[-1].date})"
+            )
+
     def _funding_account(self, account_id: str):
         account = self.account_repository.get(account_id)
         if not account or not account.is_active:
@@ -253,3 +377,26 @@ class InvestmentService:
     def _notes(value: str | None) -> str | None:
         cleaned = (value or "").strip()
         return cleaned or None
+
+    @staticmethod
+    def _period_start(value: Date, interval: str) -> Date:
+        if interval == "daily":
+            return value
+        if interval == "weekly":
+            return value - timedelta(days=value.weekday())
+        if interval == "biweekly":
+            anchor = Date(1970, 1, 5)
+            return anchor + timedelta(days=((value - anchor).days // 14) * 14)
+        return value.replace(day=1)
+
+    @staticmethod
+    def _next_period(value: Date, interval: str) -> Date:
+        if interval == "daily":
+            return value + timedelta(days=1)
+        if interval == "weekly":
+            return value + timedelta(days=7)
+        if interval == "biweekly":
+            return value + timedelta(days=14)
+        if value.month == 12:
+            return Date(value.year + 1, 1, 1)
+        return Date(value.year, value.month + 1, 1)

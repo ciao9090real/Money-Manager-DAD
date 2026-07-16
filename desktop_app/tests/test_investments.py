@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import date
 from decimal import Decimal
+from uuid import uuid4
 
 import pytest
 
@@ -12,8 +14,11 @@ from app.core.migrations import (
     _migrate_v2,
     _migrate_v3,
     _migrate_v4,
+    _migrate_v5,
     _run_migration,
 )
+from app.models.investment import Investment
+from app.repositories.investment_repository import InvestmentRepository
 from app.services.account_service import AccountService
 from app.services.dashboard_service import DashboardService
 from app.services.investment_service import InvestmentService
@@ -84,6 +89,115 @@ def test_add_funds_and_update_value_calculate_performance(services):
     assert valued.return_percent == Decimal("-8.00")
     assert accounts.account_balance(source.id) == Decimal("750.00")
 
+    history = investments.value_history(created.investment.id)
+    assert [(point.date, point.value) for point in history] == [
+        ("2026-07-01", Decimal("220.00")),
+        ("2026-07-10", Decimal("270.00")),
+        ("2026-07-15", Decimal("230.00")),
+    ]
+
+
+def test_value_history_preserves_every_same_day_update(services):
+    _db, accounts, investments = services
+    source = accounts.create_account("Current", "current_account", opening_balance="500")
+    created = investments.create_investment(
+        "Index", "etf", source.id, "100", "2026-07-01"
+    )
+
+    investments.update_value(created.investment.id, "100", "2026-07-15")
+    investments.update_value(created.investment.id, "105", "2026-07-15")
+
+    history = investments.value_history(created.investment.id)
+    assert [(point.date, point.value) for point in history] == [
+        ("2026-07-01", Decimal("100.00")),
+        ("2026-07-15", Decimal("100.00")),
+        ("2026-07-15", Decimal("105.00")),
+    ]
+    assert len({point.id for point in history}) == 3
+
+
+def test_portfolio_history_carries_each_investment_forward(services):
+    _db, accounts, investments = services
+    source = accounts.create_account("Current", "current_account", opening_balance="1000")
+    first = investments.create_investment(
+        "First", "etf", source.id, "100", "2026-07-01"
+    )
+    investments.create_investment(
+        "Second", "fund", source.id, "200", "2026-07-10"
+    )
+    investments.update_value(first.investment.id, "150", "2026-07-15")
+
+    assert [(point.date, point.value) for point in investments.portfolio_history()] == [
+        ("2026-07-01", Decimal("100.00")),
+        ("2026-07-10", Decimal("300.00")),
+        ("2026-07-15", Decimal("350.00")),
+    ]
+
+
+def test_monthly_performance_compares_contributions_and_market_value(services):
+    _db, accounts, investments = services
+    source = accounts.create_account("Current", "current_account", opening_balance="1000")
+    created = investments.create_investment(
+        "Index",
+        "etf",
+        source.id,
+        "100",
+        "2026-01-05",
+        current_value="110",
+    )
+    investments.add_funds(created.investment.id, source.id, "50", "2026-02-10")
+    investments.update_value(created.investment.id, "140", "2026-03-15")
+
+    history = investments.performance_history(
+        created.investment.id,
+        "monthly",
+        date(2026, 3, 20),
+    )
+
+    assert [
+        (point.date, point.contributed, point.current_value)
+        for point in history
+    ] == [
+        ("2026-01-31", Decimal("100.00"), Decimal("110.00")),
+        ("2026-02-28", Decimal("150.00"), Decimal("160.00")),
+        ("2026-03-20", Decimal("150.00"), Decimal("140.00")),
+    ]
+
+
+def test_performance_intervals_fill_each_period(services):
+    _db, accounts, investments = services
+    source = accounts.create_account("Current", "current_account", opening_balance="500")
+    created = investments.create_investment(
+        "Index", "etf", source.id, "100", "2026-01-01"
+    )
+    investments.update_value(created.investment.id, "120", "2026-01-29")
+
+    lengths = {
+        interval: len(
+            investments.performance_history(
+                created.investment.id,
+                interval,
+                date(2026, 1, 29),
+            )
+        )
+        for interval in ("daily", "weekly", "biweekly", "monthly")
+    }
+
+    assert lengths == {"daily": 29, "weekly": 5, "biweekly": 3, "monthly": 1}
+
+
+def test_investment_changes_reject_dates_before_latest_value(services):
+    _db, accounts, investments = services
+    source = accounts.create_account("Current", "current_account", opening_balance="500")
+    created = investments.create_investment(
+        "Index", "etf", source.id, "100", "2026-07-10"
+    )
+
+    with pytest.raises(ValueError, match="earlier than the latest"):
+        investments.update_value(created.investment.id, "110", "2026-07-09")
+    with pytest.raises(ValueError, match="earlier than the latest"):
+        investments.add_funds(created.investment.id, source.id, "25", "2026-07-01")
+
 
 def test_investment_creation_rolls_back_if_transfer_is_incomplete(services, monkeypatch):
     _db, accounts, investments = services
@@ -144,9 +258,71 @@ def test_existing_v4_database_upgrades_to_investment_schema(tmp_path, monkeypatc
         assert upgraded.execute(
             "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'investments'"
         ).fetchone()
+        assert upgraded.execute(
+            """
+            SELECT 1 FROM sqlite_master
+            WHERE type = 'table' AND name = 'investment_value_history'
+            """
+        ).fetchone()
         transaction_columns = {
             row["name"] for row in upgraded.execute("PRAGMA table_info(transactions)")
         }
         assert "investment_id" in transaction_columns
+    finally:
+        upgraded.close()
+
+
+def test_existing_investment_ledger_is_backfilled_into_value_history(
+    tmp_path,
+    monkeypatch,
+):
+    source = tmp_path / "version-5.db"
+    legacy = sqlite3.connect(source)
+    legacy.row_factory = sqlite3.Row
+    legacy.execute("PRAGMA foreign_keys = ON")
+    _run_migration(legacy, 1, _create_initial_schema)
+    _run_migration(legacy, 2, _migrate_v2)
+    legacy.execute("PRAGMA foreign_keys = OFF")
+    _run_migration(legacy, 3, _migrate_v3)
+    legacy.execute("PRAGMA foreign_keys = ON")
+    _run_migration(legacy, 4, _migrate_v4)
+    _run_migration(legacy, 5, _migrate_v5)
+
+    accounts = AccountService(legacy)
+    current = accounts.create_account(
+        "Current",
+        "current_account",
+        opening_balance="500",
+    )
+    investment_account = accounts.create_account("Index", "investment")
+    investment = InvestmentRepository(legacy).create(
+        Investment(None, "Index", "etf", investment_account.id)
+    )
+    legacy.execute(
+        """
+        INSERT INTO transactions (
+            id, date, type, account_id, amount_cents, description,
+            transfer_group_id, investment_id, status
+        ) VALUES (?, ?, 'transfer_in', ?, 10000, ?, ?, ?, 'cleared')
+        """,
+        (
+            str(uuid4()),
+            "2026-07-01",
+            investment_account.id,
+            "Invest in Index",
+            str(uuid4()),
+            investment.id,
+        ),
+    )
+    legacy.commit()
+    legacy.close()
+
+    monkeypatch.setenv("MONEY_MANAGER_DAD_DATA_DIR", str(tmp_path / "app-data"))
+    upgraded = connect(source)
+    try:
+        history = InvestmentService(upgraded).value_history(investment.id)
+        assert [(point.date, point.value) for point in history] == [
+            ("2026-07-01", Decimal("100.00")),
+        ]
     finally:
         upgraded.close()

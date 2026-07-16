@@ -4,8 +4,8 @@ import sqlite3
 from decimal import Decimal
 from uuid import uuid4
 
-from app.models.investment import Investment
-from app.utils.money import cents_to_decimal
+from app.models.investment import Investment, InvestmentValuePoint
+from app.utils.money import cents_to_decimal, decimal_to_cents
 
 
 UTC_NOW = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"
@@ -136,3 +136,84 @@ class InvestmentRepository:
         updated = self.get(investment.id)
         assert updated is not None
         return updated
+
+    def record_value(
+        self,
+        investment_id: str,
+        date: str,
+        value: Decimal,
+    ) -> InvestmentValuePoint:
+        point_id = str(uuid4())
+        self.db.execute(
+            """
+            INSERT INTO investment_value_history (
+                id, investment_id, date, value_cents
+            ) VALUES (?, ?, ?, ?)
+            """,
+            (point_id, investment_id, date, decimal_to_cents(value)),
+        )
+        row = self.db.execute(
+            """
+            SELECT id, investment_id, date, value_cents, created_at
+            FROM investment_value_history
+            WHERE id = ?
+            """,
+            (point_id,),
+        ).fetchone()
+        assert row is not None
+        return self._value_point(row)
+
+    def list_value_history(
+        self,
+        investment_id: str | None = None,
+    ) -> list[InvestmentValuePoint]:
+        query = """
+            SELECT history.id, history.investment_id, history.date,
+                   history.value_cents, history.created_at
+            FROM investment_value_history history
+            JOIN investments investment ON investment.id = history.investment_id
+            WHERE investment.deleted_at IS NULL
+        """
+        params: tuple[str, ...] = ()
+        if investment_id is not None:
+            query += " AND history.investment_id = ?"
+            params = (investment_id,)
+        query += " ORDER BY history.date, history.rowid"
+        return [self._value_point(row) for row in self.db.execute(query, params)]
+
+    def list_contributions(
+        self,
+        investment_id: str | None = None,
+    ) -> list[tuple[str, str, Decimal]]:
+        query = """
+            SELECT t.investment_id, t.date, t.amount_cents
+            FROM transactions t
+            JOIN investments i ON i.id = t.investment_id
+            WHERE t.deleted_at IS NULL
+              AND i.deleted_at IS NULL
+              AND t.type = 'transfer_in'
+              AND t.account_id = i.account_id
+        """
+        params: tuple[str, ...] = ()
+        if investment_id is not None:
+            query += " AND t.investment_id = ?"
+            params = (investment_id,)
+        query += " ORDER BY t.date, t.rowid"
+        return [
+            (
+                row["investment_id"],
+                row["date"],
+                cents_to_decimal(row["amount_cents"]),
+            )
+            for row in self.db.execute(query, params)
+        ]
+
+    @staticmethod
+    def _value_point(row: sqlite3.Row) -> InvestmentValuePoint:
+        return InvestmentValuePoint(
+            id=row["id"],
+            investment_id=row["investment_id"],
+            date=row["date"],
+            value=cents_to_decimal(row["value_cents"]),
+            recorded_at=row["created_at"],
+        )
