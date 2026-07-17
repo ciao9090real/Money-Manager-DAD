@@ -7,6 +7,7 @@ from decimal import Decimal
 from app.core.database import unit_of_work
 from app.models.investment import (
     Investment,
+    InvestmentLiquidationShare,
     InvestmentPerformancePoint,
     InvestmentSnapshot,
     InvestmentValuePoint,
@@ -16,13 +17,13 @@ from app.repositories.investment_repository import InvestmentRepository
 from app.services.account_service import AccountService
 from app.services.transaction_service import TransactionService
 from app.utils.dates import require_iso_date
-from app.utils.money import require_positive, to_decimal
+from app.utils.money import cents_to_decimal, decimal_to_cents, require_positive, to_decimal
 from app.utils.validators import require_text
 
 
 class InvestmentService:
     KINDS = {"fund", "etf", "stock", "bond", "crypto", "other"}
-    PERFORMANCE_INTERVALS = {"daily", "weekly", "biweekly", "monthly"}
+    PERFORMANCE_INTERVALS = {"updates", "monthly"}
     FUNDING_ACCOUNT_TYPES = {
         "bank",
         "current_account",
@@ -55,7 +56,7 @@ class InvestmentService:
             self._funding_account(source_account_id)
             contribution = require_positive(amount)
             value = self._value(current_value, contribution)
-            transaction_date = require_iso_date(date)
+            transaction_date = self._investment_date(date)
             account = self.accounts.create_account(cleaned_name, "investment")
             assert account.id is not None
             investment = self.investments.create(
@@ -132,7 +133,7 @@ class InvestmentService:
             self._funding_account(source_account_id)
             if source_account_id == investment.account_id:
                 raise ValueError("Funding and investment accounts must be different")
-            transaction_date = require_iso_date(date)
+            transaction_date = self._investment_date(date)
             self._require_current_timeline_date(investment.id, transaction_date)
             self.transactions.add_transfer(
                 source_account_id,
@@ -159,7 +160,7 @@ class InvestmentService:
         with unit_of_work(self.db):
             investment = self._investment(investment_id)
             target = self._value(current_value)
-            transaction_date = require_iso_date(date)
+            transaction_date = self._investment_date(date)
             self._require_current_timeline_date(investment.id, transaction_date)
             current = self.accounts.account_balance(investment.account_id)
             difference = target - current
@@ -173,6 +174,87 @@ class InvestmentService:
                 )
             self.investments.record_value(investment.id, transaction_date, target)
             return self._snapshot(investment_id)
+
+    def liquidation_plan(
+        self,
+        investment_id: str,
+    ) -> list[InvestmentLiquidationShare]:
+        investment = self._investment(investment_id)
+        current_value = self.accounts.account_balance(investment.account_id)
+        sources = self.investments.list_funding_sources(investment_id)
+        if not sources:
+            if current_value:
+                raise ValueError("No original funding account was found for this investment")
+            return []
+
+        source_accounts = []
+        for account_id, contributed in sources:
+            account = self.account_repository.get(account_id)
+            if not account:
+                raise ValueError("An original funding account is no longer available")
+            if not account.is_active:
+                raise ValueError(f"Original funding account '{account.name}' is inactive")
+            source_accounts.append((account, contributed))
+
+        total_contributed_cents = sum(
+            decimal_to_cents(contributed)
+            for _account, contributed in source_accounts
+        )
+        if total_contributed_cents <= 0:
+            if current_value:
+                raise ValueError("The original contribution amounts are unavailable")
+            return []
+
+        remaining_cents = decimal_to_cents(current_value)
+        shares: list[InvestmentLiquidationShare] = []
+        for index, (account, contributed) in enumerate(source_accounts):
+            contributed_cents = decimal_to_cents(contributed)
+            if index == len(source_accounts) - 1:
+                proceeds_cents = remaining_cents
+            else:
+                proceeds_cents = (
+                    decimal_to_cents(current_value)
+                    * contributed_cents
+                    // total_contributed_cents
+                )
+                remaining_cents -= proceeds_cents
+            shares.append(
+                InvestmentLiquidationShare(
+                    account_id=str(account.id),
+                    account_name=account.name,
+                    contributed=contributed,
+                    proceeds=cents_to_decimal(proceeds_cents),
+                )
+            )
+        return shares
+
+    def delete_investment(self, investment_id: str, date: str) -> None:
+        with unit_of_work(self.db):
+            investment = self._investment(investment_id)
+            transaction_date = self._investment_date(date)
+            self._require_current_timeline_date(investment.id, transaction_date)
+            shares = self.liquidation_plan(investment_id)
+            for share in shares:
+                if not share.proceeds:
+                    continue
+                self.transactions.add_transfer(
+                    investment.account_id,
+                    share.account_id,
+                    share.proceeds,
+                    transaction_date,
+                    f"Liquidate {investment.name}",
+                    investment_id=investment.id,
+                )
+            remaining = self.accounts.account_balance(investment.account_id)
+            if remaining:
+                raise RuntimeError("Investment liquidation did not settle to zero")
+            self.investments.record_value(
+                investment.id,
+                transaction_date,
+                Decimal("0"),
+            )
+            self.investments.delete(investment.id)
+            self.account_repository.deactivate(investment.account_id)
 
     def list_snapshots(self) -> list[InvestmentSnapshot]:
         return [
@@ -194,6 +276,58 @@ class InvestmentService:
         self._investment(investment_id)
         return self.investments.list_value_history(investment_id)
 
+    def edit_value_update(
+        self,
+        investment_id: str,
+        point_id: str,
+        current_value: object,
+    ) -> InvestmentValuePoint:
+        with unit_of_work(self.db):
+            investment = self._investment(investment_id)
+            history, index = self._history_position(investment_id, point_id)
+            target = self._value(current_value)
+            updated = self.investments.update_value_point(
+                investment_id,
+                point_id,
+                target,
+            )
+            if index == len(history) - 1:
+                current = self.accounts.account_balance(investment.account_id)
+                difference = target - current
+                if difference:
+                    self.transactions.add_adjustment(
+                        investment.account_id,
+                        difference,
+                        updated.date,
+                        f"Correct {investment.name} market value",
+                        investment_id=investment.id,
+                    )
+            return updated
+
+    def delete_value_update(self, investment_id: str, point_id: str) -> None:
+        with unit_of_work(self.db):
+            investment = self._investment(investment_id)
+            history, index = self._history_position(investment_id, point_id)
+            point = history[index]
+            if index == len(history) - 1 and len(history) > 1:
+                previous = history[index - 1]
+                current = self.accounts.account_balance(investment.account_id)
+                difference = previous.value - current
+                if difference:
+                    self.transactions.add_adjustment(
+                        investment.account_id,
+                        difference,
+                        point.date,
+                        f"Remove {investment.name} value log",
+                        investment_id=investment.id,
+                    )
+            self.investments.delete_value_point(investment_id, point_id)
+
+    def clear_value_logs(self, investment_id: str) -> int:
+        with unit_of_work(self.db):
+            self._investment(investment_id)
+            return self.investments.delete_all_value_points(investment_id)
+
     def portfolio_history(self) -> list[InvestmentValuePoint]:
         active_ids = {
             investment.id
@@ -201,17 +335,20 @@ class InvestmentService:
             if investment.id is not None
         }
         latest_values: dict[str, Decimal] = {}
+        latest_contributions: dict[str, Decimal] = {}
         portfolio: list[InvestmentValuePoint] = []
         for point in self.investments.list_value_history():
             if point.investment_id not in active_ids:
                 continue
             latest_values[point.investment_id] = point.value
+            latest_contributions[point.investment_id] = point.contributed
             portfolio.append(
                 InvestmentValuePoint(
                     id=f"portfolio-{point.id}",
                     investment_id="portfolio",
                     date=point.date,
                     value=sum(latest_values.values(), Decimal("0")),
+                    contributed=sum(latest_contributions.values(), Decimal("0")),
                     recorded_at=point.recorded_at,
                 )
             )
@@ -240,44 +377,46 @@ class InvestmentService:
             for point in self.investments.list_value_history(investment_id)
             if point.investment_id in active_ids
         ]
-        contributions = [
-            contribution
-            for contribution in self.investments.list_contributions(investment_id)
-            if contribution[0] in active_ids
-        ]
-        event_dates = [Date.fromisoformat(point.date) for point in value_points]
-        event_dates.extend(Date.fromisoformat(item[1]) for item in contributions)
-        if not event_dates:
+        if not value_points:
             return []
 
-        horizon = max(reference_date or Date.today(), max(event_dates))
-        period_start = self._period_start(min(event_dates), interval)
-        contribution_index = 0
-        value_index = 0
-        contributed = Decimal("0")
+        updates: list[InvestmentPerformancePoint] = []
         latest_values: dict[str, Decimal] = {}
+        latest_contributions: dict[str, Decimal] = {}
+        for point in value_points:
+            latest_values[point.investment_id] = point.value
+            latest_contributions[point.investment_id] = point.contributed
+            updates.append(
+                InvestmentPerformancePoint(
+                    date=point.date,
+                    contributed=sum(latest_contributions.values(), Decimal("0")),
+                    current_value=sum(latest_values.values(), Decimal("0")),
+                )
+            )
+        if interval == "updates":
+            return updates
+
+        event_dates = [Date.fromisoformat(point.date) for point in updates]
+        horizon = max(reference_date or Date.today(), max(event_dates))
+        period_start = min(event_dates).replace(day=1)
+        update_index = 0
+        latest_update = updates[0]
         series: list[InvestmentPerformancePoint] = []
 
         while period_start <= horizon:
-            next_period = self._next_period(period_start, interval)
+            next_period = self._next_month(period_start)
             cutoff = min(next_period - timedelta(days=1), horizon)
-            while contribution_index < len(contributions):
-                contribution = contributions[contribution_index]
-                if Date.fromisoformat(contribution[1]) > cutoff:
-                    break
-                contributed += contribution[2]
-                contribution_index += 1
-            while value_index < len(value_points):
-                point = value_points[value_index]
+            while update_index < len(updates):
+                point = updates[update_index]
                 if Date.fromisoformat(point.date) > cutoff:
                     break
-                latest_values[point.investment_id] = point.value
-                value_index += 1
+                latest_update = point
+                update_index += 1
             series.append(
                 InvestmentPerformancePoint(
                     date=cutoff.isoformat(),
-                    contributed=contributed,
-                    current_value=sum(latest_values.values(), Decimal("0")),
+                    contributed=latest_update.contributed,
+                    current_value=latest_update.current_value,
                 )
             )
             period_start = next_period
@@ -342,8 +481,26 @@ class InvestmentService:
         if history and value_date < history[-1].date:
             raise ValueError(
                 "Date cannot be earlier than the latest recorded investment value "
-                f"({history[-1].date})"
+                f"({history[-1].date}). Delete or clear later logs first"
             )
+
+    def _history_position(
+        self,
+        investment_id: str,
+        point_id: str,
+    ) -> tuple[list[InvestmentValuePoint], int]:
+        history = self.investments.list_value_history(investment_id)
+        for index, point in enumerate(history):
+            if point.id == point_id:
+                return history, index
+        raise ValueError("Value log not found")
+
+    @staticmethod
+    def _investment_date(value: str) -> str:
+        validated = require_iso_date(value)
+        if Date.fromisoformat(validated) > Date.today():
+            raise ValueError("Investment dates cannot be in the future")
+        return validated
 
     def _funding_account(self, account_id: str):
         account = self.account_repository.get(account_id)
@@ -379,24 +536,7 @@ class InvestmentService:
         return cleaned or None
 
     @staticmethod
-    def _period_start(value: Date, interval: str) -> Date:
-        if interval == "daily":
-            return value
-        if interval == "weekly":
-            return value - timedelta(days=value.weekday())
-        if interval == "biweekly":
-            anchor = Date(1970, 1, 5)
-            return anchor + timedelta(days=((value - anchor).days // 14) * 14)
-        return value.replace(day=1)
-
-    @staticmethod
-    def _next_period(value: Date, interval: str) -> Date:
-        if interval == "daily":
-            return value + timedelta(days=1)
-        if interval == "weekly":
-            return value + timedelta(days=7)
-        if interval == "biweekly":
-            return value + timedelta(days=14)
+    def _next_month(value: Date) -> Date:
         if value.month == 12:
             return Date(value.year + 1, 1, 1)
         return Date(value.year, value.month + 1, 1)

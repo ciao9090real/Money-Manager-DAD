@@ -2,15 +2,17 @@ from __future__ import annotations
 
 import sqlite3
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QDate, Qt, QTimer
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
+    QCheckBox,
     QFrame,
     QHeaderView,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QMessageBox,
+    QSizePolicy,
     QTableView,
     QVBoxLayout,
     QWidget,
@@ -33,6 +35,7 @@ from app.ui.components import (
     primary_button,
     style_table,
 )
+from app.ui.date_picker import DatePicker
 from app.ui.icons import icon
 from app.ui.theme import Colors
 from app.ui.transaction_form import TransactionForm
@@ -91,6 +94,20 @@ class TransactionsPage(QWidget):
         self.find_shortcut = QShortcut(QKeySequence.StandardKey.Find, self)
         self.find_shortcut.activated.connect(self._focus_search)
 
+        today = QDate.currentDate()
+        self.date_range_enabled = QCheckBox("Date range")
+        self.start_date = DatePicker(QDate(today.year(), today.month(), 1))
+        self.end_date = DatePicker(today)
+        for field in (self.start_date, self.end_date):
+            field.setFixedWidth(128)
+            field.setEnabled(False)
+        self._syncing_dates = False
+        self.date_range_enabled.toggled.connect(self._toggle_date_range)
+        self.start_date.dateChanged.connect(
+            lambda _date: self._date_changed("start")
+        )
+        self.end_date.dateChanged.connect(lambda _date: self._date_changed("end"))
+
         layout = page_layout(
             self,
             "Transactions",
@@ -113,6 +130,11 @@ class TransactionsPage(QWidget):
         self.result_label.setProperty("role", "helper")
         controls = QFrame()
         controls.setProperty("role", "toolbar")
+        controls.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
+        self.controls = controls
         controls_layout = QVBoxLayout(controls)
         controls_layout.setContentsMargins(8, 7, 8, 7)
         controls_layout.setSpacing(5)
@@ -128,8 +150,21 @@ class TransactionsPage(QWidget):
             filter_row.addWidget(button)
         filter_row.addStretch()
         filter_row.addWidget(self.result_label)
+        date_row = QHBoxLayout()
+        date_row.setSpacing(7)
+        date_row.addStretch()
+        date_row.addWidget(self.date_range_enabled)
+        from_label = QLabel("From")
+        from_label.setProperty("role", "helper")
+        date_row.addWidget(from_label)
+        date_row.addWidget(self.start_date)
+        to_label = QLabel("To")
+        to_label.setProperty("role", "helper")
+        date_row.addWidget(to_label)
+        date_row.addWidget(self.end_date)
         controls_layout.addLayout(search_row)
         controls_layout.addLayout(filter_row)
+        controls_layout.addLayout(date_row)
         card_layout.addWidget(controls)
         empty_action = primary_button("Add transaction", "plus")
         empty_action.clicked.connect(self.add_transaction)
@@ -151,6 +186,64 @@ class TransactionsPage(QWidget):
         if refresh:
             self.refresh()
 
+    def set_month_filter(self, month_key: str, transaction_type: str) -> None:
+        month = QDate.fromString(f"{month_key}-01", "yyyy-MM-dd")
+        if not month.isValid():
+            return
+        self.set_date_range(
+            month,
+            QDate(month.year(), month.month(), month.daysInMonth()),
+            transaction_type,
+        )
+
+    def set_date_range(
+        self,
+        start_date: QDate,
+        end_date: QDate,
+        transaction_type: str | None = None,
+    ) -> None:
+        if not start_date.isValid() or not end_date.isValid():
+            return
+        if start_date > end_date:
+            start_date, end_date = end_date, start_date
+        self._syncing_dates = True
+        self.start_date.setDate(start_date)
+        self.end_date.setDate(end_date)
+        self.date_range_enabled.setChecked(True)
+        self.start_date.setEnabled(True)
+        self.end_date.setEnabled(True)
+        self._syncing_dates = False
+        if transaction_type in self.filter_buttons:
+            self.set_filter(transaction_type, refresh=False)
+        self.search.clear()
+        self.search_timer.stop()
+        self.refresh()
+
+    def _toggle_date_range(self, enabled: bool) -> None:
+        self.start_date.setEnabled(enabled)
+        self.end_date.setEnabled(enabled)
+        if not self._syncing_dates:
+            self.refresh()
+
+    def _date_changed(self, changed: str) -> None:
+        if self._syncing_dates or not self.date_range_enabled.isChecked():
+            return
+        self._syncing_dates = True
+        if self.start_date.date() > self.end_date.date():
+            if changed == "start":
+                self.end_date.setDate(self.start_date.date())
+            else:
+                self.start_date.setDate(self.end_date.date())
+        self._syncing_dates = False
+        self.refresh()
+
+    def _query_date_range(self) -> tuple[str | None, str | None]:
+        if not self.date_range_enabled.isChecked():
+            return None, None
+        start = self.start_date.date().toString("yyyy-MM-dd")
+        exclusive_end = self.end_date.date().addDays(1).toString("yyyy-MM-dd")
+        return start, exclusive_end
+
     def _focus_search(self) -> None:
         self.search.setFocus()
         self.search.selectAll()
@@ -165,10 +258,14 @@ class TransactionsPage(QWidget):
         accounts = {account.id: account.name for account in self.accounts.list(include_inactive=True)}
         categories = {category.id: category.name for category in self.categories.list_categories(include_inactive=True)}
         transaction_type = None if self.current_filter == "all" else self.current_filter
+        start_date, end_date = self._query_date_range()
         transactions = self.service.list_transactions(
             limit=self.PAGE_SIZE,
             transaction_type=transaction_type,
             search_text=self.search.text(),
+            start_date=start_date,
+            end_date=end_date,
+            exclude_investment_adjustments=True,
         )
         self.table_model.replace(transactions, accounts, categories)
         self.next_cursor = self._cursor_for(transactions)
@@ -180,24 +277,28 @@ class TransactionsPage(QWidget):
         displayed_rows = self.table_model.rowCount()
         if transactions and displayed_rows <= 10:
             fit_item_view_height(self.table, displayed_rows, maximum_rows=10)
-            self.activity_card.setMaximumHeight(190 + self.table.maximumHeight())
+            self.activity_card.setMaximumHeight(245 + self.table.maximumHeight())
         elif transactions:
             self.table.setMaximumHeight(16777215)
             self.table.setMinimumHeight(320)
             self.activity_card.setMaximumHeight(16777215)
         else:
-            self.activity_card.setMaximumHeight(350)
+            self.activity_card.setMaximumHeight(405)
         self._sync_selection_actions()
 
     def load_more(self) -> None:
         if self.next_cursor is None:
             return
         transaction_type = None if self.current_filter == "all" else self.current_filter
+        start_date, end_date = self._query_date_range()
         transactions = self.service.list_transactions(
             limit=self.PAGE_SIZE,
             transaction_type=transaction_type,
             cursor=self.next_cursor,
             search_text=self.search.text(),
+            start_date=start_date,
+            end_date=end_date,
+            exclude_investment_adjustments=True,
         )
         self.table_model.append(transactions)
         self.next_cursor = self._cursor_for(transactions)

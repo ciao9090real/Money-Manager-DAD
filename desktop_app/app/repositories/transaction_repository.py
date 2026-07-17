@@ -53,6 +53,8 @@ class TransactionRepository:
         end_date: str | None = None,
         search_text: str | None = None,
         cursor: tuple[str, str] | None = None,
+        exclude_investment_adjustments: bool = False,
+        exclude_adjustments: bool = False,
     ) -> list[Transaction]:
         query = "SELECT * FROM transactions"
         conditions: list[str] = ["deleted_at IS NULL"]
@@ -84,6 +86,12 @@ class TransactionRepository:
         if loan_id is not None:
             conditions.append("loan_id = ?")
             params.append(loan_id)
+        if exclude_investment_adjustments:
+            conditions.append(
+                "NOT (type = 'adjustment' AND investment_id IS NOT NULL)"
+            )
+        if exclude_adjustments:
+            conditions.append("type <> 'adjustment'")
         if start_date:
             conditions.append("date >= ?")
             params.append(start_date)

@@ -80,7 +80,18 @@ a 10-second busy timeout. Migrations create a timestamped SQLite snapshot first
 and run integrity and foreign-key checks before and after the schema change.
 Manual and automatic daily backups use SQLite's online backup API so WAL data is
 included. Restore validates the selected database and creates a rollback backup
-of the current data before replacement.
+of the current data before replacement. Settings can also create `.mmbak`
+password-encrypted manual backups. These use the vetted `cryptography` package,
+Scrypt password key derivation with a fresh random salt, and Fernet authenticated
+encryption. The password is never stored and cannot be recovered by the app.
+Automatic daily and before-restore snapshots remain local SQLite files so
+recovery does not depend on a remembered password.
+
+Recently Deleted restores soft-deleted transactions, paired transfers, and
+recurring schedules. Accounts, categories, and payment methods use their own
+deactivate/archive and restore controls. Portfolio liquidation and explicit
+valuation-log removal are financial operations rather than trash actions; use a
+database backup when a full rollback of those operations is required.
 
 Every local mutation is recorded in an ordered `change_log` with its origin
 device. The database also contains paired-device cursors, conflict records, and

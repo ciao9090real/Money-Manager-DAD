@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Property, QEasingCurve, QPropertyAnimation, Qt, Signal
+from PySide6.QtCore import Property, QEasingCurve, QPropertyAnimation, QSize, Qt, Signal
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QVBoxLayout, QWidget
 
 from app.ui.icons import LineIcon, icon
@@ -110,22 +110,20 @@ class Sidebar(QFrame):
         self.mark = QPushButton()
         self.mark.setObjectName("LogoButton")
         self.mark.setFixedSize(40, 40)
-        self.mark.setText("€")
+        self.mark.setIcon(icon("accounts", "#ffffff", 22))
+        self.mark.setIconSize(QSize(22, 22))
         self.mark.setProperty("role", "brandMark")
         self.mark.setToolTip("Money Manager")
 
         self.title_block = QWidget()
         title_layout = QVBoxLayout(self.title_block)
         title_layout.setContentsMargins(0, 0, 0, 0)
-        title_layout.setSpacing(1)
+        title_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         self.title = QLabel("Money Manager")
         self.title.setObjectName("SidebarTitle")
-        self.subtitle = QLabel("LOCAL FINANCE")
-        self.subtitle.setObjectName("SidebarSubtitle")
         title_layout.addWidget(self.title)
-        title_layout.addWidget(self.subtitle)
 
-        layout.addWidget(self.mark, 0, Qt.AlignmentFlag.AlignTop)
+        layout.addWidget(self.mark, 0, Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(self.title_block, 1)
 
         self.collapse_button = QPushButton()
@@ -204,7 +202,6 @@ class Sidebar(QFrame):
         self.status.setVisible(not collapsed)
         self.collapse_button.setVisible(not collapsed)
         self.expand_button.setVisible(collapsed)
-        self.mark.setText("€")
         self.mark.setToolTip("Money Manager")
         for button in self.nav_buttons:
             button.set_collapsed(collapsed)

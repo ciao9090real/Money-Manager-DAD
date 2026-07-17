@@ -6,6 +6,7 @@ from datetime import date
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QFrame,
     QComboBox,
     QGridLayout,
@@ -22,7 +23,7 @@ from PySide6.QtWidgets import (
 from app.models.investment import InvestmentSnapshot
 from app.repositories.account_repository import AccountRepository
 from app.services.investment_service import InvestmentService
-from app.ui.charts import AllocationChart, PerformanceChart
+from app.ui.charts import PerformanceChart
 from app.ui.components import (
     amount_item,
     badge,
@@ -30,6 +31,7 @@ from app.ui.components import (
     clear_layout,
     compact_money,
     create_card,
+    danger_button,
     empty_state,
     fit_item_view_height,
     ghost_button,
@@ -42,6 +44,7 @@ from app.ui.components import (
 )
 from app.ui.investment_form import (
     AddInvestmentFundsDialog,
+    EditInvestmentValueDialog,
     InvestmentForm,
     UpdateInvestmentValueDialog,
 )
@@ -105,9 +108,7 @@ class InvestmentsPage(QWidget):
         interval_row.addWidget(interval_label)
         for key, label in (
             ("monthly", "Monthly"),
-            ("biweekly", "Biweekly"),
-            ("weekly", "Weekly"),
-            ("daily", "Daily"),
+            ("updates", "Every log"),
         ):
             button = chip_button(label)
             button.clicked.connect(
@@ -121,13 +122,52 @@ class InvestmentsPage(QWidget):
         history_layout.addLayout(interval_row)
         history_layout.addWidget(self.history_chart)
 
-        allocation_card, allocation_layout = create_card(
-            "Current allocation",
-            subtitle="How today’s portfolio value is distributed",
+        self.updates_selector = QComboBox()
+        self.updates_selector.setMinimumWidth(150)
+        self.updates_selector.setMaximumWidth(170)
+        self.updates_selector.currentIndexChanged.connect(self._refresh_value_updates)
+        updates_card, updates_layout = create_card(
+            "Logs",
+            subtitle="Saved market values, newest first",
+            action=self.updates_selector,
         )
-        self.allocation_card = allocation_card
-        self.allocation_chart = AllocationChart()
-        allocation_layout.addWidget(self.allocation_chart)
+        self.updates_card = updates_card
+        self.updates_caption = QLabel("Choose a portfolio or investment")
+        self.updates_caption.setProperty("role", "helper")
+        self.edit_update_button = ghost_button("Edit", "edit")
+        self.delete_update_button = danger_button("Delete", "delete")
+        self.clear_logs_button = ghost_button("Clear logs", "delete")
+        self.edit_update_button.setEnabled(False)
+        self.delete_update_button.setEnabled(False)
+        self.clear_logs_button.setEnabled(False)
+        self.edit_update_button.clicked.connect(self.edit_value_update)
+        self.delete_update_button.clicked.connect(self.delete_value_update)
+        self.clear_logs_button.clicked.connect(self.clear_value_logs)
+        update_controls = QHBoxLayout()
+        update_controls.setContentsMargins(0, 0, 0, 0)
+        update_controls.setSpacing(6)
+        update_controls.addStretch()
+        update_controls.addWidget(self.edit_update_button)
+        update_controls.addWidget(self.delete_update_button)
+        update_controls.addWidget(self.clear_logs_button)
+        self.updates_table = QTableWidget(0, 3)
+        self.updates_table.setHorizontalHeaderLabels(["Date", "Value", "Change"])
+        style_table(self.updates_table)
+        self.updates_table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self.updates_table.itemSelectionChanged.connect(self._sync_update_actions)
+        self.updates_table.itemDoubleClicked.connect(
+            lambda _item: self.edit_value_update()
+        )
+        updates_header = self.updates_table.horizontalHeader()
+        updates_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        updates_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        updates_header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.updates_table.setMinimumHeight(250)
+        updates_layout.addWidget(self.updates_caption)
+        updates_layout.addLayout(update_controls)
+        updates_layout.addWidget(self.updates_table)
 
         self.chart_grid = QGridLayout()
         self.chart_grid.setContentsMargins(0, 0, 0, 0)
@@ -151,10 +191,20 @@ class InvestmentsPage(QWidget):
         self.edit_button = ghost_button("Edit", "edit")
         self.add_funds_button = soft_button("Add funds", "plus")
         self.update_value_button = soft_button("Update value", "investments")
+        self.delete_button = danger_button("Delete", "delete")
+        self.delete_button.setToolTip(
+            "Delete portfolio and return its current value to its funding accounts"
+        )
         self.edit_button.clicked.connect(self.edit_investment)
         self.add_funds_button.clicked.connect(self.add_funds)
         self.update_value_button.clicked.connect(self.update_value)
-        for button in (self.edit_button, self.add_funds_button, self.update_value_button):
+        self.delete_button.clicked.connect(self.delete_investment)
+        for button in (
+            self.edit_button,
+            self.add_funds_button,
+            self.update_value_button,
+            self.delete_button,
+        ):
             button.setEnabled(False)
 
         controls = QFrame()
@@ -167,6 +217,7 @@ class InvestmentsPage(QWidget):
         controls_layout.addWidget(self.edit_button)
         controls_layout.addWidget(self.add_funds_button)
         controls_layout.addWidget(self.update_value_button)
+        controls_layout.addWidget(self.delete_button)
 
         card, card_layout = create_card(
             "Portfolio",
@@ -218,13 +269,15 @@ class InvestmentsPage(QWidget):
         self._charts_wide = wide
         clear_layout(self.chart_grid)
         if wide:
+            self.updates_card.setMaximumWidth(360)
             self.chart_grid.addWidget(self.history_card, 0, 0)
-            self.chart_grid.addWidget(self.allocation_card, 0, 1)
+            self.chart_grid.addWidget(self.updates_card, 0, 1)
             self.chart_grid.setColumnStretch(0, 2)
             self.chart_grid.setColumnStretch(1, 1)
         else:
+            self.updates_card.setMaximumWidth(16777215)
             self.chart_grid.addWidget(self.history_card, 0, 0)
-            self.chart_grid.addWidget(self.allocation_card, 1, 0)
+            self.chart_grid.addWidget(self.updates_card, 1, 0)
             self.chart_grid.setColumnStretch(0, 1)
             self.chart_grid.setColumnStretch(1, 0)
 
@@ -241,26 +294,36 @@ class InvestmentsPage(QWidget):
 
         snapshots = self.service.list_snapshots()
         selected_history = self.history_selector.currentData() or "portfolio"
+        selected_updates = self.updates_selector.currentData()
+        selected_portfolio_id = None
+        selected_row = self.table.currentRow()
+        if selected_row >= 0:
+            selected_item = self.table.item(selected_row, 0)
+            if selected_item:
+                selected_portfolio_id = selected_item.data(Qt.ItemDataRole.UserRole)
         self.history_selector.blockSignals(True)
+        self.updates_selector.blockSignals(True)
         self.history_selector.clear()
+        self.updates_selector.clear()
         self.history_selector.addItem("Portfolio total", "portfolio")
         for snapshot in snapshots:
             investment = snapshot.investment
             label = f"{investment.symbol} · {investment.name}" if investment.symbol else investment.name
             self.history_selector.addItem(label, investment.id)
+            self.updates_selector.addItem(label, investment.id)
         selected_index = self.history_selector.findData(selected_history)
         self.history_selector.setCurrentIndex(max(0, selected_index))
+        if snapshots:
+            updates_index = self.updates_selector.findData(selected_updates)
+            self.updates_selector.setCurrentIndex(max(0, updates_index))
+            self.updates_selector.setEnabled(True)
+        else:
+            self.updates_selector.addItem("No portfolios", None)
+            self.updates_selector.setEnabled(False)
         self.history_selector.blockSignals(False)
-        self.allocation_chart.set_data(
-            [
-                (
-                    snapshot.investment.symbol or snapshot.investment.name,
-                    snapshot.current_value,
-                )
-                for snapshot in snapshots
-            ]
-        )
+        self.updates_selector.blockSignals(False)
         self._refresh_history_chart()
+        self._refresh_value_updates()
         self.table.setRowCount(len(snapshots))
         for row, snapshot in enumerate(snapshots):
             investment = snapshot.investment
@@ -283,6 +346,16 @@ class InvestmentsPage(QWidget):
             elif snapshot.return_percent < 0:
                 return_item.setForeground(QColor(Colors.NEGATIVE))
             self.table.setItem(row, 5, return_item)
+
+        if snapshots:
+            target_row = 0
+            if selected_portfolio_id:
+                for row in range(self.table.rowCount()):
+                    item = self.table.item(row, 0)
+                    if item and item.data(Qt.ItemDataRole.UserRole) == selected_portfolio_id:
+                        target_row = row
+                        break
+            self.table.selectRow(target_row)
 
         has_investments = bool(snapshots)
         self.result_label.setText(
@@ -360,9 +433,116 @@ class InvestmentsPage(QWidget):
         if dialog.exec():
             try:
                 self.service.update_value(snapshot.investment.id, **dialog.values())
-                self._changed("Investment value updated")
+                self._changed("Value log added")
             except ValueError as exc:
                 QMessageBox.warning(self, "Could not update value", str(exc))
+
+    def delete_investment(self) -> None:
+        snapshot = self._selected_snapshot()
+        if not snapshot:
+            return
+        try:
+            shares = self.service.liquidation_plan(snapshot.investment.id)
+        except ValueError as exc:
+            QMessageBox.warning(self, "Could not delete portfolio", str(exc))
+            return
+
+        destinations = "\n".join(
+            f"- {share.account_name}: {format_money(share.proceeds)}"
+            for share in shares
+            if share.proceeds
+        )
+        if not destinations:
+            destinations = "- No funds to return"
+        confirm = QMessageBox.question(
+            self,
+            "Delete portfolio",
+            f"Delete {snapshot.investment.name} and liquidate its current value "
+            f"of {format_money(snapshot.current_value)}?\n\n"
+            f"Funds will be returned to:\n{destinations}\n\n"
+            "The investment will be removed from active views, while its financial "
+            "history remains in the local database.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            self.service.delete_investment(
+                snapshot.investment.id,
+                date.today().isoformat(),
+            )
+            self._changed("Portfolio deleted and funds returned")
+        except (RuntimeError, ValueError) as exc:
+            QMessageBox.warning(self, "Could not delete portfolio", str(exc))
+
+    def edit_value_update(self) -> None:
+        selected = self._selected_value_update()
+        if not selected:
+            return
+        investment_id, point = selected
+        dialog = EditInvestmentValueDialog(
+            self.updates_selector.currentText(),
+            point,
+        )
+        if dialog.exec():
+            try:
+                self.service.edit_value_update(
+                    investment_id,
+                    point.id,
+                    dialog.value(),
+                )
+                self._changed("Value log corrected")
+            except ValueError as exc:
+                QMessageBox.warning(self, "Could not edit value log", str(exc))
+
+    def delete_value_update(self) -> None:
+        selected = self._selected_value_update()
+        if not selected:
+            return
+        investment_id, point = selected
+        confirm = QMessageBox.question(
+            self,
+            "Delete value log",
+            f"Delete the {format_display_date(point.date)} value log of "
+            f"{format_money(point.value)}?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            self.service.delete_value_update(investment_id, point.id)
+            self._changed("Value log deleted")
+        except ValueError as exc:
+            QMessageBox.warning(self, "Could not delete value log", str(exc))
+
+    def clear_value_logs(self) -> None:
+        investment_id = self.updates_selector.currentData()
+        if not investment_id or investment_id == "portfolio":
+            return
+        points = self.service.value_history(str(investment_id))
+        if not points:
+            return
+        investment_name = self.updates_selector.currentText()
+        confirm = QMessageBox.question(
+            self,
+            "Clear portfolio logs",
+            f"Delete all {len(points)} saved logs for {investment_name}?\n\n"
+            "This clears the graph history only. The current portfolio value, "
+            "contributions, and transactions will not change.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            deleted = self.service.clear_value_logs(str(investment_id))
+            self._changed(
+                f"{deleted} portfolio log{'s' if deleted != 1 else ''} cleared"
+            )
+        except ValueError as exc:
+            QMessageBox.warning(self, "Could not clear portfolio logs", str(exc))
 
     def _funding_accounts(self):
         return [
@@ -377,16 +557,31 @@ class InvestmentsPage(QWidget):
         investment_id = item.data(Qt.ItemDataRole.UserRole) if item else None
         return self.service.get_snapshot(str(investment_id)) if investment_id else None
 
+    def _selected_value_update(self):
+        investment_id = self.updates_selector.currentData()
+        if not investment_id or investment_id == "portfolio":
+            return None
+        row = self.updates_table.currentRow()
+        item = self.updates_table.item(row, 0) if row >= 0 else None
+        point_id = item.data(Qt.ItemDataRole.UserRole) if item else None
+        point = self._update_points_by_id.get(str(point_id)) if point_id else None
+        return (str(investment_id), point) if point else None
+
     def _sync_actions(self) -> None:
         snapshot = self._selected_snapshot()
         selected = snapshot is not None
         self.edit_button.setEnabled(selected)
         self.add_funds_button.setEnabled(selected)
         self.update_value_button.setEnabled(selected)
+        self.delete_button.setEnabled(selected)
         if snapshot and self.history_selector.currentData() != snapshot.investment.id:
             index = self.history_selector.findData(snapshot.investment.id)
             if index >= 0:
                 self.history_selector.setCurrentIndex(index)
+        if snapshot and self.updates_selector.currentData() != snapshot.investment.id:
+            index = self.updates_selector.findData(snapshot.investment.id)
+            if index >= 0:
+                self.updates_selector.setCurrentIndex(index)
 
     def _refresh_history_chart(self, _index: int | None = None) -> None:
         if not hasattr(self, "history_chart"):
@@ -417,10 +612,17 @@ class InvestmentsPage(QWidget):
         )
         if not points:
             self.history_caption.setText(f"No recorded values for {subject}")
+        elif self.history_interval == "updates":
+            update_word = "log" if len(points) == 1 else "logs"
+            self.history_caption.setText(
+                f"{len(points)} saved {update_word} · "
+                f"{format_display_date(points[0].date)} to "
+                f"{format_display_date(points[-1].date)}"
+            )
         else:
             interval_name = self.history_interval.title()
             period_word = "period" if len(points) == 1 else "periods"
-            update_word = "update" if len(raw_points) == 1 else "updates"
+            update_word = "log" if len(raw_points) == 1 else "logs"
             self.history_caption.setText(
                 f"{len(raw_points)} saved {update_word} · "
                 f"{len(points)} {interval_name.lower()} {period_word} · "
@@ -443,11 +645,87 @@ class InvestmentsPage(QWidget):
         point_date = date.fromisoformat(value)
         if self.history_interval == "monthly":
             return point_date.strftime("%b %Y")
-        if self.history_interval == "weekly":
-            return point_date.strftime("Week %d %b")
-        if self.history_interval == "biweekly":
-            return point_date.strftime("2w %d %b")
         return point_date.strftime("%d %b")
+
+    def _refresh_value_updates(self, _index: int | None = None) -> None:
+        if not hasattr(self, "updates_table"):
+            return
+        investment_id = self.updates_selector.currentData()
+        if not investment_id:
+            points = []
+            subject = "portfolio"
+        elif investment_id == "portfolio":
+            points = self.service.portfolio_history()
+            subject = "portfolio"
+        else:
+            points = self.service.value_history(str(investment_id))
+            subject = self.updates_selector.currentText()
+        self._update_points_by_id = {point.id: point for point in points}
+        self.updates_caption.setText(
+            f"{len(points)} saved log{'s' if len(points) != 1 else ''} for {subject}"
+        )
+        changes = []
+        previous_value = None
+        date_totals: dict[str, int] = {}
+        for point in points:
+            date_totals[point.date] = date_totals.get(point.date, 0) + 1
+            change = None if previous_value is None else point.value - previous_value
+            changes.append((point, change))
+            previous_value = point.value
+
+        date_occurrences: dict[str, int] = {}
+        labels: dict[str, str] = {}
+        for point in points:
+            date_occurrences[point.date] = date_occurrences.get(point.date, 0) + 1
+            label = format_display_date(point.date)
+            if date_totals[point.date] > 1:
+                label += f" · {date_occurrences[point.date]}/{date_totals[point.date]}"
+            labels[point.id] = label
+
+        self.updates_table.setRowCount(len(changes))
+        for row, (point, change) in enumerate(reversed(changes)):
+            date_item = QTableWidgetItem(labels[point.id])
+            date_item.setData(Qt.ItemDataRole.UserRole, point.id)
+            if date.fromisoformat(point.date) > date.today():
+                date_item.setForeground(QColor(Colors.NEGATIVE))
+                date_item.setToolTip(
+                    "Future-dated log. Delete it or clear the logs to unlock "
+                    "current portfolio actions."
+                )
+            value_item = amount_item(point.value, neutral=True)
+            value_item.setToolTip(
+                f"Invested at this point: {format_money(point.contributed)}"
+            )
+            if change is None:
+                change_item = QTableWidgetItem("Initial")
+                change_item.setForeground(QColor(Colors.TEXT_MUTED))
+                change_item.setTextAlignment(
+                    Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                )
+            else:
+                change_item = amount_item(change)
+                if change > 0:
+                    change_item.setText(f"+{format_money(change)}")
+            self.updates_table.setItem(row, 0, date_item)
+            self.updates_table.setItem(row, 1, value_item)
+            self.updates_table.setItem(row, 2, change_item)
+        self.updates_table.setVisible(bool(points))
+        self._sync_update_actions()
+
+    def _sync_update_actions(self) -> None:
+        selected = self._selected_value_update()
+        self.edit_update_button.setEnabled(selected is not None)
+        self.delete_update_button.setEnabled(selected is not None)
+        individual_portfolio = self.updates_selector.currentData() not in (None, "portfolio")
+        self.clear_logs_button.setEnabled(
+            individual_portfolio and bool(self._update_points_by_id)
+        )
+        if not individual_portfolio:
+            tip = "Choose an individual investment to change its logs"
+        else:
+            tip = ""
+        self.delete_update_button.setToolTip(tip)
+        self.clear_logs_button.setToolTip(tip)
 
     def _changed(self, message: str) -> None:
         self.notify(message)

@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMessageBox,
+    QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -138,6 +139,10 @@ class UpcomingPage(QWidget):
         self.selection_label.setVisible(False)
         controls = QFrame()
         controls.setProperty("role", "toolbar")
+        controls.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
         controls_layout = QVBoxLayout(controls)
         controls_layout.setContentsMargins(8, 7, 8, 7)
         controls_layout.setSpacing(5)
@@ -148,6 +153,7 @@ class UpcomingPage(QWidget):
         filter_row.addStretch()
         filter_row.addWidget(self.result_label)
         self.action_container = QWidget()
+        self.action_container.setVisible(False)
         action_row = QHBoxLayout(self.action_container)
         action_row.setContentsMargins(0, 0, 0, 0)
         action_row.setSpacing(6)
@@ -282,7 +288,6 @@ class UpcomingPage(QWidget):
         has_rules = bool(rules)
         self.empty.setVisible(not has_rules)
         self.table.setVisible(has_rules)
-        self.action_container.setVisible(has_rules)
         if has_rules and len(rules) <= 8:
             fit_item_view_height(self.table, len(rules), maximum_rows=8)
             self.schedule_card.setMaximumHeight(190 + self.table.maximumHeight())
@@ -424,6 +429,7 @@ class UpcomingPage(QWidget):
         self.skip_button.setEnabled(active)
         self.pause_button.setEnabled(editable)
         self.remove_button.setEnabled(selected)
+        self.action_container.setVisible(selected and self.table.isVisible())
         if rule and rule.status == "paused":
             self.pause_button.setText("Resume")
             self.pause_button.setIcon(icon("play", Colors.PRIMARY_DARK, 17))

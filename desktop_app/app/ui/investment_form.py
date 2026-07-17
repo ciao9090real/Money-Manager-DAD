@@ -3,15 +3,17 @@ from __future__ import annotations
 from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import (
     QComboBox,
-    QDateEdit,
     QDialog,
     QFormLayout,
     QLineEdit,
 )
 
 from app.models.account import Account
-from app.models.investment import Investment, InvestmentSnapshot
+from app.models.investment import Investment, InvestmentSnapshot, InvestmentValuePoint
 from app.ui.components import dialog_shell
+from app.ui.date_picker import DatePicker
+from app.utils.dates import format_display_date
+from app.utils.money import format_money
 
 
 class InvestmentForm(QDialog):
@@ -50,9 +52,8 @@ class InvestmentForm(QDialog):
         self.current_value = QLineEdit()
         self.current_value.setPlaceholderText("Same as amount invested")
         self.current_value.setAlignment(Qt.AlignmentFlag.AlignRight)
-        self.date = QDateEdit(QDate.currentDate())
-        self.date.setCalendarPopup(True)
-        self.date.setDisplayFormat("dd MMM yyyy")
+        self.date = DatePicker(QDate.currentDate())
+        self.date.setMaximumDate(QDate.currentDate())
 
         subtitle = (
             "Keep the portfolio name and reference tidy."
@@ -118,9 +119,8 @@ class AddInvestmentFundsDialog(QDialog):
         self.amount = QLineEdit()
         self.amount.setPlaceholderText("0.00")
         self.amount.setAlignment(Qt.AlignmentFlag.AlignRight)
-        self.date = QDateEdit(QDate.currentDate())
-        self.date.setCalendarPopup(True)
-        self.date.setDisplayFormat("dd MMM yyyy")
+        self.date = DatePicker(QDate.currentDate())
+        self.date.setMaximumDate(QDate.currentDate())
         self._build(
             "Add funds",
             snapshot.investment.name,
@@ -157,9 +157,8 @@ class UpdateInvestmentValueDialog(QDialog):
         self.setWindowTitle("Update investment value")
         self.current_value = QLineEdit(str(snapshot.current_value))
         self.current_value.setAlignment(Qt.AlignmentFlag.AlignRight)
-        self.date = QDateEdit(QDate.currentDate())
-        self.date.setCalendarPopup(True)
-        self.date.setDisplayFormat("dd MMM yyyy")
+        self.date = DatePicker(QDate.currentDate())
+        self.date.setMaximumDate(QDate.currentDate())
 
         form = QFormLayout()
         form.addRow("Current value", self.current_value)
@@ -181,3 +180,34 @@ class UpdateInvestmentValueDialog(QDialog):
             "current_value": self.current_value.text(),
             "date": self.date.date().toString("yyyy-MM-dd"),
         }
+
+
+class EditInvestmentValueDialog(QDialog):
+    def __init__(self, investment_name: str, point: InvestmentValuePoint):
+        super().__init__()
+        self.setWindowTitle("Edit value log")
+        valuation_date = QLineEdit(format_display_date(point.date))
+        valuation_date.setReadOnly(True)
+        invested = QLineEdit(format_money(point.contributed))
+        invested.setReadOnly(True)
+        self.current_value = QLineEdit(str(point.value))
+        self.current_value.setAlignment(Qt.AlignmentFlag.AlignRight)
+
+        form = QFormLayout()
+        form.addRow("Valuation date", valuation_date)
+        form.addRow("Invested", invested)
+        form.addRow("Market value", self.current_value)
+        dialog_shell(
+            self,
+            "Edit value log",
+            investment_name,
+            form,
+            "Save log",
+            "edit",
+            minimum_width=460,
+        )
+        self.current_value.setFocus()
+        self.current_value.selectAll()
+
+    def value(self) -> str:
+        return self.current_value.text()

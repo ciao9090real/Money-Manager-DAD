@@ -101,6 +101,21 @@ def test_dashboard_scope_includes_descendant_accounts_only(db):
     assert {account["id"] for account in scoped["accounts"]} == {bank.id, current.id, savings.id}
 
 
+def test_dashboard_recent_activity_excludes_adjustments(db):
+    accounts = AccountService(db)
+    transactions = TransactionService(db)
+    account = accounts.create_account("Current", "current_account")
+    transactions.add_adjustment(account.id, "25", "2026-07-11", "Correction")
+    transactions.add_income(account.id, "100", "2026-07-10", "Salary")
+
+    dashboard = DashboardService(db)
+    global_recent = dashboard.global_snapshot()["recent_transactions"]
+    scoped_recent = dashboard.scope_summary(account.id)["recent_transactions"]
+
+    assert [item.description for item in global_recent] == ["Salary"]
+    assert [item.description for item in scoped_recent] == ["Salary"]
+
+
 def test_backup_creates_database_copy(db):
     target = BackupService(db).create_backup()
 

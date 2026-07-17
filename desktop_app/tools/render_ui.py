@@ -18,6 +18,7 @@ from app.services.recurring_service import RecurringService
 from app.services.transaction_service import TransactionService
 from app.services.category_service import CategoryService
 from app.ui.account_form import AccountForm
+from app.ui.backup_password_dialog import BackupPasswordDialog
 from app.ui.main_window import MainWindow
 from app.ui.investment_form import InvestmentForm
 from app.ui.loan_form import LoanForm, LoanPaymentDialog
@@ -55,11 +56,12 @@ def main() -> None:
             window.investments.history_selector.setCurrentIndex(
                 window.investments.history_selector.count() - 1
             )
+            window.investments.updates_selector.setCurrentIndex(1)
             app.processEvents()
             window.grab().save(str(output / "ui-investment-detail.png"))
-            window.investments._set_history_interval("weekly")
+            window.investments._set_history_interval("updates")
             app.processEvents()
-            window.grab().save(str(output / "ui-investment-weekly.png"))
+            window.grab().save(str(output / "ui-investment-updates.png"))
             window.investments._set_history_interval("monthly")
             window.resize(1000, 720)
             QTest.qWait(window.sidebar.width_animation.duration() + 40)
@@ -126,6 +128,11 @@ def main() -> None:
             app.processEvents()
             investment_form.grab().save(str(output / "ui-investment-form.png"))
             investment_form.close()
+            backup_password = BackupPasswordDialog(confirm_password=True)
+            backup_password.show()
+            app.processEvents()
+            backup_password.grab().save(str(output / "ui-backup-password.png"))
+            backup_password.close()
             loan_service = LoanService(db)
             loan_form = LoanForm(
                 [

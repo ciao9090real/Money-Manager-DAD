@@ -3,7 +3,6 @@ from __future__ import annotations
 from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import (
     QComboBox,
-    QDateEdit,
     QDialog,
     QFormLayout,
     QHBoxLayout,
@@ -18,6 +17,7 @@ from app.models.transaction import Transaction
 from app.services.category_service import CategoryService
 from app.ui.category_manager import create_category_dialog
 from app.ui.components import dialog_shell, ghost_button
+from app.ui.date_picker import DatePicker
 
 
 class TransactionForm(QDialog):
@@ -60,9 +60,7 @@ class TransactionForm(QDialog):
         category_layout.addWidget(self.category, 1)
         category_layout.addWidget(self.add_category_button)
         self.payment_method = QComboBox()
-        self.date = QDateEdit(QDate.currentDate())
-        self.date.setCalendarPopup(True)
-        self.date.setDisplayFormat("dd MMM yyyy")
+        self.date = DatePicker(QDate.currentDate())
         self.amount = QLineEdit()
         self.amount.setPlaceholderText("0.00")
         self.amount.setAlignment(Qt.AlignmentFlag.AlignRight)

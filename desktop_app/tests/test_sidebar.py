@@ -30,6 +30,9 @@ def test_collapsed_sidebar_keeps_icons_and_separates_expand_control(qt_app):
     assert sidebar.width() == sidebar.COLLAPSED_WIDTH
     assert not sidebar.collapse_button.isVisible()
     assert sidebar.mark.isVisible()
+    assert sidebar.mark.text() == ""
+    assert not sidebar.mark.icon().isNull()
+    assert not hasattr(sidebar, "subtitle")
     assert sidebar.expand_button.isVisible()
     mark_bottom = sidebar.mark.mapTo(sidebar, QPoint(0, sidebar.mark.height())).y()
     expand_top = sidebar.expand_button.mapTo(sidebar, QPoint(0, 0)).y()

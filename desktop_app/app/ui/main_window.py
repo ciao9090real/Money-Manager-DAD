@@ -64,6 +64,7 @@ class MainWindow(QMainWindow):
             on_add_loan=self.loans.add_loan,
             on_add_recurring=self.upcoming.add_rule,
             on_backup=self.settings.create_backup,
+            on_open_cash_flow_month=self._open_transactions_month,
         )
 
         pages = (
@@ -146,6 +147,11 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentIndex(index)
         self.sidebar.set_selected(index)
         self._refresh_selected_if_dirty()
+
+    def _open_transactions_month(self, month_key: str, transaction_type: str) -> None:
+        self.transactions.set_month_filter(month_key, transaction_type)
+        self.dirty_pages.discard("transactions")
+        self._select_page(self.page_keys.index("transactions"))
 
     def invalidate(self, tags: set[str]) -> None:
         self.dirty_pages.update(

@@ -55,6 +55,7 @@ class DashboardPage(QWidget):
         on_add_loan=None,
         on_add_recurring=None,
         on_backup=None,
+        on_open_cash_flow_month=None,
     ):
         super().__init__()
         self.service = DashboardService(db)
@@ -158,6 +159,9 @@ class DashboardPage(QWidget):
             subtitle="Recorded income and expenses; transfers are excluded",
         )
         self.cash_flow_chart = CashFlowChart()
+        self.cash_flow_chart.period_selected.connect(
+            on_open_cash_flow_month or (lambda _month, _kind: None)
+        )
         cash_flow_layout.addWidget(self.cash_flow_chart)
         layout.addWidget(cash_flow_card)
 
@@ -165,7 +169,7 @@ class DashboardPage(QWidget):
         add_account.clicked.connect(on_add_account or (lambda: None))
         recent_card, recent_layout = create_card(
             "Recent activity",
-            subtitle="Your latest income, spending, transfers, and adjustments",
+            subtitle="Your latest income, spending, and transfers",
         )
         self.recent_empty = empty_state(
             "No transactions yet", "Add your first income, expense, or transfer."
@@ -475,7 +479,12 @@ class DashboardPage(QWidget):
         cash_flow = self.reporting.monthly_cash_flow()
         self.cash_flow_chart.set_data(
             [
-                (item["label"], item["income"], item["expenses"])
+                (
+                    item["month"],
+                    item["label"],
+                    item["income"],
+                    item["expenses"],
+                )
                 for item in cash_flow
             ]
         )

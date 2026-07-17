@@ -5,6 +5,7 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
+from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import QApplication, QFrame
 
 import app.ui.recurring_form as recurring_form_module
@@ -12,8 +13,16 @@ import app.ui.transaction_form as transaction_form_module
 from app.core.database import connect
 from app.services.account_service import AccountService
 from app.services.category_service import CategoryService
+from app.services.investment_service import InvestmentService
 from app.services.recurring_service import RecurringService
 from app.ui.dashboard_page import DashboardPage
+from app.ui.date_picker import DatePicker
+from app.ui.investment_form import (
+    AddInvestmentFundsDialog,
+    InvestmentForm,
+    UpdateInvestmentValueDialog,
+)
+from app.ui.investments_page import InvestmentsPage
 from app.ui.recurring_form import RecurringRuleForm
 from app.ui.loan_form import LoanForm
 from app.ui.transaction_form import TransactionForm
@@ -159,4 +168,102 @@ def test_loan_form_switches_borrowed_and_lent_wording(qt_app, tmp_path, monkeypa
         )
         form.close()
     finally:
+        db.close()
+
+
+def test_value_updates_selector_is_independent_from_chart_selector(
+    qt_app,
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("MONEY_MANAGER_DAD_DATA_DIR", str(tmp_path))
+    db = connect()
+    try:
+        account = AccountService(db).create_account(
+            "Current",
+            "current_account",
+            opening_balance="1000",
+        )
+        investments = InvestmentService(db)
+        first = investments.create_investment(
+            "Equity",
+            "etf",
+            account.id,
+            "100",
+            "2026-07-01",
+        )
+        second = investments.create_investment(
+            "Bonds",
+            "bond",
+            account.id,
+            "200",
+            "2026-07-02",
+        )
+        investments.update_value(second.investment.id, "210", "2026-07-03")
+        page = InvestmentsPage(db, lambda _pages: None)
+        page.refresh()
+
+        assert page.table.currentRow() == 0
+        assert page.delete_button.isEnabled()
+        selected_investment_id = page.table.item(0, 0).data(Qt.ItemDataRole.UserRole)
+        assert page.updates_selector.currentData() == selected_investment_id
+        assert page.updates_selector.findData("portfolio") == -1
+
+        page.history_selector.setCurrentIndex(
+            page.history_selector.findData(first.investment.id)
+        )
+        page.updates_selector.setCurrentIndex(
+            page.updates_selector.findData(second.investment.id)
+        )
+        page.updates_table.selectRow(0)
+        qt_app.processEvents()
+
+        assert page.history_selector.currentData() == first.investment.id
+        assert page.updates_selector.currentData() == second.investment.id
+        assert "Bonds" in page.updates_caption.text()
+        assert page.edit_update_button.isEnabled()
+        assert page.delete_update_button.isEnabled()
+        assert page.clear_logs_button.isEnabled()
+        page.updates_table.selectRow(1)
+        qt_app.processEvents()
+        assert page.delete_update_button.isEnabled()
+        page.close()
+        page.deleteLater()
+        qt_app.processEvents()
+    finally:
+        db.close()
+
+
+def test_investment_forms_cap_dates_at_today(qt_app, tmp_path, monkeypatch):
+    monkeypatch.setenv("MONEY_MANAGER_DAD_DATA_DIR", str(tmp_path))
+    db = connect()
+    dialogs = []
+    try:
+        account = AccountService(db).create_account(
+            "Current",
+            "current_account",
+            opening_balance="1000",
+        )
+        snapshot = InvestmentService(db).create_investment(
+            "Equity",
+            "etf",
+            account.id,
+            "100",
+            QDate.currentDate().toString("yyyy-MM-dd"),
+        )
+        dialogs = [
+            InvestmentForm([account]),
+            AddInvestmentFundsDialog(snapshot, [account]),
+            UpdateInvestmentValueDialog(snapshot),
+        ]
+
+        assert all(
+            dialog.date.maximumDate() == QDate.currentDate()
+            for dialog in dialogs
+        )
+        assert all(isinstance(dialog.date, DatePicker) for dialog in dialogs)
+        assert all(dialog.date.lineEdit().isReadOnly() for dialog in dialogs)
+    finally:
+        for dialog in dialogs:
+            dialog.close()
         db.close()

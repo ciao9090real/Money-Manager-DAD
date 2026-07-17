@@ -4,7 +4,6 @@ from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QDateEdit,
     QDialog,
     QFormLayout,
     QHBoxLayout,
@@ -20,6 +19,7 @@ from app.models.recurring_rule import RecurringRule
 from app.services.category_service import CategoryService
 from app.ui.category_manager import create_category_dialog
 from app.ui.components import dialog_shell, ghost_button
+from app.ui.date_picker import DatePicker
 
 
 class RecurringRuleForm(QDialog):
@@ -78,14 +78,10 @@ class RecurringRuleForm(QDialog):
             ("yearly", "Yearly"),
         ):
             self.frequency.addItem(label, key)
-        self.next_due_date = QDateEdit(QDate.currentDate())
-        self.next_due_date.setCalendarPopup(True)
-        self.next_due_date.setDisplayFormat("dd MMM yyyy")
+        self.next_due_date = DatePicker(QDate.currentDate())
 
         self.end_enabled = QCheckBox("Ends")
-        self.end_date = QDateEdit(QDate.currentDate().addYears(1))
-        self.end_date.setCalendarPopup(True)
-        self.end_date.setDisplayFormat("dd MMM yyyy")
+        self.end_date = DatePicker(QDate.currentDate().addYears(1))
         self.end_date.setEnabled(False)
         end_row = QWidget()
         end_layout = QHBoxLayout(end_row)
@@ -268,9 +264,7 @@ class RecordRecurringDialog(QDialog):
         self.amount = QLineEdit(str(rule.amount) if rule.amount is not None else "")
         self.amount.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.amount.setPlaceholderText("Actual amount")
-        self.date = QDateEdit(QDate.currentDate())
-        self.date.setCalendarPopup(True)
-        self.date.setDisplayFormat("dd MMM yyyy")
+        self.date = DatePicker(QDate.currentDate())
 
         form = QFormLayout()
         amount_label = "Actual amount" if rule.amount_mode == "variable" else "Amount"

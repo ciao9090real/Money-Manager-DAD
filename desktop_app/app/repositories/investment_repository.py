@@ -137,6 +137,17 @@ class InvestmentRepository:
         assert updated is not None
         return updated
 
+    def delete(self, investment_id: str) -> None:
+        self.db.execute(
+            f"""
+            UPDATE investments
+            SET is_active = 0, deleted_at = {UTC_NOW}, updated_at = {UTC_NOW},
+                revision = revision + 1
+            WHERE id = ? AND deleted_at IS NULL
+            """,
+            (investment_id,),
+        )
+
     def record_value(
         self,
         investment_id: str,
@@ -144,17 +155,25 @@ class InvestmentRepository:
         value: Decimal,
     ) -> InvestmentValuePoint:
         point_id = str(uuid4())
+        contributed = self.total_contributed(investment_id)
         self.db.execute(
             """
             INSERT INTO investment_value_history (
-                id, investment_id, date, value_cents
-            ) VALUES (?, ?, ?, ?)
+                id, investment_id, date, value_cents, contributed_cents
+            ) VALUES (?, ?, ?, ?, ?)
             """,
-            (point_id, investment_id, date, decimal_to_cents(value)),
+            (
+                point_id,
+                investment_id,
+                date,
+                decimal_to_cents(value),
+                decimal_to_cents(contributed),
+            ),
         )
         row = self.db.execute(
             """
-            SELECT id, investment_id, date, value_cents, created_at
+            SELECT id, investment_id, date, value_cents,
+                   contributed_cents, created_at
             FROM investment_value_history
             WHERE id = ?
             """,
@@ -169,7 +188,8 @@ class InvestmentRepository:
     ) -> list[InvestmentValuePoint]:
         query = """
             SELECT history.id, history.investment_id, history.date,
-                   history.value_cents, history.created_at
+                   history.value_cents, history.contributed_cents,
+                   history.created_at
             FROM investment_value_history history
             JOIN investments investment ON investment.id = history.investment_id
             WHERE investment.deleted_at IS NULL
@@ -180,6 +200,75 @@ class InvestmentRepository:
             params = (investment_id,)
         query += " ORDER BY history.date, history.rowid"
         return [self._value_point(row) for row in self.db.execute(query, params)]
+
+    def get_value_point(
+        self,
+        investment_id: str,
+        point_id: str,
+    ) -> InvestmentValuePoint | None:
+        row = self.db.execute(
+            """
+            SELECT id, investment_id, date, value_cents,
+                   contributed_cents, created_at
+            FROM investment_value_history
+            WHERE id = ? AND investment_id = ?
+            """,
+            (point_id, investment_id),
+        ).fetchone()
+        return self._value_point(row) if row else None
+
+    def update_value_point(
+        self,
+        investment_id: str,
+        point_id: str,
+        value: Decimal,
+    ) -> InvestmentValuePoint:
+        self.db.execute(
+            f"""
+            UPDATE investment_value_history
+            SET value_cents = ?, updated_at = {UTC_NOW}
+            WHERE id = ? AND investment_id = ?
+            """,
+            (decimal_to_cents(value), point_id, investment_id),
+        )
+        updated = self.get_value_point(investment_id, point_id)
+        if not updated:
+            raise ValueError("Value log not found")
+        return updated
+
+    def delete_value_point(self, investment_id: str, point_id: str) -> None:
+        cursor = self.db.execute(
+            """
+            DELETE FROM investment_value_history
+            WHERE id = ? AND investment_id = ?
+            """,
+            (point_id, investment_id),
+        )
+        if cursor.rowcount != 1:
+            raise ValueError("Value log not found")
+
+    def delete_all_value_points(self, investment_id: str) -> int:
+        cursor = self.db.execute(
+            "DELETE FROM investment_value_history WHERE investment_id = ?",
+            (investment_id,),
+        )
+        return cursor.rowcount
+
+    def total_contributed(self, investment_id: str) -> Decimal:
+        row = self.db.execute(
+            """
+            SELECT COALESCE(SUM(t.amount_cents), 0) AS amount_cents
+            FROM transactions AS t
+            JOIN investments AS i ON i.id = t.investment_id
+            WHERE t.investment_id = ?
+              AND t.account_id = i.account_id
+              AND t.type = 'transfer_in'
+              AND t.deleted_at IS NULL
+              AND i.deleted_at IS NULL
+            """,
+            (investment_id,),
+        ).fetchone()
+        return cents_to_decimal(row["amount_cents"])
 
     def list_contributions(
         self,
@@ -208,6 +297,36 @@ class InvestmentRepository:
             for row in self.db.execute(query, params)
         ]
 
+    def list_funding_sources(
+        self,
+        investment_id: str,
+    ) -> list[tuple[str, Decimal]]:
+        rows = self.db.execute(
+            """
+            SELECT outgoing.account_id AS source_account_id,
+                   SUM(incoming.amount_cents) AS contributed_cents
+            FROM transactions AS incoming
+            JOIN investments AS investment
+              ON investment.id = incoming.investment_id
+            JOIN transactions AS outgoing
+              ON outgoing.transfer_group_id = incoming.transfer_group_id
+             AND outgoing.type = 'transfer_out'
+             AND outgoing.deleted_at IS NULL
+            WHERE incoming.investment_id = ?
+              AND incoming.account_id = investment.account_id
+              AND incoming.type = 'transfer_in'
+              AND incoming.deleted_at IS NULL
+              AND investment.deleted_at IS NULL
+            GROUP BY outgoing.account_id
+            ORDER BY outgoing.account_id
+            """,
+            (investment_id,),
+        ).fetchall()
+        return [
+            (row["source_account_id"], cents_to_decimal(row["contributed_cents"]))
+            for row in rows
+        ]
+
     @staticmethod
     def _value_point(row: sqlite3.Row) -> InvestmentValuePoint:
         return InvestmentValuePoint(
@@ -215,5 +334,6 @@ class InvestmentRepository:
             investment_id=row["investment_id"],
             date=row["date"],
             value=cents_to_decimal(row["value_cents"]),
+            contributed=cents_to_decimal(row["contributed_cents"]),
             recorded_at=row["created_at"],
         )

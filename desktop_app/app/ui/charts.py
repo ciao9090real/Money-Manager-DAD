@@ -3,9 +3,9 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from PySide6.QtCore import QPointF, QRectF, QSize, Qt
-from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
-from PySide6.QtWidgets import QSizePolicy, QWidget
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt, Signal
+from PySide6.QtGui import QColor, QFont, QMouseEvent, QPainter, QPainterPath, QPen
+from PySide6.QtWidgets import QSizePolicy, QToolTip, QWidget
 
 from app.ui.theme import Colors
 from app.utils.money import format_money
@@ -191,7 +191,15 @@ class PerformanceChart(QWidget):
         plot = QRectF(58, 34, max(40, self.width() - 76), max(70, self.height() - 72))
         contributed = [float(point[1]) for point in self._points]
         current_values = [float(point[2]) for point in self._points]
-        maximum = max(contributed + current_values + [1.0]) * 1.08
+        all_values = contributed + current_values
+        minimum_value = min(all_values)
+        maximum_value = max(all_values)
+        span = maximum_value - minimum_value
+        padding = max(span * 0.1, maximum_value * 0.02, 1.0)
+        minimum = max(0.0, min(all_values) - padding)
+        maximum = max(all_values) + padding
+        if maximum <= minimum:
+            maximum = minimum + 1.0
 
         small_font = QFont(self.font())
         small_font.setPointSize(8)
@@ -205,7 +213,7 @@ class PerformanceChart(QWidget):
             painter.drawText(
                 QRectF(0, y - 9, 50, 18),
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-                _short_money(maximum * (1 - ratio)),
+                _short_money(maximum - ratio * (maximum - minimum)),
             )
 
         legend_font = QFont(self.font())
@@ -234,7 +242,7 @@ class PerformanceChart(QWidget):
                     if len(values) == 1
                     else plot.left() + index / (len(values) - 1) * plot.width()
                 )
-                y = plot.bottom() - value / maximum * plot.height()
+                y = plot.bottom() - (value - minimum) / (maximum - minimum) * plot.height()
                 result.append(QPointF(x, y))
             return result
 
@@ -249,13 +257,19 @@ class PerformanceChart(QWidget):
                 )
             else:
                 path = QPainterPath(series_positions[0])
-                for point in series_positions[1:]:
-                    path.lineTo(point)
+                for previous, point in zip(series_positions, series_positions[1:]):
+                    midpoint = (previous.x() + point.x()) / 2
+                    path.cubicTo(
+                        QPointF(midpoint, previous.y()),
+                        QPointF(midpoint, point.y()),
+                        point,
+                    )
                 painter.drawPath(path)
             painter.setBrush(QColor(Colors.CARD))
             painter.setPen(QPen(QColor(color), 2))
             for point in series_positions:
-                painter.drawEllipse(point, 3.5, 3.5)
+                radius = 3.5 if len(series_positions) <= 36 else 2.5
+                painter.drawEllipse(point, radius, radius)
 
         draw_series(contributed, Colors.ACCENT)
         draw_series(current_values, Colors.PRIMARY)
@@ -369,23 +383,36 @@ class AllocationChart(QWidget):
 
 
 class CashFlowChart(QWidget):
+    period_selected = Signal(str, str)
+
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
-        self._months: list[tuple[str, Decimal, Decimal]] = []
+        self._months: list[tuple[str, str, Decimal, Decimal]] = []
+        self._bar_regions: list[
+            tuple[QRectF, str, str, str, Decimal]
+        ] = []
+        self._hovered_bar: tuple[str, str] | None = None
+        self.setMouseTracking(True)
         self.setMinimumHeight(210)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
     def sizeHint(self) -> QSize:
         return QSize(900, 225)
 
-    def set_data(self, months: list[tuple[str, Decimal, Decimal]]) -> None:
+    def set_data(
+        self,
+        months: list[tuple[str, str, Decimal, Decimal]],
+    ) -> None:
         self._months = months
+        self._bar_regions.clear()
+        self._hovered_bar = None
         self.update()
 
     def paintEvent(self, _event) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setFont(self.font())
+        self._bar_regions.clear()
         if not self._months:
             painter.setPen(QColor(Colors.TEXT_MUTED))
             painter.drawText(
@@ -397,8 +424,8 @@ class CashFlowChart(QWidget):
 
         plot = QRectF(50, 28, max(80, self.width() - 64), max(70, self.height() - 62))
         maximum = max(
-            [float(income) for _month, income, _expense in self._months]
-            + [float(expense) for _month, _income, expense in self._months]
+            [float(income) for _key, _label, income, _expense in self._months]
+            + [float(expense) for _key, _label, _income, expense in self._months]
             + [1.0]
         )
         painter.setPen(QColor(Colors.TEXT_SECONDARY))
@@ -424,20 +451,79 @@ class CashFlowChart(QWidget):
 
         group_width = plot.width() / len(self._months)
         bar_width = min(22, max(8, group_width * 0.24))
-        for index, (month, income, expense) in enumerate(self._months):
+        for index, (month_key, month_label, income, expense) in enumerate(self._months):
             center = plot.left() + group_width * (index + 0.5)
-            for value, color, offset in (
-                (float(income), Colors.POSITIVE, -bar_width - 2),
-                (float(expense), Colors.NEGATIVE, 2),
+            for kind, value, color, offset in (
+                ("income", income, Colors.POSITIVE, -bar_width - 2),
+                ("expense", expense, Colors.NEGATIVE, 2),
             ):
-                height = value / maximum * plot.height()
+                numeric_value = float(value)
+                height = numeric_value / maximum * plot.height()
+                if numeric_value > 0:
+                    height = max(3, height)
                 rect = QRectF(center + offset, plot.bottom() - height, bar_width, height)
                 painter.setPen(Qt.PenStyle.NoPen)
-                painter.setBrush(QColor(color))
+                fill = QColor(color)
+                if self._hovered_bar == (month_key, kind):
+                    fill = fill.lighter(112)
+                painter.setBrush(fill)
                 painter.drawRoundedRect(rect, 3, 3)
+                if numeric_value > 0:
+                    self._bar_regions.append(
+                        (rect.adjusted(-2, -3, 2, 3), month_key, kind, month_label, value)
+                    )
             painter.setPen(QColor(Colors.TEXT_MUTED))
             painter.drawText(
                 QRectF(center - group_width / 2, plot.bottom() + 7, group_width, 18),
                 Qt.AlignmentFlag.AlignCenter,
-                month,
+                month_label,
             )
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        hit = self._bar_at(event.position())
+        hovered = (hit[1], hit[2]) if hit else None
+        if hovered != self._hovered_bar:
+            self._hovered_bar = hovered
+            self.update()
+        if hit:
+            _rect, month_key, kind, _label, value = hit
+            self.setCursor(Qt.CursorShape.PointingHandCursor)
+            try:
+                month = date.fromisoformat(f"{month_key}-01").strftime("%B %Y")
+            except ValueError:
+                month = month_key
+            title = "Income" if kind == "income" else "Expenses"
+            QToolTip.showText(
+                event.globalPosition().toPoint(),
+                f"{month}\n{title}: {format_money(value)}\nClick to view transactions",
+                self,
+            )
+        else:
+            self.unsetCursor()
+            QToolTip.hideText()
+        super().mouseMoveEvent(event)
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            hit = self._bar_at(event.position())
+            if hit:
+                self.period_selected.emit(hit[1], hit[2])
+                event.accept()
+                return
+        super().mousePressEvent(event)
+
+    def leaveEvent(self, event) -> None:
+        self._hovered_bar = None
+        self.unsetCursor()
+        QToolTip.hideText()
+        self.update()
+        super().leaveEvent(event)
+
+    def _bar_at(
+        self,
+        position: QPointF,
+    ) -> tuple[QRectF, str, str, str, Decimal] | None:
+        for region in reversed(self._bar_regions):
+            if region[0].contains(position):
+                return region
+        return None

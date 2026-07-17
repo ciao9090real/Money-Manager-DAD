@@ -34,6 +34,7 @@ class InvestmentValuePoint:
     investment_id: str
     date: str
     value: Decimal
+    contributed: Decimal = Decimal("0")
     recorded_at: str | None = None
 
 
@@ -42,3 +43,11 @@ class InvestmentPerformancePoint:
     date: str
     contributed: Decimal
     current_value: Decimal
+
+
+@dataclass(frozen=True)
+class InvestmentLiquidationShare:
+    account_id: str
+    account_name: str
+    contributed: Decimal
+    proceeds: Decimal

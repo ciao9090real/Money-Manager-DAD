@@ -91,7 +91,10 @@ class DashboardService:
             "monthly_income": monthly_income,
             "monthly_expenses": monthly_expenses,
             "monthly_net_flow": monthly_net_flow,
-            "recent_transactions": self.transactions.list(limit=10),
+            "recent_transactions": self.transactions.list(
+                limit=10,
+                exclude_adjustments=True,
+            ),
             "accounts": account_summary,
         }
 
@@ -149,7 +152,11 @@ class DashboardService:
             "child_account_count": max(len(account_ids) - 1, 0),
             "payment_method_count": len(methods),
             "included_accounts": [row["name"] for row in account_summary],
-            "recent_transactions": self.transactions.list(limit=10, account_ids=account_ids),
+            "recent_transactions": self.transactions.list(
+                limit=10,
+                account_ids=account_ids,
+                exclude_adjustments=True,
+            ),
             "accounts": account_summary,
             "payment_methods": methods,
         }

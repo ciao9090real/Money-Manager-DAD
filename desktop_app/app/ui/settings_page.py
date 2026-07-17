@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from pathlib import Path
 
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices
@@ -21,6 +22,7 @@ from app.core.app_info import APP_VERSION
 from app.core.paths import app_data_dir, backup_dir, database_path
 from app.services.backup_service import BackupService
 from app.services.export_service import ExportService
+from app.ui.backup_password_dialog import BackupPasswordDialog
 from app.ui.category_manager import CategoryManagerDialog
 from app.ui.components import (
     badge,
@@ -84,13 +86,16 @@ class SettingsPage(QWidget):
 
         backup_button = primary_button("Create backup", "backup")
         backup_button.clicked.connect(self.create_backup)
+        encrypted_backup_button = secondary_button("Encrypted", "shield")
+        encrypted_backup_button.setToolTip("Create password-encrypted backup")
+        encrypted_backup_button.clicked.connect(self.create_encrypted_backup)
         restore_button = secondary_button("Restore backup", "restore")
         restore_button.clicked.connect(self.restore_backup)
         backup_card = self._tool_card(
             "Backup & recovery",
-            "Daily snapshots are automatic. Create or restore a verified copy anytime.",
+            "Daily snapshots are automatic. Manual copies can be password protected.",
             "backup",
-            actions_row(backup_button, restore_button),
+            actions_row(backup_button, encrypted_backup_button, restore_button),
         )
 
         export_button = soft_button("Export CSV", "download")
@@ -212,15 +217,42 @@ class SettingsPage(QWidget):
         except (OSError, RuntimeError, sqlite3.Error) as exc:
             QMessageBox.warning(self, "Backup failed", str(exc))
 
+    def create_encrypted_backup(self) -> None:
+        dialog = BackupPasswordDialog(confirm_password=True, parent=self)
+        if not dialog.exec():
+            return
+        try:
+            target = BackupService(self.db).create_encrypted_backup(
+                dialog.password()
+            )
+            self.notify("Encrypted backup created")
+            QMessageBox.information(
+                self,
+                "Encrypted backup created",
+                f"The password-protected backup was saved to:\n\n{target}",
+            )
+        except (OSError, ValueError, RuntimeError, sqlite3.Error) as exc:
+            QMessageBox.warning(self, "Encrypted backup failed", str(exc))
+
     def restore_backup(self) -> None:
         source, _filter = QFileDialog.getOpenFileName(
             self,
             "Restore Money Manager backup",
             str(backup_dir()),
-            "SQLite backup (*.db);;All files (*)",
+            "Money Manager backups (*.mmbak *.db);;Encrypted backup (*.mmbak);;SQLite backup (*.db);;All files (*)",
         )
         if not source:
             return
+        service = BackupService(self.db)
+        password = None
+        if service.is_encrypted_backup(Path(source)):
+            password_dialog = BackupPasswordDialog(
+                confirm_password=False,
+                parent=self,
+            )
+            if not password_dialog.exec():
+                return
+            password = password_dialog.password()
         answer = QMessageBox.warning(
             self,
             "Restore backup",
@@ -230,7 +262,7 @@ class SettingsPage(QWidget):
         if answer != QMessageBox.StandardButton.Yes:
             return
         try:
-            rollback = BackupService(self.db).restore_backup(source)
+            rollback = service.restore_backup(source, password=password)
             self.on_changed(
                 {"dashboard", "accounts", "transactions", "investments", "loans", "upcoming"}
             )

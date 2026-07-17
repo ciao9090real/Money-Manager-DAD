@@ -4,7 +4,6 @@ from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QDateEdit,
     QDialog,
     QDoubleSpinBox,
     QFormLayout,
@@ -16,6 +15,7 @@ from PySide6.QtWidgets import (
 from app.models.account import Account
 from app.models.loan import Loan, LoanSnapshot
 from app.ui.components import dialog_shell
+from app.ui.date_picker import DatePicker
 from app.utils.money import format_money
 
 
@@ -46,13 +46,9 @@ class LoanForm(QDialog):
         self.interest_rate.setToolTip(
             "Reference only. Outstanding balances and payments track principal, not accrued interest."
         )
-        self.start_date = QDateEdit(QDate.currentDate())
-        self.start_date.setCalendarPopup(True)
-        self.start_date.setDisplayFormat("dd MMM yyyy")
+        self.start_date = DatePicker(QDate.currentDate())
         self.due_enabled = QCheckBox("Has due date")
-        self.due_date = QDateEdit(QDate.currentDate().addYears(1))
-        self.due_date.setCalendarPopup(True)
-        self.due_date.setDisplayFormat("dd MMM yyyy")
+        self.due_date = DatePicker(QDate.currentDate().addYears(1))
         self.due_date.setEnabled(False)
         due_row = QWidget()
         due_layout = QHBoxLayout(due_row)
@@ -158,9 +154,7 @@ class LoanPaymentDialog(QDialog):
         self.amount = QLineEdit()
         self.amount.setPlaceholderText(format_money(snapshot.outstanding))
         self.amount.setAlignment(Qt.AlignmentFlag.AlignRight)
-        self.date = QDateEdit(QDate.currentDate())
-        self.date.setCalendarPopup(True)
-        self.date.setDisplayFormat("dd MMM yyyy")
+        self.date = DatePicker(QDate.currentDate())
         self.notes = QLineEdit()
         self.notes.setPlaceholderText("Optional notes")
 

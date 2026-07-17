@@ -29,7 +29,7 @@ def app_stylesheet() -> str:
         font-weight: 700;
     }}
 
-    #SidebarSubtitle, QLabel[role="sidebarMeta"] {{
+    QLabel[role="sidebarMeta"] {{
         color: {Colors.SIDEBAR_MUTED};
         font-size: 10px;
     }}
@@ -444,7 +444,67 @@ def app_stylesheet() -> str:
 
     QComboBox::drop-down, QDateEdit::drop-down {{
         border: none;
-        width: 28px;
+        width: 34px;
+    }}
+
+    QDateEdit::down-arrow {{
+        image: none;
+        width: 0;
+        height: 0;
+    }}
+
+    QCalendarWidget#BookingCalendar {{
+        background: white;
+        border: 1px solid {Colors.BORDER};
+    }}
+
+    QCalendarWidget#BookingCalendar QWidget#qt_calendar_navigationbar {{
+        background: {Colors.PRIMARY_SOFT};
+        border-bottom: 1px solid {Colors.BORDER_SOFT};
+        min-height: 38px;
+    }}
+
+    QCalendarWidget#BookingCalendar QToolButton {{
+        background: transparent;
+        border: none;
+        border-radius: 6px;
+        color: {Colors.TEXT};
+        font-weight: 600;
+        min-height: 28px;
+        padding: 3px 8px;
+    }}
+
+    QCalendarWidget#BookingCalendar QToolButton:hover {{
+        background: rgba(25, 127, 101, 0.10);
+    }}
+
+    QCalendarWidget#BookingCalendar QSpinBox {{
+        background: white;
+        border: 1px solid {Colors.BORDER};
+        border-radius: 6px;
+        padding: 4px 8px;
+    }}
+
+    QCalendarWidget#BookingCalendar QAbstractItemView {{
+        background: white;
+        alternate-background-color: white;
+        color: {Colors.TEXT};
+        selection-background-color: {Colors.PRIMARY};
+        selection-color: white;
+        outline: none;
+        padding: 0;
+    }}
+
+    QCalendarWidget#BookingCalendar QTableView::item {{
+        border: none;
+        padding: 0;
+    }}
+
+    QCalendarWidget#BookingCalendar QHeaderView::section {{
+        background: white;
+        border: none;
+        padding: 0;
+        font-size: 11px;
     }}
 
     QCheckBox {{ spacing: 8px; color: {Colors.TEXT_SECONDARY}; }}

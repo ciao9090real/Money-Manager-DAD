@@ -44,6 +44,68 @@ def test_restore_backup_replaces_data_and_keeps_rollback_copy(services):
     assert TransactionService(db).list_transactions() == []
 
 
+def test_encrypted_backup_restores_with_correct_password(services):
+    db, accounts, transactions, _recurring, _trash = services
+    current = accounts.create_account("Current", "current_account", opening_balance="100")
+    service = BackupService(db)
+    backup = service.create_encrypted_backup("correct horse battery staple")
+
+    assert backup.suffix == BackupService.ENCRYPTED_SUFFIX
+    assert BackupService.is_encrypted_backup(backup)
+    assert not backup.read_bytes().startswith(b"SQLite format 3")
+
+    transactions.add_expense(current.id, "25", "2026-07-15", "After backup")
+    rollback = service.restore_backup(
+        backup,
+        password="correct horse battery staple",
+    )
+
+    assert rollback.exists()
+    assert AccountService(db).account_balance(current.id) == Decimal("100.00")
+    assert TransactionService(db).list_transactions() == []
+
+
+def test_encrypted_backup_rejects_wrong_password_without_changing_data(services):
+    db, accounts, transactions, _recurring, _trash = services
+    current = accounts.create_account("Current", "current_account", opening_balance="100")
+    service = BackupService(db)
+    backup = service.create_encrypted_backup("correct horse battery staple")
+    transactions.add_expense(current.id, "25", "2026-07-15", "Keep me")
+
+    with pytest.raises(ValueError, match="Incorrect password"):
+        service.restore_backup(backup, password="definitely the wrong password")
+
+    assert accounts.account_balance(current.id) == Decimal("75.00")
+    assert [item.description for item in transactions.list_transactions()] == [
+        "Keep me"
+    ]
+
+
+def test_encrypted_backup_rejects_tampering_without_changing_data(services):
+    db, accounts, _transactions, _recurring, _trash = services
+    current = accounts.create_account("Current", "current_account", opening_balance="100")
+    service = BackupService(db)
+    backup = service.create_encrypted_backup("correct horse battery staple")
+    payload = bytearray(backup.read_bytes())
+    payload[-1] ^= 1
+    backup.write_bytes(payload)
+
+    with pytest.raises(ValueError, match="damaged encrypted backup"):
+        service.restore_backup(
+            backup,
+            password="correct horse battery staple",
+        )
+
+    assert accounts.account_balance(current.id) == Decimal("100.00")
+
+
+def test_encrypted_backup_requires_a_substantial_password(services):
+    db, _accounts, _transactions, _recurring, _trash = services
+
+    with pytest.raises(ValueError, match="at least 10 characters"):
+        BackupService(db).create_encrypted_backup("short")
+
+
 def test_invalid_restore_is_rejected_without_changing_current_data(services, tmp_path):
     db, accounts, _transactions, _recurring, _trash = services
     current = accounts.create_account("Current", "current_account", opening_balance="100")

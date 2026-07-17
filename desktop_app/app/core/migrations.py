@@ -6,7 +6,7 @@ from pathlib import Path
 from uuid import uuid4
 
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 UTC_NOW_SQL = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"
 
 
@@ -54,6 +54,9 @@ def migrate(connection: sqlite3.Connection) -> None:
         if version < 9:
             _run_migration(connection, 9, _migrate_v9)
             version = 9
+        if version < 10:
+            _run_migration(connection, 10, _migrate_v10)
+            version = 10
         assert_database_integrity(connection)
     except Exception:
         connection.rollback()
@@ -1259,3 +1262,26 @@ def _migrate_v9(connection: sqlite3.Connection) -> None:
                 ),
             )
             existing.add(signature)
+
+
+def _migrate_v10(connection: sqlite3.Connection) -> None:
+    _execute_script(
+        connection,
+        """
+        ALTER TABLE investment_value_history
+            ADD COLUMN contributed_cents INTEGER NOT NULL DEFAULT 0
+            CHECK (contributed_cents >= 0);
+
+        UPDATE investment_value_history AS history
+        SET contributed_cents = COALESCE((
+            SELECT SUM(t.amount_cents)
+            FROM transactions AS t
+            JOIN investments AS i ON i.id = t.investment_id
+            WHERE t.investment_id = history.investment_id
+              AND t.account_id = i.account_id
+              AND t.type = 'transfer_in'
+              AND t.deleted_at IS NULL
+              AND t.date <= history.date
+        ), 0);
+        """,
+    )
