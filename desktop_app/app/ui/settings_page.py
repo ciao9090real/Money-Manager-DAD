@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import json
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QUrl
@@ -22,6 +23,7 @@ from app.core.app_info import APP_VERSION
 from app.core.paths import app_data_dir, backup_dir, database_path
 from app.services.backup_service import BackupService
 from app.services.export_service import ExportService
+from app.sync.server import LocalSyncServer
 from app.ui.backup_password_dialog import BackupPasswordDialog
 from app.ui.category_manager import CategoryManagerDialog
 from app.ui.components import (
@@ -45,6 +47,7 @@ class SettingsPage(QWidget):
         self.db = db
         self.notify = notify or (lambda _message: None)
         self.on_changed = on_changed or (lambda _tags: None)
+        self.sync_server = LocalSyncServer()
         layout = page_layout(
             self,
             "Settings",
@@ -78,6 +81,65 @@ class SettingsPage(QWidget):
         storage_body.addLayout(storage_details, 1)
         storage_layout.addLayout(storage_body)
         layout.addWidget(storage_card)
+
+        sync_card, sync_layout = create_card(
+            "Android phone sync",
+            subtitle="Pair over your local Wi-Fi; each device keeps its own database",
+        )
+        sync_top = QHBoxLayout()
+        sync_top.setSpacing(12)
+        sync_top.addWidget(self._icon_tile("devices"), 0, Qt.AlignmentFlag.AlignTop)
+        sync_copy = QLabel(
+            "Phone sync is off until you start it. Pairing uses local HTTPS and a one-time code."
+        )
+        sync_copy.setProperty("role", "subtitle")
+        sync_copy.setWordWrap(True)
+        sync_top.addWidget(sync_copy, 1)
+        self.sync_status = badge("Off", "neutral")
+        sync_top.addWidget(self.sync_status, 0, Qt.AlignmentFlag.AlignTop)
+        sync_layout.addLayout(sync_top)
+
+        sync_fields = QGridLayout()
+        sync_fields.setHorizontalSpacing(12)
+        sync_fields.setVerticalSpacing(9)
+        self.sync_url = QLineEdit("Start phone sync to create pairing details")
+        self.sync_url.setReadOnly(True)
+        self.sync_url.setProperty("role", "mono")
+        self.sync_code = QLineEdit("")
+        self.sync_code.setReadOnly(True)
+        self.sync_code.setProperty("role", "mono")
+        self.sync_fingerprint = QLineEdit("")
+        self.sync_fingerprint.setReadOnly(True)
+        self.sync_fingerprint.setProperty("role", "mono")
+        sync_fields.addWidget(QLabel("Desktop address"), 0, 0)
+        sync_fields.addWidget(self.sync_url, 0, 1)
+        sync_fields.addWidget(QLabel("Pairing code"), 1, 0)
+        sync_fields.addWidget(self.sync_code, 1, 1)
+        sync_fields.addWidget(QLabel("Security fingerprint"), 2, 0)
+        sync_fields.addWidget(self.sync_fingerprint, 2, 1)
+        sync_fields.setColumnStretch(1, 1)
+        sync_layout.addLayout(sync_fields)
+
+        sync_actions = QHBoxLayout()
+        sync_actions.setSpacing(9)
+        self.start_sync_button = primary_button("Start phone sync", "devices")
+        self.stop_sync_button = secondary_button("Stop", "close")
+        self.refresh_code_button = secondary_button("New code", "refresh")
+        self.copy_pairing_button = secondary_button("Copy details", "copy")
+        self.stop_sync_button.setEnabled(False)
+        self.refresh_code_button.setEnabled(False)
+        self.copy_pairing_button.setEnabled(False)
+        self.start_sync_button.clicked.connect(self.start_phone_sync)
+        self.stop_sync_button.clicked.connect(self.stop_phone_sync)
+        self.refresh_code_button.clicked.connect(self.refresh_pairing_code)
+        self.copy_pairing_button.clicked.connect(self.copy_pairing_details)
+        sync_actions.addWidget(self.start_sync_button)
+        sync_actions.addWidget(self.stop_sync_button)
+        sync_actions.addWidget(self.refresh_code_button)
+        sync_actions.addWidget(self.copy_pairing_button)
+        sync_actions.addStretch()
+        sync_layout.addLayout(sync_actions)
+        layout.addWidget(sync_card)
 
         self.tools_grid = QGridLayout()
         self.tools_grid.setContentsMargins(0, 0, 0, 0)
@@ -288,3 +350,64 @@ class SettingsPage(QWidget):
 
     def manage_recently_deleted(self) -> None:
         RecentlyDeletedDialog(self.db, self.on_changed, self.notify).exec()
+
+    def start_phone_sync(self) -> None:
+        try:
+            details = self.sync_server.start()
+        except (OSError, RuntimeError, ValueError) as exc:
+            QMessageBox.warning(self, "Phone sync could not start", str(exc))
+            return
+        self._show_pairing_details(details)
+        self.start_sync_button.setEnabled(False)
+        self.stop_sync_button.setEnabled(True)
+        self.refresh_code_button.setEnabled(True)
+        self.copy_pairing_button.setEnabled(True)
+        self.sync_status.setText("On")
+        self.sync_status.setProperty("tone", "positive")
+        self.sync_status.style().unpolish(self.sync_status)
+        self.sync_status.style().polish(self.sync_status)
+        self.notify("Phone sync is ready on local Wi-Fi")
+
+    def stop_phone_sync(self) -> None:
+        self.sync_server.stop()
+        self.start_sync_button.setEnabled(True)
+        self.stop_sync_button.setEnabled(False)
+        self.refresh_code_button.setEnabled(False)
+        self.copy_pairing_button.setEnabled(False)
+        self.sync_status.setText("Off")
+        self.sync_status.setProperty("tone", "neutral")
+        self.sync_status.style().unpolish(self.sync_status)
+        self.sync_status.style().polish(self.sync_status)
+        self.sync_url.setText("Start phone sync to create pairing details")
+        self.sync_code.clear()
+        self.sync_fingerprint.clear()
+        self.notify("Phone sync stopped")
+
+    def refresh_pairing_code(self) -> None:
+        if not self.sync_server.is_running:
+            return
+        self.sync_server.regenerate_pairing_code()
+        self._show_pairing_details(self.sync_server.pairing_details())
+        self.notify("A new pairing code was created")
+
+    def copy_pairing_details(self) -> None:
+        if not self.sync_server.is_running:
+            return
+        details = self.sync_server.pairing_details()
+        QApplication.clipboard().setText(
+            json.dumps(details, sort_keys=True, separators=(",", ":"))
+        )
+        self.notify("Pairing details copied")
+
+    def shutdown_sync(self) -> None:
+        self.sync_server.stop()
+
+    def _show_pairing_details(self, details: dict) -> None:
+        self.sync_url.setText(str(details["url"]))
+        self.sync_code.setText(str(details["code"]))
+        fingerprint = str(details["fingerprint"])
+        grouped = " ".join(
+            fingerprint[index : index + 4]
+            for index in range(0, len(fingerprint), 4)
+        )
+        self.sync_fingerprint.setText(grouped)

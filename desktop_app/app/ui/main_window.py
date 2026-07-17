@@ -208,3 +208,7 @@ class MainWindow(QMainWindow):
                 self.width() < self.SIDEBAR_AUTO_COLLAPSE_WIDTH,
                 animate=True,
             )
+
+    def closeEvent(self, event) -> None:
+        self.settings.shutdown_sync()
+        super().closeEvent(event)

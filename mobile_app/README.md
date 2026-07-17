@@ -1,0 +1,36 @@
+# Money Manager Android
+
+The Android companion keeps its own SQLite cache and works offline after pairing. Sync is direct between the phone and the Windows desktop over the same local Wi-Fi network; there is no cloud account or shared database file.
+
+## Tooling
+
+1. Install Android Studio and its Android SDK.
+2. Add `C:\Users\leona\development\flutter\bin` to `PATH`, or call `flutter.bat` by its full path.
+3. Run `flutter doctor` and complete the Android SDK license prompts yourself.
+4. Connect an Android phone with USB debugging enabled, or start an Android emulator.
+
+## Run
+
+```powershell
+cd mobile_app
+C:\Users\leona\development\flutter\bin\flutter.bat pub get
+C:\Users\leona\development\flutter\bin\flutter.bat run
+```
+
+## Pair
+
+1. Keep the phone and PC on the same private Wi-Fi network.
+2. In the desktop app, open **Settings > Android phone sync** and select **Start phone sync**.
+3. In the Android app, open **More > Connect desktop**.
+4. Enter the desktop address, six-digit code, and at least the first eight fingerprint characters shown on the PC.
+5. Leave the desktop app open while synchronizing.
+
+The phone can browse accounts, balances, transactions, investments, loans, and recurring schedules. It can queue income, expenses, transfers, and recurring-payment records offline. The desktop validates and applies those commands exactly once on the next sync.
+
+## Validate
+
+```powershell
+C:\Users\leona\development\flutter\bin\cache\dart-sdk\bin\dart.exe analyze
+C:\Users\leona\development\flutter\bin\flutter.bat test
+C:\Users\leona\development\flutter\bin\flutter.bat build apk --debug
+```

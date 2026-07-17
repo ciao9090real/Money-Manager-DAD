@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from hmac import compare_digest
 from uuid import uuid4
 
 
@@ -34,16 +35,72 @@ class SyncRepository:
         certificate_fingerprint: str,
         *,
         device_id: str | None = None,
+        auth_token_hash: str | None = None,
     ) -> str:
         registered_id = device_id or str(uuid4())
         self.db.execute(
-            """
-            INSERT INTO devices (id, display_name, certificate_fingerprint, is_local)
-            VALUES (?, ?, ?, 0)
+            f"""
+            INSERT INTO devices (
+                id, display_name, certificate_fingerprint, auth_token_hash, is_local
+            ) VALUES (?, ?, ?, ?, 0)
+            ON CONFLICT(id) DO UPDATE SET
+                display_name = excluded.display_name,
+                certificate_fingerprint = excluded.certificate_fingerprint,
+                auth_token_hash = excluded.auth_token_hash,
+                revoked_at = NULL,
+                paired_at = {UTC_NOW}
             """,
-            (registered_id, display_name.strip(), certificate_fingerprint.strip()),
+            (
+                registered_id,
+                display_name.strip(),
+                certificate_fingerprint.strip(),
+                auth_token_hash,
+            ),
         )
         return registered_id
+
+    def authenticate_device(self, device_id: str, token_hash: str) -> bool:
+        row = self.db.execute(
+            """
+            SELECT auth_token_hash
+            FROM devices
+            WHERE id = ? AND is_local = 0 AND revoked_at IS NULL
+            """,
+            (device_id,),
+        ).fetchone()
+        return bool(
+            row
+            and row["auth_token_hash"]
+            and compare_digest(str(row["auth_token_hash"]), token_hash)
+        )
+
+    def touch_device(self, device_id: str) -> None:
+        self.db.execute(
+            f"UPDATE devices SET last_seen_at = {UTC_NOW} WHERE id = ?",
+            (device_id,),
+        )
+
+    def revoke_device(self, device_id: str) -> None:
+        cursor = self.db.execute(
+            f"""
+            UPDATE devices
+            SET revoked_at = {UTC_NOW}, auth_token_hash = NULL
+            WHERE id = ? AND is_local = 0 AND revoked_at IS NULL
+            """,
+            (device_id,),
+        )
+        if cursor.rowcount != 1:
+            raise ValueError("Paired device not found")
+
+    def list_devices(self) -> list[sqlite3.Row]:
+        return self.db.execute(
+            """
+            SELECT id, display_name, paired_at, last_seen_at, revoked_at
+            FROM devices
+            WHERE is_local = 0
+            ORDER BY revoked_at IS NOT NULL, display_name COLLATE NOCASE
+            """
+        ).fetchall()
 
     def changes_since(self, sequence: int, limit: int = 500) -> list[sqlite3.Row]:
         if sequence < 0:
@@ -80,6 +137,50 @@ class SyncRepository:
                 updated_at = {UTC_NOW}
             """,
             (device_id, sequence),
+        )
+
+    def max_change_sequence(self) -> int:
+        row = self.db.execute(
+            "SELECT COALESCE(MAX(sequence), 0) AS sequence FROM change_log"
+        ).fetchone()
+        return int(row["sequence"])
+
+    def command_receipt(self, command_id: str) -> sqlite3.Row | None:
+        return self.db.execute(
+            "SELECT * FROM sync_commands WHERE command_id = ?",
+            (command_id,),
+        ).fetchone()
+
+    def save_command_receipt(
+        self,
+        command_id: str,
+        device_id: str,
+        command_type: str,
+        payload_hash: str,
+        status: str,
+        result_payload: dict | None,
+        error_message: str | None,
+    ) -> None:
+        self.db.execute(
+            """
+            INSERT INTO sync_commands (
+                command_id, device_id, command_type, payload_hash, status,
+                result_payload, error_message
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                command_id,
+                device_id,
+                command_type,
+                payload_hash,
+                status,
+                (
+                    json.dumps(result_payload, sort_keys=True, separators=(",", ":"))
+                    if result_payload is not None
+                    else None
+                ),
+                error_message,
+            ),
         )
 
     def record_conflict(

@@ -193,6 +193,7 @@ class InvestmentRepository:
             FROM investment_value_history history
             JOIN investments investment ON investment.id = history.investment_id
             WHERE investment.deleted_at IS NULL
+              AND history.deleted_at IS NULL
         """
         params: tuple[str, ...] = ()
         if investment_id is not None:
@@ -211,7 +212,7 @@ class InvestmentRepository:
             SELECT id, investment_id, date, value_cents,
                    contributed_cents, created_at
             FROM investment_value_history
-            WHERE id = ? AND investment_id = ?
+            WHERE id = ? AND investment_id = ? AND deleted_at IS NULL
             """,
             (point_id, investment_id),
         ).fetchone()
@@ -226,8 +227,8 @@ class InvestmentRepository:
         self.db.execute(
             f"""
             UPDATE investment_value_history
-            SET value_cents = ?, updated_at = {UTC_NOW}
-            WHERE id = ? AND investment_id = ?
+            SET value_cents = ?, updated_at = {UTC_NOW}, revision = revision + 1
+            WHERE id = ? AND investment_id = ? AND deleted_at IS NULL
             """,
             (decimal_to_cents(value), point_id, investment_id),
         )
@@ -238,9 +239,10 @@ class InvestmentRepository:
 
     def delete_value_point(self, investment_id: str, point_id: str) -> None:
         cursor = self.db.execute(
-            """
-            DELETE FROM investment_value_history
-            WHERE id = ? AND investment_id = ?
+            f"""
+            UPDATE investment_value_history
+            SET deleted_at = {UTC_NOW}, updated_at = {UTC_NOW}, revision = revision + 1
+            WHERE id = ? AND investment_id = ? AND deleted_at IS NULL
             """,
             (point_id, investment_id),
         )
@@ -249,7 +251,11 @@ class InvestmentRepository:
 
     def delete_all_value_points(self, investment_id: str) -> int:
         cursor = self.db.execute(
-            "DELETE FROM investment_value_history WHERE investment_id = ?",
+            f"""
+            UPDATE investment_value_history
+            SET deleted_at = {UTC_NOW}, updated_at = {UTC_NOW}, revision = revision + 1
+            WHERE investment_id = ? AND deleted_at IS NULL
+            """,
             (investment_id,),
         )
         return cursor.rowcount

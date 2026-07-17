@@ -6,7 +6,7 @@ from pathlib import Path
 from uuid import uuid4
 
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 UTC_NOW_SQL = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"
 
 
@@ -57,6 +57,9 @@ def migrate(connection: sqlite3.Connection) -> None:
         if version < 10:
             _run_migration(connection, 10, _migrate_v10)
             version = 10
+        if version < 11:
+            _run_migration(connection, 11, _migrate_v11)
+            version = 11
         assert_database_integrity(connection)
     except Exception:
         connection.rollback()
@@ -1283,5 +1286,98 @@ def _migrate_v10(connection: sqlite3.Connection) -> None:
               AND t.deleted_at IS NULL
               AND t.date <= history.date
         ), 0);
+        """,
+    )
+
+
+def _migrate_v11(connection: sqlite3.Connection) -> None:
+    _execute_script(
+        connection,
+        f"""
+        ALTER TABLE investment_value_history
+            ADD COLUMN deleted_at TEXT;
+        ALTER TABLE investment_value_history
+            ADD COLUMN revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1);
+
+        ALTER TABLE devices
+            ADD COLUMN auth_token_hash TEXT;
+        ALTER TABLE devices
+            ADD COLUMN revoked_at TEXT;
+
+        CREATE TABLE sync_commands (
+            command_id TEXT PRIMARY KEY CHECK (length(command_id) = 36),
+            device_id TEXT NOT NULL REFERENCES devices(id),
+            command_type TEXT NOT NULL,
+            payload_hash TEXT NOT NULL CHECK (length(payload_hash) = 64),
+            status TEXT NOT NULL CHECK (status IN ('accepted', 'rejected')),
+            result_payload TEXT,
+            error_message TEXT,
+            created_at TEXT NOT NULL DEFAULT ({UTC_NOW_SQL}),
+            processed_at TEXT NOT NULL DEFAULT ({UTC_NOW_SQL})
+        );
+
+        CREATE INDEX idx_sync_commands_device_created
+            ON sync_commands(device_id, created_at);
+        CREATE INDEX idx_devices_active
+            ON devices(revoked_at, is_local);
+        CREATE INDEX idx_investment_value_history_active
+            ON investment_value_history(investment_id, date, created_at)
+            WHERE deleted_at IS NULL;
+
+        CREATE TRIGGER validate_investment_value_history_update
+        BEFORE UPDATE ON investment_value_history
+        WHEN NEW.revision != OLD.revision + 1
+          OR NEW.value_cents < 0
+          OR NEW.contributed_cents < 0
+        BEGIN
+            SELECT RAISE(ABORT, 'invalid investment value log or revision');
+        END;
+
+        CREATE TRIGGER capture_investment_value_history_insert
+        AFTER INSERT ON investment_value_history
+        BEGIN
+            INSERT INTO change_log (
+                entity_type, entity_id, operation, revision, device_id
+            ) VALUES (
+                'investment_value_history', NEW.id, 'insert', NEW.revision,
+                (SELECT value FROM sync_metadata WHERE key = 'active_device_id')
+            );
+        END;
+
+        CREATE TRIGGER capture_investment_value_history_update
+        AFTER UPDATE ON investment_value_history
+        BEGIN
+            INSERT INTO change_log (
+                entity_type, entity_id, operation, revision, device_id
+            ) VALUES (
+                'investment_value_history', NEW.id,
+                CASE WHEN NEW.deleted_at IS NOT NULL AND OLD.deleted_at IS NULL
+                     THEN 'delete' ELSE 'update' END,
+                NEW.revision,
+                (SELECT value FROM sync_metadata WHERE key = 'active_device_id')
+            );
+        END;
+
+        CREATE TRIGGER prevent_investment_value_history_hard_delete
+        BEFORE DELETE ON investment_value_history
+        BEGIN
+            SELECT RAISE(ABORT, 'hard delete is not allowed; use a tombstone');
+        END;
+
+        CREATE TRIGGER tombstone_investment_value_history_delete
+        AFTER UPDATE OF deleted_at ON investment_value_history
+        WHEN NEW.deleted_at IS NOT NULL AND OLD.deleted_at IS NULL
+        BEGIN
+            INSERT INTO tombstones (
+                entity_type, entity_id, deleted_at, revision, device_id
+            ) VALUES (
+                'investment_value_history', NEW.id, NEW.deleted_at, NEW.revision,
+                (SELECT value FROM sync_metadata WHERE key = 'active_device_id')
+            )
+            ON CONFLICT(entity_type, entity_id) DO UPDATE SET
+                deleted_at = excluded.deleted_at,
+                revision = excluded.revision,
+                device_id = excluded.device_id;
+        END;
         """,
     )

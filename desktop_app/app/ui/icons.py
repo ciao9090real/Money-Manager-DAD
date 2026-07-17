@@ -193,6 +193,18 @@ def _draw_icon(painter: QPainter, name: str, rect: QRectF, color: str) -> None:
     elif name == "copy":
         painter.drawRoundedRect(QRectF(x + w * 0.25, y + h * 0.05, w * 0.68, h * 0.68), 2, 2)
         painter.drawRoundedRect(QRectF(x + w * 0.07, y + h * 0.25, w * 0.68, h * 0.68), 2, 2)
+    elif name == "devices":
+        painter.drawRoundedRect(QRectF(x, y + h * 0.12, w * 0.64, h * 0.70), 2, 2)
+        painter.drawLine(QPointF(x + w * 0.16, y + h * 0.94), QPointF(x + w * 0.48, y + h * 0.94))
+        painter.drawRoundedRect(QRectF(x + w * 0.68, y + h * 0.28, w * 0.30, h * 0.66), 2, 2)
+        painter.drawEllipse(QPointF(x + w * 0.83, y + h * 0.84), w * 0.015, w * 0.015)
+    elif name == "refresh":
+        painter.drawArc(QRectF(x + w * 0.10, y + h * 0.10, w * 0.80, h * 0.80), 35 * 16, 270 * 16)
+        painter.drawLine(QPointF(x + w * 0.78, y + h * 0.08), QPointF(x + w * 0.90, y + h * 0.10))
+        painter.drawLine(QPointF(x + w * 0.90, y + h * 0.10), QPointF(x + w * 0.88, y + h * 0.24))
+    elif name == "close":
+        painter.drawLine(QPointF(x + w * 0.18, y + h * 0.18), QPointF(x + w * 0.82, y + h * 0.82))
+        painter.drawLine(QPointF(x + w * 0.82, y + h * 0.18), QPointF(x + w * 0.18, y + h * 0.82))
     else:
         painter.drawEllipse(rect)
 
