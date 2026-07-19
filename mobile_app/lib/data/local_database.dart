@@ -15,7 +15,7 @@ class LocalDatabase {
       path.join(root, 'money_manager_mobile.db'),
       version: 1,
       onConfigure: (db) async {
-        await db.execute('PRAGMA journal_mode = WAL');
+        await db.rawQuery('PRAGMA journal_mode = WAL');
         await db.execute('PRAGMA foreign_keys = ON');
       },
       onCreate: (db, version) async {
