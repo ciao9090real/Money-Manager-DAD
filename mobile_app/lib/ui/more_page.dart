@@ -308,14 +308,14 @@ class _DisconnectedState extends StatelessWidget {
       ),
       const SizedBox(height: 7),
       Text(
-        'Start Android phone sync in the desktop Settings page.',
+        'Start phone sync in desktop Settings, then scan its QR code.',
         style: Theme.of(context).textTheme.bodySmall,
       ),
       const SizedBox(height: 14),
       FilledButton.icon(
         onPressed: onPair,
-        icon: const Icon(Icons.link, size: 18),
-        label: const Text('Connect desktop'),
+        icon: const Icon(Icons.qr_code_scanner, size: 18),
+        label: const Text('Scan desktop QR'),
       ),
     ],
   );

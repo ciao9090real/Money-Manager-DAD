@@ -3,15 +3,36 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:money_manager/app_controller.dart';
 import 'package:money_manager/data/local_database.dart';
 import 'package:money_manager/data/sync_client.dart';
+import 'package:money_manager/main.dart';
 import 'package:money_manager/models/finance_models.dart';
 import 'package:money_manager/theme/app_theme.dart';
 import 'package:money_manager/ui/accounts_page.dart';
+import 'package:money_manager/ui/app_shell.dart';
 import 'package:money_manager/ui/dashboard_page.dart';
 import 'package:money_manager/ui/more_page.dart';
 import 'package:money_manager/ui/transactions_page.dart';
 import 'package:money_manager/ui/upcoming_page.dart';
 
 void main() {
+  testWidgets('shared app shell protects every tab with a top safe area', (
+    tester,
+  ) async {
+    final controller = AppController(
+      database: LocalDatabase(),
+      syncClient: SyncClient(),
+    );
+    await tester.pumpWidget(
+      AppScope(
+        controller: controller,
+        child: MaterialApp(theme: AppTheme.light, home: const AppShell()),
+      ),
+    );
+
+    final safeArea = tester.widget<SafeArea>(find.byType(SafeArea).first);
+    expect(safeArea.top, isTrue);
+    expect(safeArea.bottom, isFalse);
+  });
+
   testWidgets('core pages fit a compact Android viewport', (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));

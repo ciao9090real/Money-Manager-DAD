@@ -32,7 +32,7 @@ class _AppShellState extends State<AppShell> {
     await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      useSafeArea: false,
+      useSafeArea: true,
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       builder: (_) => const TransactionSheet(),
     );
@@ -53,7 +53,11 @@ class _AppShellState extends State<AppShell> {
       MorePage(controller: controller, onPair: _pair),
     ];
     return Scaffold(
-      body: IndexedStack(index: index, children: pages),
+      body: SafeArea(
+        top: true,
+        bottom: false,
+        child: IndexedStack(index: index, children: pages),
+      ),
       floatingActionButton: index <= 1 && controller.accounts.isNotEmpty
           ? FloatingActionButton(
               tooltip: 'Add transaction',

@@ -102,14 +102,14 @@ class DashboardPage extends StatelessWidget {
                         ),
                         const SizedBox(height: 5),
                         Text(
-                          'Sync over local Wi-Fi, then keep browsing your finances when the desktop is off.',
+                          'Scan one QR code to connect over local Wi-Fi, then browse your finances offline.',
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                         const SizedBox(height: 13),
                         FilledButton.icon(
                           onPressed: onPair,
-                          icon: const Icon(Icons.link, size: 18),
-                          label: const Text('Pair desktop'),
+                          icon: const Icon(Icons.qr_code_scanner, size: 18),
+                          label: const Text('Scan desktop QR'),
                         ),
                       ],
                     ),

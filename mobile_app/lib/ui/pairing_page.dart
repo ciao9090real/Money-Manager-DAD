@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 
+import '../data/pairing_qr.dart';
 import '../main.dart';
 import '../theme/app_theme.dart';
-import 'widgets.dart';
 
 class PairingPage extends StatefulWidget {
   const PairingPage({super.key});
@@ -13,32 +13,58 @@ class PairingPage extends StatefulWidget {
 }
 
 class _PairingPageState extends State<PairingPage> {
-  final address = TextEditingController();
-  final code = TextEditingController();
-  final fingerprint = TextEditingController();
-  final formKey = GlobalKey<FormState>();
+  final scanner = MobileScannerController(
+    formats: const [BarcodeFormat.qrCode],
+    detectionSpeed: DetectionSpeed.normal,
+  );
+  bool isProcessing = false;
   String? error;
 
   @override
   void dispose() {
-    address.dispose();
-    code.dispose();
-    fingerprint.dispose();
+    scanner.dispose();
     super.dispose();
   }
 
-  Future<void> pair() async {
-    if (!formKey.currentState!.validate()) return;
-    setState(() => error = null);
+  Future<void> _handleScan(BarcodeCapture capture) async {
+    if (isProcessing) return;
+    String? rawValue;
+    for (final barcode in capture.barcodes) {
+      if (barcode.rawValue != null) {
+        rawValue = barcode.rawValue;
+        break;
+      }
+    }
+    if (rawValue == null) return;
+
+    late final PairingQrData pairing;
     try {
-      await AppScope.of(context).pair(
-        url: address.text,
-        code: code.text,
-        fingerprintPrefix: fingerprint.text,
+      pairing = PairingQrData.parse(rawValue);
+    } on FormatException catch (exception) {
+      setState(() => error = exception.message);
+      return;
+    }
+
+    setState(() {
+      isProcessing = true;
+      error = null;
+    });
+    final controller = AppScope.of(context);
+    await scanner.stop();
+    try {
+      await controller.pair(
+        url: pairing.url,
+        code: pairing.code,
+        fingerprintPrefix: pairing.fingerprint,
       );
-      if (mounted) Navigator.pop(context, true);
+      if (mounted) Navigator.of(context).pop(true);
     } catch (exception) {
-      if (mounted) setState(() => error = '$exception');
+      if (!mounted) return;
+      setState(() {
+        isProcessing = false;
+        error = '$exception';
+      });
+      await scanner.start();
     }
   }
 
@@ -52,79 +78,59 @@ class _PairingPageState extends State<PairingPage> {
           onPressed: () => Navigator.pop(context),
           icon: const Icon(Icons.close),
         ),
-        title: const Text('Connect desktop'),
+        title: const Text('Scan desktop QR'),
       ),
       body: SafeArea(
-        child: Form(
-          key: formKey,
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+        top: true,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const BrandMark(size: 46),
-              const SizedBox(height: 18),
               Text(
-                'Keep your money local',
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-              const SizedBox(height: 7),
-              Text(
-                'On the desktop, open Settings and start Android phone sync. Enter the three values shown there.',
+                'On the desktop, open Settings, start phone sync, and point this camera at the QR code.',
                 style: Theme.of(
                   context,
                 ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
               ),
-              const SizedBox(height: 24),
-              TextFormField(
-                controller: address,
-                keyboardType: TextInputType.url,
-                textInputAction: TextInputAction.next,
-                autocorrect: false,
-                decoration: const InputDecoration(
-                  labelText: 'Desktop address',
-                  hintText: 'https://192.168.1.20:8765',
-                  prefixIcon: Icon(Icons.laptop_windows_outlined),
+              const SizedBox(height: 18),
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      MobileScanner(controller: scanner, onDetect: _handleScan),
+                      Center(
+                        child: Container(
+                          width: 230,
+                          height: 230,
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.white, width: 3),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                      ),
+                      if (isProcessing)
+                        ColoredBox(
+                          color: Colors.black54,
+                          child: Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: const [
+                                CircularProgressIndicator(color: Colors.white),
+                                SizedBox(height: 14),
+                                Text(
+                                  'Connecting securely…',
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
-                validator: (value) => (value ?? '').trim().isEmpty
-                    ? 'Desktop address is required'
-                    : null,
-              ),
-              const SizedBox(height: 13),
-              TextFormField(
-                controller: code,
-                keyboardType: TextInputType.number,
-                textInputAction: TextInputAction.next,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                  LengthLimitingTextInputFormatter(6),
-                ],
-                decoration: const InputDecoration(
-                  labelText: 'One-time pairing code',
-                  hintText: '000000',
-                  prefixIcon: Icon(Icons.password_outlined),
-                ),
-                validator: (value) =>
-                    (value ?? '').length != 6 ? 'Enter the 6-digit code' : null,
-              ),
-              const SizedBox(height: 13),
-              TextFormField(
-                controller: fingerprint,
-                textCapitalization: TextCapitalization.characters,
-                autocorrect: false,
-                inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp('[0-9a-fA-F ]')),
-                  LengthLimitingTextInputFormatter(17),
-                ],
-                decoration: const InputDecoration(
-                  labelText: 'Fingerprint check',
-                  hintText: 'First 8 or more characters',
-                  prefixIcon: Icon(Icons.verified_user_outlined),
-                ),
-                validator: (value) {
-                  final clean = (value ?? '').replaceAll(' ', '');
-                  return clean.length < 8
-                      ? 'Enter at least the first 8 characters'
-                      : null;
-                },
               ),
               if (error != null) ...[
                 const SizedBox(height: 14),
@@ -140,17 +146,11 @@ class _PairingPageState extends State<PairingPage> {
                   ),
                 ),
               ],
-              const SizedBox(height: 22),
-              FilledButton(
-                onPressed: controller.isSyncing ? null : pair,
-                child: LoadingButtonContent(
-                  loading: controller.isSyncing,
-                  label: 'Pair and sync',
-                ),
-              ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               Text(
-                'The connection stays on your local Wi-Fi. Financial data is cached in this phone\'s SQLite database for offline viewing.',
+                controller.isSyncing
+                    ? 'Pairing and loading your data…'
+                    : 'The QR includes a one-time code and security fingerprint. Pairing stays on your local Wi-Fi.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodySmall,
               ),

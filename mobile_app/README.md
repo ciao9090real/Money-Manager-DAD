@@ -22,7 +22,7 @@ C:\Users\leona\development\flutter\bin\flutter.bat run
 1. Keep the phone and PC on the same private Wi-Fi network.
 2. In the desktop app, open **Settings > Android phone sync** and select **Start phone sync**.
 3. In the Android app, open **More > Connect desktop**.
-4. Enter the desktop address, six-digit code, and at least the first eight fingerprint characters shown on the PC.
+4. Scan the QR code shown on the PC. The app securely reads the desktop address, one-time code, and certificate fingerprint from it.
 5. Leave the desktop app open while synchronizing.
 
 The phone can browse accounts, balances, transactions, investments, loans, and recurring schedules. It can queue income, expenses, transfers, and recurring-payment records offline. The desktop validates and applies those commands exactly once on the next sync.

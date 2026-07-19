@@ -7,6 +7,10 @@ searchable and paginated activity, contextual account controls, recurring
 income and payment schedules, three- and six-month cash forecasts, a manually valued investment portfolio, polished editors, and
 dedicated local storage, backup, export, and category tools.
 
+Android pairing is handled by a single QR code in Settings. The QR carries the
+local HTTPS address, short-lived pairing code, and certificate fingerprint so
+the phone can connect without manually entering security details.
+
 The current desktop baseline is tagged `desktop-baseline-v1`. Dependencies are
 fully pinned in `requirements.lock`, and the Windows CI workflow compiles the
 source, runs the database/migration tests, and packages the executable.
