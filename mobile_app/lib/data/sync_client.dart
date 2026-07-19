@@ -95,6 +95,7 @@ class SyncClient {
     String? bearerToken,
   }) async {
     try {
+      final encodedBody = utf8.encode(jsonEncode(body));
       final request = await client.postUrl(Uri.parse(url));
       request.headers.contentType = ContentType.json;
       if (bearerToken != null) {
@@ -103,7 +104,8 @@ class SyncClient {
           'Bearer $bearerToken',
         );
       }
-      request.write(jsonEncode(body));
+      request.contentLength = encodedBody.length;
+      request.add(encodedBody);
       final response = await request.close().timeout(
         const Duration(seconds: 15),
       );
