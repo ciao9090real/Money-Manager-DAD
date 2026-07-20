@@ -3,8 +3,9 @@
 Modern local-first Windows finance manager built with Python, PySide6, SQLite, and PyInstaller.
 
 The interface includes a responsive financial dashboard, collapsible navigation,
-searchable and paginated activity, contextual account controls, recurring
-income and payment schedules, three- and six-month cash forecasts, a manually valued investment portfolio, polished editors, and
+searchable and paginated activity, contextual account controls, monthly category
+budgets with optional rollover, recurring income and payment schedules,
+three- and six-month cash forecasts, a manually valued investment portfolio, polished editors, and
 dedicated local storage, backup, export, and category tools.
 
 Android pairing is handled by a single QR code in Settings. The QR carries the
@@ -15,11 +16,17 @@ The current desktop baseline is tagged `desktop-baseline-v1`. Dependencies are
 fully pinned in `requirements.lock`, and the Windows CI workflow compiles the
 source, runs the database/migration tests, and packages the executable.
 
-Schema version 7 adds recurring income and wage schedules to the loan,
-investment, recurring-payment, and synchronization-ready ledger foundation. Existing databases are backed up and
+Schema version 12 adds sync-ready monthly budgets to the loan, investment,
+recurring-payment, and synchronization-ready ledger foundation. Existing databases are backed up and
 migrated automatically on first launch. Accounts, categories, payment methods,
 transactions, recurring rules, investments, and loans use UUIDs, exact integer cents,
 UTC audit timestamps, per-record revisions, soft deletion, and tombstones.
+
+The Budgets page assigns an exact monthly limit to each expense category,
+compares it with recorded spending, and highlights healthy, near-limit, and
+overspent categories. Optional rollover carries only unused money forward;
+overspending never reduces the following month's base limit. The Dashboard
+surfaces the three categories currently closest to or beyond their limits.
 
 The Upcoming page supports wages, fixed subscriptions, variable bills, weekly
 through yearly schedules, pausing, skipping, and explicitly recording an amount.

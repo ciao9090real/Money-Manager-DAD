@@ -18,6 +18,7 @@ from app.core.app_info import WINDOW_TITLE
 from app.core.database import unit_of_work
 from app.repositories.settings_repository import SettingsRepository
 from app.ui.accounts_page import AccountsPage
+from app.ui.budgets_page import BudgetsPage
 from app.ui.dashboard_page import DashboardPage
 from app.ui.investments_page import InvestmentsPage
 from app.ui.loans_page import LoansPage
@@ -51,6 +52,7 @@ class MainWindow(QMainWindow):
 
         self.accounts = AccountsPage(db, on_changed=self.invalidate, notify=self.show_status)
         self.transactions = TransactionsPage(db, on_changed=self.invalidate, notify=self.show_status)
+        self.budgets = BudgetsPage(db, on_changed=self.invalidate, notify=self.show_status)
         self.investments = InvestmentsPage(db, on_changed=self.invalidate, notify=self.show_status)
         self.loans = LoansPage(db, on_changed=self.invalidate, notify=self.show_status)
         self.upcoming = UpcomingPage(db, on_changed=self.invalidate, notify=self.show_status)
@@ -71,6 +73,7 @@ class MainWindow(QMainWindow):
             ("Dashboard", "dashboard", self.dashboard),
             ("Accounts", "accounts", self.accounts),
             ("Transactions", "transactions", self.transactions),
+            ("Budgets", "transactions", self.budgets),
             ("Investments", "investments", self.investments),
             ("Loans", "loans", self.loans),
             ("Upcoming", "upcoming", self.upcoming),
@@ -82,6 +85,7 @@ class MainWindow(QMainWindow):
             "dashboard",
             "accounts",
             "transactions",
+            "budgets",
             "investments",
             "loans",
             "upcoming",
@@ -91,6 +95,7 @@ class MainWindow(QMainWindow):
             "dashboard",
             "accounts",
             "transactions",
+            "budgets",
             "investments",
             "loans",
             "upcoming",
@@ -155,7 +160,7 @@ class MainWindow(QMainWindow):
 
     def invalidate(self, tags: set[str]) -> None:
         self.dirty_pages.update(
-            tags & {"dashboard", "accounts", "transactions", "investments", "loans", "upcoming"}
+            tags & {"dashboard", "accounts", "transactions", "budgets", "investments", "loans", "upcoming"}
         )
         self._refresh_selected_if_dirty()
 

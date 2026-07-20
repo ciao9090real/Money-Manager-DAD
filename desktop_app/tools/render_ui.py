@@ -11,6 +11,7 @@ from PySide6.QtTest import QTest
 
 from app.core.database import connect
 from app.services.account_service import AccountService
+from app.services.budget_service import BudgetService
 from app.services.investment_service import InvestmentService
 from app.services.loan_service import LoanService
 from app.services.payment_method_service import PaymentMethodService
@@ -19,6 +20,7 @@ from app.services.transaction_service import TransactionService
 from app.services.category_service import CategoryService
 from app.ui.account_form import AccountForm
 from app.ui.backup_password_dialog import BackupPasswordDialog
+from app.ui.budget_form import BudgetForm
 from app.ui.main_window import MainWindow
 from app.ui.investment_form import InvestmentForm
 from app.ui.loan_form import LoanForm, LoanPaymentDialog
@@ -38,21 +40,11 @@ def main() -> None:
             window.resize(1440, 900)
             window.show()
             app.processEvents()
-            for index, name in enumerate(
-                (
-                    "dashboard",
-                    "accounts",
-                    "transactions",
-                    "investments",
-                    "loans",
-                    "upcoming",
-                    "settings",
-                )
-            ):
+            for index, name in enumerate(window.page_keys):
                 window._select_page(index)
                 app.processEvents()
                 window.grab().save(str(output / f"ui-{name}.png"))
-            window._select_page(3)
+            window._select_page(window.page_keys.index("investments"))
             window.investments.history_selector.setCurrentIndex(
                 window.investments.history_selector.count() - 1
             )
@@ -66,15 +58,8 @@ def main() -> None:
             window.resize(1000, 720)
             QTest.qWait(window.sidebar.width_animation.duration() + 40)
             app.processEvents()
-            for index, name in (
-                (0, "dashboard-compact"),
-                (1, "accounts-compact"),
-                (2, "transactions-compact"),
-                (3, "investments-compact"),
-                (4, "loans-compact"),
-                (5, "upcoming-compact"),
-                (6, "settings-compact"),
-            ):
+            for index, key in enumerate(window.page_keys):
+                name = f"{key}-compact"
                 window._select_page(index)
                 app.processEvents()
                 window.grab().save(str(output / f"ui-{name}.png"))
@@ -102,6 +87,17 @@ def main() -> None:
             app.processEvents()
             transaction_form.grab().save(str(output / "ui-transaction-form.png"))
             transaction_form.close()
+            budget_form = BudgetForm(
+                [
+                    category
+                    for category in CategoryService(db).list_categories()
+                    if category.type == "expense"
+                ]
+            )
+            budget_form.show()
+            app.processEvents()
+            budget_form.grab().save(str(output / "ui-budget-form.png"))
+            budget_form.close()
             recurring_form = RecurringRuleForm(
                 account_service.list_accounts(),
                 CategoryService(db).list_categories(),
@@ -162,7 +158,7 @@ def main() -> None:
             for rule in recurring_service.list_rules():
                 recurring_service.delete_rule(rule.id)
             window.invalidate({"upcoming"})
-            window._select_page(5)
+            window._select_page(window.page_keys.index("upcoming"))
             app.processEvents()
             window.grab().save(str(output / "ui-upcoming-empty.png"))
             window.close()
@@ -177,6 +173,7 @@ def seed(db) -> None:
     investments = InvestmentService(db)
     loans = LoanService(db)
     payments = PaymentMethodService(db)
+    budgets = BudgetService(db)
     bank = accounts.create_account("Everyday Banking", "bank")
     current = accounts.create_account(
         "Main Current", "current_account", parent_id=bank.id, opening_balance="2840.50"
@@ -201,6 +198,20 @@ def seed(db) -> None:
     )
     transactions.add_expense(
         wallet.id, "18.50", "2026-07-09", "Coffee and lunch", "Dining"
+    )
+    expense_categories = {
+        category.name: category.id
+        for category in CategoryService(db).list_categories()
+        if category.type == "expense"
+    }
+    budgets.set_budget(
+        expense_categories["Groceries"], "420", rollover=True, start_date="2026-06-01"
+    )
+    budgets.set_budget(
+        expense_categories["Dining"], "180", start_date="2026-07-01"
+    )
+    budgets.set_budget(
+        expense_categories["Utilities"], "140", start_date="2026-07-01"
     )
     transactions.add_transfer(
         current.id, savings.id, "500", "2026-07-08", "Monthly savings"

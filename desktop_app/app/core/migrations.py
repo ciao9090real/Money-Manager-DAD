@@ -6,7 +6,7 @@ from pathlib import Path
 from uuid import uuid4
 
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 UTC_NOW_SQL = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"
 
 
@@ -60,6 +60,9 @@ def migrate(connection: sqlite3.Connection) -> None:
         if version < 11:
             _run_migration(connection, 11, _migrate_v11)
             version = 11
+        if version < 12:
+            _run_migration(connection, 12, _migrate_v12)
+            version = 12
         assert_database_integrity(connection)
     except Exception:
         connection.rollback()
@@ -1372,6 +1375,88 @@ def _migrate_v11(connection: sqlite3.Connection) -> None:
                 entity_type, entity_id, deleted_at, revision, device_id
             ) VALUES (
                 'investment_value_history', NEW.id, NEW.deleted_at, NEW.revision,
+                (SELECT value FROM sync_metadata WHERE key = 'active_device_id')
+            )
+            ON CONFLICT(entity_type, entity_id) DO UPDATE SET
+                deleted_at = excluded.deleted_at,
+                revision = excluded.revision,
+                device_id = excluded.device_id;
+        END;
+        """,
+    )
+
+
+def _migrate_v12(connection: sqlite3.Connection) -> None:
+    _execute_script(
+        connection,
+        f"""
+        CREATE TABLE budgets (
+            id TEXT PRIMARY KEY CHECK (length(id) = 36),
+            category_id TEXT NOT NULL REFERENCES categories(id),
+            period TEXT NOT NULL DEFAULT 'monthly' CHECK (period IN ('monthly', 'yearly')),
+            amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
+            rollover INTEGER NOT NULL DEFAULT 0 CHECK (rollover IN (0, 1)),
+            start_date TEXT NOT NULL CHECK (
+                start_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+            ),
+            is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+            created_at TEXT NOT NULL DEFAULT ({UTC_NOW_SQL}),
+            updated_at TEXT NOT NULL DEFAULT ({UTC_NOW_SQL}),
+            deleted_at TEXT,
+            revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1)
+        );
+
+        CREATE UNIQUE INDEX idx_budgets_category_period
+            ON budgets(category_id, period) WHERE deleted_at IS NULL;
+        CREATE INDEX idx_budgets_active
+            ON budgets(is_active, category_id) WHERE deleted_at IS NULL;
+
+        CREATE TRIGGER validate_budgets_update
+        BEFORE UPDATE ON budgets
+        WHEN NEW.revision != OLD.revision + 1
+        BEGIN
+            SELECT RAISE(ABORT, 'invalid budget revision');
+        END;
+
+        CREATE TRIGGER capture_budgets_insert
+        AFTER INSERT ON budgets
+        BEGIN
+            INSERT INTO change_log (
+                entity_type, entity_id, operation, revision, device_id
+            ) VALUES (
+                'budgets', NEW.id, 'insert', NEW.revision,
+                (SELECT value FROM sync_metadata WHERE key = 'active_device_id')
+            );
+        END;
+
+        CREATE TRIGGER capture_budgets_update
+        AFTER UPDATE ON budgets
+        BEGIN
+            INSERT INTO change_log (
+                entity_type, entity_id, operation, revision, device_id
+            ) VALUES (
+                'budgets', NEW.id,
+                CASE WHEN NEW.deleted_at IS NOT NULL AND OLD.deleted_at IS NULL
+                     THEN 'delete' ELSE 'update' END,
+                NEW.revision,
+                (SELECT value FROM sync_metadata WHERE key = 'active_device_id')
+            );
+        END;
+
+        CREATE TRIGGER prevent_budgets_hard_delete
+        BEFORE DELETE ON budgets
+        BEGIN
+            SELECT RAISE(ABORT, 'hard delete is not allowed; use a tombstone');
+        END;
+
+        CREATE TRIGGER tombstone_budgets_delete
+        AFTER UPDATE OF deleted_at ON budgets
+        WHEN NEW.deleted_at IS NOT NULL AND OLD.deleted_at IS NULL
+        BEGIN
+            INSERT INTO tombstones (
+                entity_type, entity_id, deleted_at, revision, device_id
+            ) VALUES (
+                'budgets', NEW.id, NEW.deleted_at, NEW.revision,
                 (SELECT value FROM sync_metadata WHERE key = 'active_device_id')
             )
             ON CONFLICT(entity_type, entity_id) DO UPDATE SET

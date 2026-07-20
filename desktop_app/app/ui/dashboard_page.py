@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import date
 
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QFrame,
     QComboBox,
@@ -125,6 +126,9 @@ class DashboardPage(QWidget):
 
         self.forecast_card = self._build_forecast()
         layout.addWidget(self.forecast_card)
+
+        self.budgets_card = self._build_budgets_card()
+        layout.addWidget(self.budgets_card)
 
         self.scope_selector_card = self._build_scope_selector()
         layout.addWidget(self.scope_selector_card)
@@ -342,6 +346,23 @@ class DashboardPage(QWidget):
         layout.addLayout(self.forecast_grid)
         return card
 
+    def _build_budgets_card(self) -> QFrame:
+        card, layout = create_card(
+            "Budgets this month",
+            subtitle="The categories closest to or beyond their monthly limit",
+        )
+        self.budgets_empty = empty_state(
+            "No budgets yet", "Set a monthly category limit from the Budgets page."
+        )
+        self.budgets_table = QTableWidget(0, 4)
+        self.budgets_table.setHorizontalHeaderLabels(
+            ["Category", "Spent", "Limit", "Used"]
+        )
+        style_table(self.budgets_table, visible_rows=3)
+        layout.addWidget(self.budgets_empty)
+        layout.addWidget(self.budgets_table)
+        return card
+
     @staticmethod
     def _forecast_metric(title: str) -> tuple[QWidget, QLabel, QLabel]:
         container = QWidget()
@@ -476,6 +497,7 @@ class DashboardPage(QWidget):
         self._refresh_forecast(
             self.reporting.cash_forecast(starting_balance=global_data["liquidity"])
         )
+        self._refresh_budgets(global_data["budget_statuses"])
         cash_flow = self.reporting.monthly_cash_flow()
         self.cash_flow_chart.set_data(
             [
@@ -490,6 +512,24 @@ class DashboardPage(QWidget):
         )
         scoped_data = self.service.scope_summary(self.current_scope_id)
         self._refresh_scope(scoped_data)
+
+    def _refresh_budgets(self, statuses: list[dict]) -> None:
+        self.budgets_empty.setVisible(not statuses)
+        self.budgets_table.setVisible(bool(statuses))
+        self.budgets_table.setRowCount(len(statuses))
+        for row, status in enumerate(statuses):
+            self.budgets_table.setItem(row, 0, QTableWidgetItem(status["category_name"]))
+            self.budgets_table.setItem(row, 1, amount_item(status["spent"], neutral=True))
+            self.budgets_table.setItem(row, 2, amount_item(status["limit"], neutral=True))
+            used = QTableWidgetItem(f"{status['percent_used']:.2f}%")
+            if status["percent_used"] > 100:
+                used.setForeground(QColor("#ef7d7d"))
+            elif status["percent_used"] >= 80:
+                used.setForeground(QColor("#e6b65c"))
+            else:
+                used.setForeground(QColor("#72d6b2"))
+            self.budgets_table.setItem(row, 3, used)
+        fit_item_view_height(self.budgets_table, len(statuses), maximum_rows=3)
 
     def _refresh_forecast(self, data: dict) -> None:
         for value_label, helper_label, balance_key, change_key in (

@@ -188,9 +188,10 @@ def test_account_tree_and_dashboard_avoid_n_plus_one_queries(db):
         sql for sql in statements if sql.lstrip().upper().startswith(("SELECT", "WITH"))
     ]
     db.set_trace_callback(None)
-    # Accounts, active loans, monthly totals, and recent activity stay constant
-    # regardless of the number of account or loan rows.
-    assert len(dashboard_selects) == 4
+    # The fixed dashboard read model remains constant regardless of row count.
+    # Budget configuration/category labels add two reads when there are no budgets;
+    # current spending is one additional aggregate read when budgets exist.
+    assert len(dashboard_selects) <= 7
 
 
 def test_dashboard_distinguishes_net_worth_and_liquidity(db):

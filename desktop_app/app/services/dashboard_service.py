@@ -4,9 +4,11 @@ import sqlite3
 from decimal import Decimal
 
 from app.repositories.account_repository import AccountRepository
+from app.repositories.category_repository import CategoryRepository
 from app.repositories.loan_repository import LoanRepository
 from app.repositories.payment_method_repository import PaymentMethodRepository
 from app.repositories.transaction_repository import TransactionRepository
+from app.services.budget_service import BudgetService
 from app.utils.dates import month_bounds
 
 
@@ -18,6 +20,8 @@ class DashboardService:
     def __init__(self, db: sqlite3.Connection):
         self.db = db
         self.accounts = AccountRepository(db)
+        self.categories = CategoryRepository(db)
+        self.budget_service = BudgetService(db)
         self.loans = LoanRepository(db)
         self.payment_methods = PaymentMethodRepository(db)
         self.transactions = TransactionRepository(db)
@@ -96,7 +100,32 @@ class DashboardService:
                 exclude_adjustments=True,
             ),
             "accounts": account_summary,
+            "budget_statuses": self.budget_highlights(),
         }
+
+    def budget_highlights(self, reference_date=None) -> list[dict]:
+        category_names = {
+            category.id: category.name
+            for category in self.categories.list(include_inactive=True)
+        }
+        statuses = sorted(
+            self.budget_service.status_for_period(reference_date),
+            key=lambda status: (status.percent_used, status.spent),
+            reverse=True,
+        )[:3]
+        return [
+            {
+                "category_id": status.budget.category_id,
+                "category_name": category_names.get(
+                    status.budget.category_id, "Archived category"
+                ),
+                "limit": status.limit,
+                "spent": status.spent,
+                "remaining": status.remaining,
+                "percent_used": status.percent_used,
+            }
+            for status in statuses
+        ]
 
     def scope_summary(
         self,
