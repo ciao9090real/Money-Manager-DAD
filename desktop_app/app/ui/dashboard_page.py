@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import date
+from decimal import Decimal
 
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
@@ -42,6 +43,7 @@ from app.ui.components import (
     style_table,
 )
 from app.ui.transaction_table_model import group_transaction_rows
+from app.ui.theme import Colors
 from app.utils.money import format_money
 from app.utils.dates import format_display_date
 
@@ -65,6 +67,7 @@ class DashboardPage(QWidget):
         self.reporting = ReportingService(db)
         self.account_repo = AccountRepository(db)
         self.global_cards: dict[str, QLabel] = {}
+        self.global_metric_cards: dict[str, QFrame] = {}
         self.scope_cards: dict[str, QLabel] = {}
         self.current_scope_id = "all"
 
@@ -111,6 +114,12 @@ class DashboardPage(QWidget):
             "investments_property": ("Investments & property", "Longer-term assets", None),
             "total_debt": ("Total debt", "Overdrafts, loans and liabilities", "negative"),
             "monthly_net_flow": ("Monthly net cash flow", "Income minus spending", None),
+            "savings_rate": ("Savings rate", "Income kept after spending", None),
+            "emergency_fund_coverage": (
+                "Emergency-fund coverage",
+                "Months of average spending covered",
+                None,
+            ),
         }
         for key in (
             "total_assets",
@@ -119,10 +128,26 @@ class DashboardPage(QWidget):
             "total_debt",
             "investments_property",
             "monthly_net_flow",
+            "savings_rate",
+            "emergency_fund_coverage",
         ):
             label, helper, tone = global_metadata[key]
-            card, value = metric_card(label, format_money(0), helper, tone)
+            initial_value = (
+                "0.0%"
+                if key == "savings_rate"
+                else "0.0 months"
+                if key == "emergency_fund_coverage"
+                else format_money(0)
+            )
+            card, value = metric_card(
+                label,
+                initial_value,
+                helper,
+                tone,
+                compact=key in {"savings_rate", "emergency_fund_coverage"},
+            )
             self.global_cards[key] = value
+            self.global_metric_cards[key] = card
             self.global_metric_widgets.append(card)
         layout.addLayout(self.global_metric_grid)
 
@@ -483,6 +508,26 @@ class DashboardPage(QWidget):
         self._populate_scope_selector()
         for key, label in self.global_cards.items():
             value = global_data[key]
+            if key == "savings_rate":
+                percentage = value * Decimal("100")
+                label.setText(f"{percentage:.1f}%")
+                label.setToolTip(f"Savings rate: {percentage:.2f}%")
+                self._set_global_metric_tone(
+                    key,
+                    "positive" if value > 0 else "negative" if value < 0 else "neutral",
+                )
+                continue
+            if key == "emergency_fund_coverage":
+                label.setText(f"{value:.1f} months")
+                label.setToolTip(f"Emergency-fund coverage: {value:.2f} months")
+                if value < self.service.EMERGENCY_FUND_WARNING_MONTHS:
+                    tone = "negative"
+                elif value < self.service.EMERGENCY_FUND_HEALTHY_MONTHS:
+                    tone = "warning"
+                else:
+                    tone = "positive"
+                self._set_global_metric_tone(key, tone)
+                continue
             full_value = format_money(value)
             label.setText(full_value if key == "net_worth" else compact_money(value))
             label.setToolTip(full_value)
@@ -523,6 +568,27 @@ class DashboardPage(QWidget):
         )
         scoped_data = self.service.scope_summary(self.current_scope_id)
         self._refresh_scope(scoped_data)
+
+    def _set_global_metric_tone(self, key: str, tone: str) -> None:
+        label = self.global_cards[key]
+        card = self.global_metric_cards[key]
+        color = {
+            "positive": Colors.POSITIVE,
+            "negative": Colors.NEGATIVE,
+            "warning": Colors.WARNING,
+            "neutral": Colors.BORDER,
+        }[tone]
+        card.setProperty("tone", tone)
+        label.setProperty("tone", tone)
+        card.setStyleSheet(
+            f'QFrame[role="metricCard"] {{ border-top: 3px solid {color}; }}'
+        )
+        label.setStyleSheet(
+            f"color: {Colors.TEXT if tone == 'neutral' else color};"
+        )
+        for widget in (card, label):
+            widget.style().unpolish(widget)
+            widget.style().polish(widget)
 
     def _refresh_budgets(self, statuses: list[dict]) -> None:
         self.budgets_empty.setVisible(not statuses)

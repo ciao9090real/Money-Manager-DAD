@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import sqlite3
-from decimal import Decimal
+from datetime import date
+from decimal import Decimal, ROUND_HALF_UP
 
 from app.repositories.account_repository import AccountRepository
 from app.repositories.category_repository import CategoryRepository
@@ -16,6 +17,8 @@ class DashboardService:
     LIABILITY_TYPES = {"credit_card", "loan", "mortgage", "liability"}
     LIQUID_TYPES = {"bank", "current_account", "savings_account", "cash", "wallet", "benefit"}
     INVESTMENT_TYPES = {"investment", "property", "brokerage"}
+    EMERGENCY_FUND_WARNING_MONTHS = Decimal("3")
+    EMERGENCY_FUND_HEALTHY_MONTHS = Decimal("6")
 
     def __init__(self, db: sqlite3.Connection):
         self.db = db
@@ -28,6 +31,46 @@ class DashboardService:
 
     def summary(self) -> dict:
         return self.global_snapshot()
+
+    def savings_rate(
+        self,
+        months: int = 1,
+        reference_date: date | None = None,
+    ) -> Decimal:
+        if months < 1:
+            raise ValueError("Months must be at least 1")
+        reference = reference_date or date.today()
+        current_month = reference.replace(day=1)
+        start = self._shift_month(current_month, -(months - 1))
+        end = self._shift_month(current_month, 1)
+        income, expenses = self.transactions.monthly_totals(
+            start.isoformat(),
+            end.isoformat(),
+        )
+        return self._savings_ratio(income, expenses)
+
+    def emergency_fund_coverage(
+        self,
+        reference_date: date | None = None,
+        months: int = 6,
+    ) -> Decimal:
+        if months < 1:
+            raise ValueError("Months must be at least 1")
+        liquidity = sum(
+            (
+                balance
+                for account, balance in self.accounts.list_with_balances(
+                    include_inactive=False
+                )
+                if account.type in self.LIQUID_TYPES
+            ),
+            Decimal("0"),
+        )
+        return self._coverage_for_liquidity(
+            liquidity,
+            reference_date or date.today(),
+            months,
+        )
 
     def global_snapshot(self) -> dict:
         account_rows = self.accounts.list_with_balances(include_inactive=False)
@@ -82,6 +125,12 @@ class DashboardService:
         start_date, end_date = month_bounds()
         monthly_income, monthly_expenses = self.transactions.monthly_totals(start_date, end_date)
         monthly_net_flow = monthly_income - monthly_expenses
+        savings_rate = self._savings_ratio(monthly_income, monthly_expenses)
+        emergency_coverage = self._coverage_for_liquidity(
+            liquidity,
+            date.today(),
+            6,
+        )
         return {
             "net_worth": net_worth,
             "total_assets": asset_total,
@@ -95,6 +144,8 @@ class DashboardService:
             "monthly_income": monthly_income,
             "monthly_expenses": monthly_expenses,
             "monthly_net_flow": monthly_net_flow,
+            "savings_rate": savings_rate,
+            "emergency_fund_coverage": emergency_coverage,
             "recent_transactions": self.transactions.list(
                 limit=10,
                 exclude_adjustments=True,
@@ -223,3 +274,40 @@ class DashboardService:
         if start_date and end_date:
             return start_date, end_date
         return month_bounds()
+
+    @staticmethod
+    def _savings_ratio(income: Decimal, expenses: Decimal) -> Decimal:
+        if income <= 0:
+            return Decimal("0")
+        return ((income - expenses) / income).quantize(
+            Decimal("0.0001"),
+            rounding=ROUND_HALF_UP,
+        )
+
+    def _coverage_for_liquidity(
+        self,
+        liquidity: Decimal,
+        reference: date,
+        months: int,
+    ) -> Decimal:
+        if liquidity <= 0:
+            return Decimal("0")
+        end = reference.replace(day=1)
+        start = self._shift_month(end, -months)
+        _income, expenses = self.transactions.monthly_totals(
+            start.isoformat(),
+            end.isoformat(),
+        )
+        if expenses <= 0:
+            return Decimal("0")
+        average_expenses = expenses / Decimal(months)
+        return (liquidity / average_expenses).quantize(
+            Decimal("0.01"),
+            rounding=ROUND_HALF_UP,
+        )
+
+    @staticmethod
+    def _shift_month(value: date, months: int) -> date:
+        month_index = value.year * 12 + value.month - 1 + months
+        year, zero_based_month = divmod(month_index, 12)
+        return date(year, zero_based_month + 1, 1)

@@ -41,6 +41,12 @@ interest with an optional extra monthly payment. Snowball and avalanche strategy
 calculations are also available in the service layer. These projections do not
 change the ledger's principal-only treatment of already recorded repayments.
 
+The Dashboard also reports the current savings rate and emergency-fund
+coverage. Savings rate is net recorded income divided by income for the selected
+calendar window. Coverage compares non-negative liquid balances with average
+spending across the previous six completed months, using named three- and
+six-month warning/healthy thresholds.
+
 The Upcoming page supports wages, fixed subscriptions, variable bills, weekly
 through yearly schedules, pausing, skipping, and explicitly recording an amount.
 Recording creates a linked income or expense and advances the schedule atomically. The app
