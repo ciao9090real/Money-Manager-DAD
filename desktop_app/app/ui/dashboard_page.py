@@ -19,8 +19,9 @@ from PySide6.QtWidgets import (
 
 from app.repositories.account_repository import AccountRepository
 from app.services.dashboard_service import DashboardService
+from app.services.net_worth_service import NetWorthService
 from app.services.reporting_service import ReportingService
-from app.ui.charts import CashFlowChart
+from app.ui.charts import CashFlowChart, NetWorthChart
 from app.ui.components import (
     FittedLabel,
     amount_item,
@@ -60,6 +61,7 @@ class DashboardPage(QWidget):
     ):
         super().__init__()
         self.service = DashboardService(db)
+        self.net_worth_service = NetWorthService(db)
         self.reporting = ReportingService(db)
         self.account_repo = AccountRepository(db)
         self.global_cards: dict[str, QLabel] = {}
@@ -157,6 +159,14 @@ class DashboardPage(QWidget):
             self.scope_cards[key] = value
             self.scope_widgets.append(card)
         layout.addLayout(self.scope_grid)
+
+        net_worth_card, net_worth_layout = create_card(
+            "Net worth history",
+            subtitle="Assets, liabilities, and your overall position over the last year",
+        )
+        self.net_worth_chart = NetWorthChart()
+        net_worth_layout.addWidget(self.net_worth_chart)
+        layout.addWidget(net_worth_card)
 
         cash_flow_card, cash_flow_layout = create_card(
             "Six-month cash flow",
@@ -499,6 +509,7 @@ class DashboardPage(QWidget):
         )
         self._refresh_budgets(global_data["budget_statuses"])
         cash_flow = self.reporting.monthly_cash_flow()
+        self.net_worth_chart.set_data(self.net_worth_service.history())
         self.cash_flow_chart.set_data(
             [
                 (

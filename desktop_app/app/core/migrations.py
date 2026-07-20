@@ -6,7 +6,7 @@ from pathlib import Path
 from uuid import uuid4
 
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 UTC_NOW_SQL = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"
 
 
@@ -63,6 +63,9 @@ def migrate(connection: sqlite3.Connection) -> None:
         if version < 12:
             _run_migration(connection, 12, _migrate_v12)
             version = 12
+        if version < 13:
+            _run_migration(connection, 13, _migrate_v13)
+            version = 13
         assert_database_integrity(connection)
     except Exception:
         connection.rollback()
@@ -1457,6 +1460,84 @@ def _migrate_v12(connection: sqlite3.Connection) -> None:
                 entity_type, entity_id, deleted_at, revision, device_id
             ) VALUES (
                 'budgets', NEW.id, NEW.deleted_at, NEW.revision,
+                (SELECT value FROM sync_metadata WHERE key = 'active_device_id')
+            )
+            ON CONFLICT(entity_type, entity_id) DO UPDATE SET
+                deleted_at = excluded.deleted_at,
+                revision = excluded.revision,
+                device_id = excluded.device_id;
+        END;
+        """,
+    )
+
+
+def _migrate_v13(connection: sqlite3.Connection) -> None:
+    _execute_script(
+        connection,
+        f"""
+        CREATE TABLE net_worth_snapshots (
+            date TEXT PRIMARY KEY CHECK (
+                date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+            ),
+            assets_cents INTEGER NOT NULL CHECK (assets_cents >= 0),
+            liabilities_cents INTEGER NOT NULL CHECK (liabilities_cents >= 0),
+            created_at TEXT NOT NULL DEFAULT ({UTC_NOW_SQL}),
+            updated_at TEXT NOT NULL DEFAULT ({UTC_NOW_SQL}),
+            deleted_at TEXT,
+            revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1)
+        );
+
+        CREATE INDEX idx_net_worth_snapshots_active_date
+            ON net_worth_snapshots(date DESC) WHERE deleted_at IS NULL;
+
+        CREATE TRIGGER validate_net_worth_snapshots_update
+        BEFORE UPDATE ON net_worth_snapshots
+        WHEN NEW.revision != OLD.revision + 1
+          OR NEW.assets_cents < 0
+          OR NEW.liabilities_cents < 0
+        BEGIN
+            SELECT RAISE(ABORT, 'invalid net worth snapshot or revision');
+        END;
+
+        CREATE TRIGGER capture_net_worth_snapshots_insert
+        AFTER INSERT ON net_worth_snapshots
+        BEGIN
+            INSERT INTO change_log (
+                entity_type, entity_id, operation, revision, device_id
+            ) VALUES (
+                'net_worth_snapshots', NEW.date, 'insert', NEW.revision,
+                (SELECT value FROM sync_metadata WHERE key = 'active_device_id')
+            );
+        END;
+
+        CREATE TRIGGER capture_net_worth_snapshots_update
+        AFTER UPDATE ON net_worth_snapshots
+        BEGIN
+            INSERT INTO change_log (
+                entity_type, entity_id, operation, revision, device_id
+            ) VALUES (
+                'net_worth_snapshots', NEW.date,
+                CASE WHEN NEW.deleted_at IS NOT NULL AND OLD.deleted_at IS NULL
+                     THEN 'delete' ELSE 'update' END,
+                NEW.revision,
+                (SELECT value FROM sync_metadata WHERE key = 'active_device_id')
+            );
+        END;
+
+        CREATE TRIGGER prevent_net_worth_snapshots_hard_delete
+        BEFORE DELETE ON net_worth_snapshots
+        BEGIN
+            SELECT RAISE(ABORT, 'hard delete is not allowed; use a tombstone');
+        END;
+
+        CREATE TRIGGER tombstone_net_worth_snapshots_delete
+        AFTER UPDATE OF deleted_at ON net_worth_snapshots
+        WHEN NEW.deleted_at IS NOT NULL AND OLD.deleted_at IS NULL
+        BEGIN
+            INSERT INTO tombstones (
+                entity_type, entity_id, deleted_at, revision, device_id
+            ) VALUES (
+                'net_worth_snapshots', NEW.date, NEW.deleted_at, NEW.revision,
                 (SELECT value FROM sync_metadata WHERE key = 'active_device_id')
             )
             ON CONFLICT(entity_type, entity_id) DO UPDATE SET

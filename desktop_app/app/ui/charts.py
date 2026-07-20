@@ -8,7 +8,7 @@ from PySide6.QtGui import QColor, QFont, QMouseEvent, QPainter, QPainterPath, QP
 from PySide6.QtWidgets import QSizePolicy, QToolTip, QWidget
 
 from app.ui.theme import Colors
-from app.utils.money import format_money
+from app.utils.money import format_money, to_decimal
 
 
 def _short_money(value: float) -> str:
@@ -527,3 +527,208 @@ class CashFlowChart(QWidget):
             if region[0].contains(position):
                 return region
         return None
+
+
+class NetWorthChart(QWidget):
+    """Three-series chart for assets, liabilities, and net worth history."""
+
+    SERIES = (
+        ("Assets", 1, "#4778b8", 2.2),
+        ("Liabilities", 2, Colors.NEGATIVE, 2.2),
+        ("Net worth", 3, Colors.PRIMARY, 3.0),
+    )
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self._points: list[tuple[str, Decimal, Decimal, Decimal]] = []
+        self._empty_text = "Net worth history appears after a snapshot is recorded"
+        self.setMinimumHeight(250)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+
+    def sizeHint(self) -> QSize:
+        return QSize(900, 270)
+
+    def set_data(self, points: list[object], empty_text: str | None = None) -> None:
+        normalized: list[tuple[str, Decimal, Decimal, Decimal]] = []
+        for point in points:
+            if all(
+                hasattr(point, attribute)
+                for attribute in ("date", "assets", "liabilities", "net_worth")
+            ):
+                point_date = getattr(point, "date")
+                assets = getattr(point, "assets")
+                liabilities = getattr(point, "liabilities")
+                net_worth = getattr(point, "net_worth")
+            else:
+                try:
+                    point_date, assets, liabilities, net_worth = point  # type: ignore[misc]
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(
+                        "Net worth points require date, assets, liabilities, and net worth"
+                    ) from exc
+            normalized.append(
+                (
+                    str(point_date),
+                    to_decimal(assets),
+                    to_decimal(liabilities),
+                    to_decimal(net_worth),
+                )
+            )
+        self._points = sorted(normalized, key=lambda point: point[0])
+        if empty_text:
+            self._empty_text = empty_text
+        self.update()
+
+    def paintEvent(self, _event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setFont(self.font())
+        if not self._points:
+            painter.setPen(QColor(Colors.TEXT_MUTED))
+            painter.drawText(
+                self.rect(),
+                Qt.AlignmentFlag.AlignCenter,
+                self._empty_text,
+            )
+            return
+
+        plot = QRectF(64, 38, max(40, self.width() - 82), max(70, self.height() - 76))
+        all_values = [
+            value
+            for point in self._points
+            for value in (point[1], point[2], point[3])
+        ]
+        zero = Decimal("0")
+        minimum = min(all_values + [zero])
+        maximum = max(all_values + [zero])
+        span = maximum - minimum
+        magnitude = max(abs(minimum), abs(maximum), Decimal("1"))
+        padding = max(span * Decimal("0.10"), magnitude * Decimal("0.025"), Decimal("1"))
+        lower = min(zero, minimum - padding)
+        upper = max(zero, maximum + padding)
+        if upper <= lower:
+            upper = lower + Decimal("1")
+
+        small_font = QFont(self.font())
+        small_font.setPointSize(8)
+        painter.setFont(small_font)
+        label_color = QColor(Colors.TEXT_MUTED)
+        grid_pen = QPen(QColor(Colors.BORDER_SOFT), 1)
+        for index in range(5):
+            ratio = Decimal(index) / Decimal("4")
+            y = plot.top() + float(ratio) * plot.height()
+            axis_value = upper - ratio * (upper - lower)
+            painter.setPen(grid_pen)
+            painter.drawLine(QPointF(plot.left(), y), QPointF(plot.right(), y))
+            painter.setPen(label_color)
+            painter.drawText(
+                QRectF(0, y - 9, 56, 18),
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                self._short_money(axis_value),
+            )
+
+        if lower < zero < upper:
+            zero_ratio = (zero - lower) / (upper - lower)
+            zero_y = plot.bottom() - float(zero_ratio) * plot.height()
+            painter.setPen(QPen(QColor(Colors.BORDER), 1.4))
+            painter.drawLine(QPointF(plot.left(), zero_y), QPointF(plot.right(), zero_y))
+
+        self._draw_legend(painter, plot)
+
+        def positions(values: list[Decimal]) -> list[QPointF]:
+            result: list[QPointF] = []
+            for index, value in enumerate(values):
+                x = (
+                    plot.center().x()
+                    if len(values) == 1
+                    else plot.left() + index / (len(values) - 1) * plot.width()
+                )
+                value_ratio = (value - lower) / (upper - lower)
+                y = plot.bottom() - float(value_ratio) * plot.height()
+                result.append(QPointF(x, y))
+            return result
+
+        def draw_series(column: int, color: str, width: float) -> None:
+            values = [point[column] for point in self._points]
+            series_positions = positions(values)
+            painter.setPen(QPen(QColor(color), width))
+            if len(series_positions) == 1:
+                point = series_positions[0]
+                painter.drawLine(
+                    QPointF(max(plot.left(), point.x() - 20), point.y()),
+                    QPointF(min(plot.right(), point.x() + 20), point.y()),
+                )
+            else:
+                path = QPainterPath(series_positions[0])
+                for point in series_positions[1:]:
+                    path.lineTo(point)
+                painter.drawPath(path)
+            painter.setBrush(QColor(Colors.CARD))
+            painter.setPen(QPen(QColor(color), 2))
+            radius = 3.5 if len(series_positions) <= 24 else 2.5
+            for point in series_positions:
+                painter.drawEllipse(point, radius, radius)
+
+        # Paint the primary line last so it stays visually dominant at crossings.
+        for _label, column, color, width in self.SERIES:
+            draw_series(column, color, width)
+
+        painter.setFont(small_font)
+        painter.setPen(label_color)
+        label_count = min(6, len(self._points))
+        if len(self._points) <= label_count:
+            label_indices = list(range(len(self._points)))
+        else:
+            label_indices = sorted(
+                {
+                    round(index * (len(self._points) - 1) / (label_count - 1))
+                    for index in range(label_count)
+                }
+            )
+        month_keys = [point[0][:7] for point in self._points]
+        include_day = len(set(month_keys)) < len(month_keys)
+        label_width = min(100.0, max(58.0, plot.width() / max(1, len(label_indices))))
+        net_worth_positions = positions([point[3] for point in self._points])
+        for point_index in label_indices:
+            x = net_worth_positions[point_index].x()
+            left = max(plot.left(), min(x - label_width / 2, plot.right() - label_width))
+            painter.drawText(
+                QRectF(left, plot.bottom() + 8, label_width, 18),
+                Qt.AlignmentFlag.AlignCenter,
+                self._period_label(self._points[point_index][0], include_day),
+            )
+
+    def _draw_legend(self, painter: QPainter, plot: QRectF) -> None:
+        legend_font = QFont(self.font())
+        legend_font.setPointSize(9)
+        legend_font.setBold(True)
+        painter.setFont(legend_font)
+        slot_width = plot.width() / len(self.SERIES)
+        for index, (label, _column, color, _width) in enumerate(self.SERIES):
+            left = plot.left() + slot_width * index
+            painter.setPen(QPen(QColor(color), 3))
+            painter.drawLine(QPointF(left, 15), QPointF(left + 22, 15))
+            painter.setPen(QColor(Colors.TEXT_SECONDARY))
+            painter.drawText(
+                QRectF(left + 29, 5, max(20, slot_width - 33), 20),
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                label,
+            )
+
+    @staticmethod
+    def _short_money(value: Decimal) -> str:
+        absolute = abs(value)
+        sign = "-" if value < 0 else ""
+        if absolute >= Decimal("1000000"):
+            return f"{sign}\u20ac{absolute / Decimal('1000000'):.1f}m"
+        if absolute >= Decimal("1000"):
+            return f"{sign}\u20ac{absolute / Decimal('1000'):.1f}k"
+        return f"{sign}\u20ac{absolute:.0f}"
+
+    @staticmethod
+    def _period_label(value: str, include_day: bool) -> str:
+        try:
+            point_date = date.fromisoformat(value)
+        except ValueError:
+            return value
+        return point_date.strftime("%d %b" if include_day else "%b %Y")
