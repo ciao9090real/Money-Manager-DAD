@@ -132,13 +132,16 @@ database backup when a full rollback of those operations is required.
 
 Every local mutation is recorded in an ordered `change_log` with its origin
 device. The database also contains paired-device cursors, conflict records, and
-content-hashed attachment metadata. These are foundations for the planned local
-Wi-Fi synchronizer; the current desktop build does not yet advertise a network
-service or synchronize with a phone.
+content-hashed attachment metadata. Settings can start an opt-in local HTTPS
+service that synchronizes the Android companion over the same Wi-Fi network.
+The portable snapshot includes budgets, savings goals, net-worth snapshots,
+loans, investments, recurring schedules, accounts, and transactions. An
+independent entity-set version makes the phone refresh its cache once when new
+record types are added, without discarding queued commands.
 
 Keep `money_manager.db` on a local disk. Do not put it in OneDrive, Dropbox, a
-shared folder, SMB share, or any network filesystem. Each future phone or laptop
-installation must own an independent database; synchronization will exchange
+shared folder, SMB share, or any network filesystem. Each phone or laptop
+installation must own an independent database; synchronization exchanges
 validated changes rather than database files.
 
 Open a separate connection with `app.core.database.connect()` in every worker

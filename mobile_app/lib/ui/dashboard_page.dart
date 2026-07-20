@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../app_controller.dart';
 import '../models/finance_models.dart';
 import '../theme/app_theme.dart';
+import 'net_worth_chart.dart';
 import 'widgets.dart';
 
 class DashboardPage extends StatelessWidget {
@@ -11,11 +12,15 @@ class DashboardPage extends StatelessWidget {
     required this.controller,
     required this.onAddTransaction,
     required this.onPair,
+    required this.onOpenBudgets,
+    required this.onOpenGoals,
   });
 
   final AppController controller;
   final VoidCallback onAddTransaction;
   final VoidCallback onPair;
+  final VoidCallback onOpenBudgets;
+  final VoidCallback onOpenGoals;
 
   Future<void> _refresh(BuildContext context) async {
     if (!controller.isPaired) {
@@ -39,6 +44,18 @@ class DashboardPage extends StatelessWidget {
         .where((transaction) => transaction.type != 'adjustment')
         .take(6)
         .toList();
+    final budgets = [...controller.budgetStatuses()]
+      ..sort((a, b) {
+        final percent = b.percentUsedBasisPoints.compareTo(
+          a.percentUsedBasisPoints,
+        );
+        return percent == 0 ? b.spentCents.compareTo(a.spentCents) : percent;
+      });
+    final goals = controller.goalProgresses.take(3).toList();
+    final history = controller.netWorthHistory();
+    final savingsRateBasisPoints = controller.savingsRateBasisPoints();
+    final emergencyCoverageHundredths = controller
+        .emergencyFundCoverageHundredths();
     return RefreshIndicator(
       onRefresh: () => _refresh(context),
       child: ListView(
@@ -177,6 +194,23 @@ class DashboardPage extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 18),
+          SurfaceCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SectionHeader(
+                  title: 'Net worth trend',
+                  subtitle: 'Assets, liabilities, and your position over time',
+                  trailing: history.any((point) => point.estimated)
+                      ? const Pill('Estimated', tone: 'info')
+                      : null,
+                ),
+                const SizedBox(height: 14),
+                NetWorthTrendChart(points: history),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
           GridView.count(
             crossAxisCount: 2,
             mainAxisSpacing: 12,
@@ -198,6 +232,21 @@ class DashboardPage extends StatelessWidget {
                 tone: controller.monthExpenseCents > 0
                     ? AppColors.negative
                     : AppColors.ink,
+              ),
+              MetricCard(
+                label: 'Savings rate',
+                value: _percentFromBasisPoints(savingsRateBasisPoints),
+                icon: Icons.savings_outlined,
+                tone: savingsRateBasisPoints < 0
+                    ? AppColors.negative
+                    : AppColors.positive,
+              ),
+              MetricCard(
+                label: 'Emergency fund',
+                value:
+                    '${(emergencyCoverageHundredths / 100).toStringAsFixed(1)} months',
+                icon: Icons.health_and_safety_outlined,
+                tone: _coverageTone(emergencyCoverageHundredths),
               ),
             ],
           ),
@@ -227,6 +276,70 @@ class DashboardPage extends StatelessWidget {
               ),
             ),
           ],
+          const SizedBox(height: 24),
+          SectionHeader(
+            title: 'Budgets this month',
+            subtitle: 'Categories closest to their limit',
+            trailing: TextButton(
+              onPressed: onOpenBudgets,
+              child: const Text('View all'),
+            ),
+          ),
+          const SizedBox(height: 10),
+          SurfaceCard(
+            padding: EdgeInsets.zero,
+            child: budgets.isEmpty
+                ? const _CompactDashboardEmpty(
+                    icon: Icons.donut_small_outlined,
+                    message: 'Set up category budgets on the desktop.',
+                  )
+                : Column(
+                    children: [
+                      for (
+                        var index = 0;
+                        index < budgets.take(3).length;
+                        index++
+                      ) ...[
+                        _DashboardBudgetRow(
+                          status: budgets[index],
+                          categoryName: _categoryName(
+                            controller,
+                            budgets[index].budget.categoryId,
+                          ),
+                        ),
+                        if (index != budgets.take(3).length - 1)
+                          const Divider(height: 1, indent: 14, endIndent: 14),
+                      ],
+                    ],
+                  ),
+          ),
+          const SizedBox(height: 22),
+          SectionHeader(
+            title: 'Savings goals',
+            subtitle: 'Progress toward what matters next',
+            trailing: TextButton(
+              onPressed: onOpenGoals,
+              child: const Text('View all'),
+            ),
+          ),
+          const SizedBox(height: 10),
+          SurfaceCard(
+            padding: EdgeInsets.zero,
+            child: goals.isEmpty
+                ? const _CompactDashboardEmpty(
+                    icon: Icons.flag_outlined,
+                    message: 'Create a savings goal on the desktop.',
+                  )
+                : Column(
+                    children: [
+                      for (var index = 0; index < goals.length; index++) ...[
+                        _DashboardGoalRow(progress: goals[index]),
+                        if (index != goals.length - 1)
+                          const Divider(height: 1, indent: 14, endIndent: 14),
+                      ],
+                    ],
+                  ),
+          ),
           const SizedBox(height: 24),
           SectionHeader(
             title: 'Recent activity',
@@ -264,6 +377,140 @@ class DashboardPage extends StatelessWidget {
       ),
     );
   }
+}
+
+class _CompactDashboardEmpty extends StatelessWidget {
+  const _CompactDashboardEmpty({required this.icon, required this.message});
+
+  final IconData icon;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.all(16),
+    child: Row(
+      children: [
+        Icon(icon, color: AppColors.muted, size: 20),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(message, style: Theme.of(context).textTheme.bodySmall),
+        ),
+      ],
+    ),
+  );
+}
+
+class _DashboardBudgetRow extends StatelessWidget {
+  const _DashboardBudgetRow({required this.status, required this.categoryName});
+
+  final BudgetStatus status;
+  final String categoryName;
+
+  @override
+  Widget build(BuildContext context) {
+    final percent = status.percentUsed;
+    final tone = percent > 100
+        ? AppColors.negative
+        : percent >= 80
+        ? AppColors.warning
+        : AppColors.positive;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  categoryName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                '${money(status.spentCents)} / ${money(status.limitCents)}',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          FinanceProgressBar(percent: percent, tone: tone, height: 6),
+        ],
+      ),
+    );
+  }
+}
+
+class _DashboardGoalRow extends StatelessWidget {
+  const _DashboardGoalRow({required this.progress});
+
+  final GoalProgress progress;
+
+  @override
+  Widget build(BuildContext context) {
+    final complete = progress.isComplete;
+    final tone = complete
+        ? AppColors.positive
+        : progress.onTrack == false
+        ? AppColors.warning
+        : AppColors.primary;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  progress.goal.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                '${money(progress.currentAmountCents)} / ${money(progress.goal.targetAmountCents)}',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          FinanceProgressBar(
+            percent: progress.percentComplete,
+            tone: tone,
+            height: 6,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _categoryName(AppController controller, String categoryId) {
+  for (final category in controller.categories) {
+    if (category.id == categoryId) return category.name;
+  }
+  return 'Archived category';
+}
+
+String _percentFromBasisPoints(int basisPoints) =>
+    '${(basisPoints / 100).toStringAsFixed(1)}%';
+
+Color _coverageTone(int coverageHundredths) {
+  if (coverageHundredths <
+      AppController.emergencyFundWarningCoverageHundredths) {
+    return AppColors.negative;
+  }
+  if (coverageHundredths <
+      AppController.emergencyFundHealthyCoverageHundredths) {
+    return AppColors.warning;
+  }
+  return AppColors.positive;
 }
 
 class _PortfolioDetail extends StatelessWidget {

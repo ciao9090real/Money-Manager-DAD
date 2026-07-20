@@ -123,6 +123,11 @@ class LocalDatabase {
     return rows.isEmpty ? 0 : int.tryParse('${rows.first['value']}') ?? 0;
   }
 
+  Future<int> entitySetVersion() async {
+    final value = await state('entity_set_version');
+    return int.tryParse(value ?? '') ?? 0;
+  }
+
   Future<String?> state(String key) async {
     final rows = await _db.query(
       'sync_state',
@@ -139,6 +144,7 @@ class LocalDatabase {
     final changes = (response['changes'] as List<dynamic>? ?? const []);
     final commandResults = (response['commands'] as List<dynamic>? ?? const []);
     final nextCursor = response['cursor'] as int? ?? 0;
+    final entitySetVersion = response['entity_set_version'] as int?;
 
     await _db.transaction((txn) async {
       if (snapshot) await txn.delete('records');
@@ -193,6 +199,12 @@ class LocalDatabase {
         'key': 'cursor',
         'value': '$nextCursor',
       }, conflictAlgorithm: ConflictAlgorithm.replace);
+      if (entitySetVersion != null) {
+        await txn.insert('sync_state', {
+          'key': 'entity_set_version',
+          'value': '$entitySetVersion',
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
       await txn.insert('sync_state', {
         'key': 'last_sync_at',
         'value': DateTime.now().toUtc().toIso8601String(),

@@ -13,7 +13,7 @@ from typing import Any
 from app.core.database import connect
 from app.services.sync_service import SyncService
 from app.sync.identity import ensure_server_identity
-from app.sync.protocol import PROTOCOL_VERSION
+from app.sync.protocol import ENTITY_SET_VERSION, PROTOCOL_VERSION
 
 
 MAX_REQUEST_BYTES = 2 * 1024 * 1024
@@ -98,6 +98,7 @@ class LocalSyncServer:
             "code": self.pairing_code,
             "fingerprint": self.fingerprint,
             "protocol_version": PROTOCOL_VERSION,
+            "entity_set_version": ENTITY_SET_VERSION,
             "expires_in_seconds": max(
                 0, int(self.pairing_expires_at - time.monotonic())
             ),
@@ -170,6 +171,7 @@ def _handler_for(owner: LocalSyncServer):
                     device_id,
                     int(body.get("cursor", 0)),
                     body.get("commands") or [],
+                    entity_set_version=body.get("entity_set_version"),
                 )
             self._send(200, result)
 

@@ -160,6 +160,38 @@ class MetricCard extends StatelessWidget {
   }
 }
 
+class FinanceProgressBar extends StatelessWidget {
+  const FinanceProgressBar({
+    super.key,
+    required this.percent,
+    required this.tone,
+    this.height = 8,
+  });
+
+  final double percent;
+  final Color tone;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final normalized = (percent / 100).clamp(0.0, 1.0).toDouble();
+    final spokenPercent = percent.isFinite ? percent.round() : 0;
+    return Semantics(
+      label: 'Progress',
+      value: '$spokenPercent percent',
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(height / 2),
+        child: LinearProgressIndicator(
+          value: normalized,
+          minHeight: height,
+          color: tone,
+          backgroundColor: tone.withValues(alpha: .12),
+        ),
+      ),
+    );
+  }
+}
+
 class Pill extends StatelessWidget {
   const Pill(this.label, {super.key, this.tone = 'neutral'});
 

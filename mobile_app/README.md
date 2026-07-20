@@ -25,7 +25,11 @@ C:\Users\leona\development\flutter\bin\flutter.bat run
 4. Scan the QR code shown on the PC. The app securely reads the desktop address, one-time code, and certificate fingerprint from it.
 5. Leave the desktop app open while synchronizing.
 
-The phone can browse accounts, balances, transactions, investments, loans, and recurring schedules. It can queue income, expenses, transfers, and recurring-payment records offline. The desktop validates and applies those commands exactly once on the next sync.
+The phone can browse accounts, balances, transactions, investments, loans, recurring schedules, monthly budgets, and savings goals. Its dashboard also shows net-worth history, savings rate, emergency-fund coverage, budget pressure, and goal progress. Each borrowed loan includes an offline payoff planner with an extra-payment comparison and monthly amortization schedule.
+
+Budget and goal setup remains on the desktop, which is the source of truth. The phone can queue income, expenses, transfers, recurring-payment records, and manual savings-goal contributions offline. The desktop validates and applies those commands exactly once on the next sync.
+
+When a release adds newly synchronized record types, the phone requests one fresh snapshot and stores the new data-set version atomically with its cursor. Existing offline records and pending commands remain safe if a sync is interrupted.
 
 ## Validate
 

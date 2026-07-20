@@ -10,9 +10,16 @@ from uuid import UUID
 from app.core.app_info import APP_VERSION
 from app.core.database import unit_of_work
 from app.repositories.sync_repository import SyncRepository
+from app.services.goal_service import GoalService
 from app.services.recurring_service import RecurringService
 from app.services.transaction_service import TransactionService
-from app.sync.protocol import COMMAND_TYPES, PROTOCOL_VERSION, SYNC_ENTITIES
+from app.sync.protocol import (
+    COMMAND_TYPES,
+    ENTITY_SET_VERSION,
+    PROTOCOL_VERSION,
+    SYNC_ENTITIES,
+    SYNC_ENTITY_ID_COLUMNS,
+)
 
 
 class SyncService:
@@ -27,6 +34,7 @@ class SyncService:
             "app": "Money Manager",
             "app_version": APP_VERSION,
             "protocol_version": PROTOCOL_VERSION,
+            "entity_set_version": ENTITY_SET_VERSION,
             "storage": "independent_sqlite",
         }
 
@@ -53,6 +61,7 @@ class SyncService:
             "device_id": normalized_id,
             "auth_token": token,
             "protocol_version": PROTOCOL_VERSION,
+            "entity_set_version": ENTITY_SET_VERSION,
         }
 
     def authenticate(self, device_id: str, token: str) -> bool:
@@ -67,20 +76,28 @@ class SyncService:
         commands: list[dict] | None = None,
         *,
         limit: int = 1000,
+        entity_set_version: object | None = None,
     ) -> dict:
         normalized_id = self._uuid(device_id, "Device id")
         if cursor < 0:
             raise ValueError("Sync cursor cannot be negative")
+        client_entity_set_version = self._entity_set_version(entity_set_version)
         command_results = [
             self._apply_command(normalized_id, command)
             for command in (commands or [])
         ]
-        changes, next_cursor, has_more, snapshot = self._changes(cursor, limit)
+        effective_cursor = (
+            0 if client_entity_set_version < ENTITY_SET_VERSION else cursor
+        )
+        changes, next_cursor, has_more, snapshot = self._changes(
+            effective_cursor, limit
+        )
         with unit_of_work(self.db):
             self.sync.advance_cursor(normalized_id, next_cursor)
             self.sync.touch_device(normalized_id)
         return {
             "protocol_version": PROTOCOL_VERSION,
+            "entity_set_version": ENTITY_SET_VERSION,
             "snapshot": snapshot,
             "cursor": next_cursor,
             "has_more": has_more,
@@ -186,6 +203,16 @@ class SyncService:
                 transaction_date=self._optional_text(payload.get("date")),
             )
             return {"entity_ids": [created.id]}
+        if command_type == "add_goal_contribution":
+            outgoing, incoming = GoalService(self.db).add_contribution(
+                str(payload.get("goal_id", "")),
+                str(payload.get("source_account_id", "")),
+                str(payload.get("target_account_id", "")),
+                self._amount(payload.get("amount_cents")),
+                str(payload.get("date", "")),
+                self._optional_text(payload.get("notes")),
+            )
+            return {"entity_ids": [outgoing.id, incoming.id]}
         raise ValueError("Sync command type is not supported")
 
     def _changes(self, cursor: int, limit: int) -> tuple[list[dict], int, bool, bool]:
@@ -194,12 +221,13 @@ class SyncService:
         if cursor == 0:
             changes = []
             for entity_type in SYNC_ENTITIES:
+                id_column = SYNC_ENTITY_ID_COLUMNS.get(entity_type, "id")
                 for row in self.db.execute(f"SELECT * FROM {entity_type}"):
                     payload = dict(row)
                     changes.append(
                         self._change_payload(
                             entity_type,
-                            str(payload["id"]),
+                            str(payload[id_column]),
                             payload,
                         )
                     )
@@ -213,8 +241,9 @@ class SyncService:
             if entity_type not in SYNC_ENTITIES:
                 continue
             entity_id = str(row["entity_id"])
+            id_column = SYNC_ENTITY_ID_COLUMNS.get(entity_type, "id")
             stored = self.db.execute(
-                f"SELECT * FROM {entity_type} WHERE id = ?",
+                f"SELECT * FROM {entity_type} WHERE {id_column} = ?",
                 (entity_id,),
             ).fetchone()
             if stored:
@@ -284,3 +313,19 @@ class SyncService:
     def _optional_text(value: object) -> str | None:
         cleaned = str(value or "").strip()
         return cleaned or None
+
+    @staticmethod
+    def _entity_set_version(value: object | None) -> int:
+        # Omission means a legacy v1 client.  Those clients accept unknown
+        # entities in their generic cache, but do not understand this
+        # acknowledgement field, so preserve their existing cursor behavior.
+        if value is None:
+            return ENTITY_SET_VERSION
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError("Entity set version must be an integer")
+        version = value
+        if version < 0:
+            raise ValueError("Entity set version cannot be negative")
+        if version > ENTITY_SET_VERSION:
+            raise ValueError("Mobile entity set requires a newer desktop")
+        return version

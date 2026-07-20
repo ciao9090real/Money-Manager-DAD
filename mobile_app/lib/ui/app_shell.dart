@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../main.dart';
 import 'accounts_page.dart';
+import 'budgets_page.dart';
 import 'dashboard_page.dart';
+import 'goals_page.dart';
+import 'loan_payoff_page.dart';
 import 'more_page.dart';
 import 'pairing_page.dart';
 import 'transaction_sheet.dart';
@@ -38,6 +41,31 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
+  Future<void> _openBudgets() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => BudgetsPage(controller: AppScope.of(context)),
+      ),
+    );
+  }
+
+  Future<void> _openGoals() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => GoalsPage(controller: AppScope.of(context)),
+      ),
+    );
+  }
+
+  Future<void> _openLoan(String loanId) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) =>
+            LoanPayoffPage(controller: AppScope.of(context), loanId: loanId),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = AppScope.of(context);
@@ -46,11 +74,19 @@ class _AppShellState extends State<AppShell> {
         controller: controller,
         onAddTransaction: _addTransaction,
         onPair: _pair,
+        onOpenBudgets: _openBudgets,
+        onOpenGoals: _openGoals,
       ),
       TransactionsPage(controller: controller, onAdd: _addTransaction),
       AccountsPage(controller: controller),
       UpcomingPage(controller: controller),
-      MorePage(controller: controller, onPair: _pair),
+      MorePage(
+        controller: controller,
+        onPair: _pair,
+        onOpenBudgets: _openBudgets,
+        onOpenGoals: _openGoals,
+        onOpenLoan: _openLoan,
+      ),
     ];
     return Scaffold(
       body: SafeArea(

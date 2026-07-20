@@ -59,6 +59,7 @@ class SyncClient {
   Future<Map<String, dynamic>> sync({
     required PairingCredentials credentials,
     required int cursor,
+    required int entitySetVersion,
     required List<PendingCommand> commands,
   }) async {
     final expected = _normalizeFingerprint(credentials.fingerprint);
@@ -73,6 +74,7 @@ class SyncClient {
         body: {
           'device_id': credentials.deviceId,
           'cursor': cursor,
+          'entity_set_version': entitySetVersion,
           'commands': commands.map((command) => command.toWire()).toList(),
         },
       );

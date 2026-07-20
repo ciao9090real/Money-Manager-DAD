@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import ssl
 import urllib.request
+from datetime import date
 from decimal import Decimal
 from uuid import uuid4
 
@@ -10,9 +11,14 @@ import pytest
 
 from app.core.database import connect, unit_of_work
 from app.services.account_service import AccountService
+from app.services.budget_service import BudgetService
+from app.services.category_service import CategoryService
+from app.services.goal_service import GoalService
 from app.services.investment_service import InvestmentService
+from app.services.net_worth_service import NetWorthService
 from app.services.sync_service import SyncService
 from app.services.transaction_service import TransactionService
+from app.sync.protocol import ENTITY_SET_VERSION
 from app.sync.server import LocalSyncServer
 
 
@@ -51,6 +57,165 @@ def test_initial_mobile_sync_returns_portable_snapshot(db):
         change for change in response["changes"] if change["entity"] == "transactions"
     )
     assert transaction["payload"]["amount_cents"] == -1250
+
+
+def test_extended_entity_set_resnapshots_once_and_supports_date_identity(db):
+    accounts = AccountService(db)
+    account = accounts.create_account(
+        "Everyday", "current_account", opening_balance="100"
+    )
+    category = CategoryService(db).create_category("Groceries", "expense")
+    budget = BudgetService(db).set_budget(
+        category.id,
+        "250",
+        rollover=True,
+        start_date="2026-01-01",
+    )
+    goal = GoalService(db).create_goal(
+        "Emergency fund",
+        "1000",
+        linked_account_id=account.id,
+    )
+    point = NetWorthService(db).record_snapshot()
+    sync, device_id = paired_sync(db)
+
+    caught_up_cursor = sync.sync.max_change_sequence()
+    legacy = sync.exchange(device_id, caught_up_cursor)
+    assert legacy["snapshot"] is False
+
+    refreshed = sync.exchange(
+        device_id,
+        caught_up_cursor,
+        entity_set_version=0,
+    )
+
+    assert refreshed["protocol_version"] == 1
+    assert refreshed["entity_set_version"] == ENTITY_SET_VERSION
+    assert refreshed["snapshot"] is True
+    by_entity = {
+        change["entity"]: change
+        for change in refreshed["changes"]
+        if change["entity"] in {
+            "budgets",
+            "net_worth_snapshots",
+            "savings_goals",
+        }
+    }
+    assert by_entity["budgets"]["id"] == budget.id
+    assert by_entity["budgets"]["payload"]["amount_cents"] == 25000
+    assert by_entity["savings_goals"]["id"] == goal.id
+    assert by_entity["savings_goals"]["payload"]["target_amount_cents"] == 100000
+    assert by_entity["net_worth_snapshots"]["id"] == point.date
+    assert by_entity["net_worth_snapshots"]["payload"]["date"] == point.date
+
+    acknowledged = sync.exchange(
+        device_id,
+        refreshed["cursor"],
+        entity_set_version=ENTITY_SET_VERSION,
+    )
+    assert acknowledged["snapshot"] is False
+    with pytest.raises(ValueError, match="newer desktop"):
+        sync.exchange(
+            device_id,
+            acknowledged["cursor"],
+            entity_set_version=ENTITY_SET_VERSION + 1,
+        )
+
+    TransactionService(db).add_income(account.id, "25", point.date, "Raise")
+    NetWorthService(db).record_snapshot()
+    incremental = sync.exchange(
+        device_id,
+        acknowledged["cursor"],
+        entity_set_version=ENTITY_SET_VERSION,
+    )
+    net_worth_change = next(
+        change
+        for change in incremental["changes"]
+        if change["entity"] == "net_worth_snapshots"
+    )
+    assert net_worth_change["id"] == point.date
+    assert net_worth_change["revision"] == 2
+    assert net_worth_change["payload"]["assets_cents"] == 12500
+
+
+def test_mobile_goal_contribution_is_validated_and_idempotent(db):
+    accounts = AccountService(db)
+    source = accounts.create_account(
+        "Everyday", "current_account", opening_balance="100"
+    )
+    target = accounts.create_account("Goal pot", "savings_account")
+    goal = GoalService(db).create_goal("Emergency fund", "500")
+    sync, device_id = paired_sync(db)
+    command = {
+        "id": str(uuid4()),
+        "type": "add_goal_contribution",
+        "payload": {
+            "goal_id": goal.id,
+            "source_account_id": source.id,
+            "target_account_id": target.id,
+            "amount_cents": 2500,
+            "date": "2026-07-20",
+            "notes": "From Android",
+        },
+    }
+
+    first = sync.exchange(device_id, 0, [command], entity_set_version=0)
+    assert first["commands"][0]["status"] == "accepted"
+    entity_ids = set(first["commands"][0]["result"]["entity_ids"])
+    synced_ids = {
+        change["id"]
+        for change in first["changes"]
+        if change["entity"] == "transactions"
+        and change["payload"]["savings_goal_id"] == goal.id
+    }
+    assert synced_ids == entity_ids
+
+    second = sync.exchange(
+        device_id,
+        first["cursor"],
+        [command],
+        entity_set_version=ENTITY_SET_VERSION,
+    )
+
+    assert second["commands"][0] == first["commands"][0]
+    stored = db.execute(
+        """
+        SELECT id, type, account_id, amount_cents, savings_goal_id, notes
+        FROM transactions
+        WHERE savings_goal_id = ? AND deleted_at IS NULL
+        """,
+        (goal.id,),
+    ).fetchall()
+    assert {row["id"] for row in stored} == entity_ids
+    assert {(row["type"], row["amount_cents"]) for row in stored} == {
+        ("transfer_out", -2500),
+        ("transfer_in", 2500),
+    }
+    assert {row["notes"] for row in stored} == {"From Android"}
+    assert GoalService(db).progress(
+        goal.id,
+        reference_date=date(2026, 7, 20),
+    ).current_amount == Decimal("25.00")
+
+    linked_goal = GoalService(db).create_goal(
+        "Linked savings",
+        "500",
+        linked_account_id=target.id,
+    )
+    rejected = sync.exchange(
+        device_id,
+        second["cursor"],
+        [
+            {
+                **command,
+                "id": str(uuid4()),
+                "payload": {**command["payload"], "goal_id": linked_goal.id},
+            }
+        ],
+        entity_set_version=ENTITY_SET_VERSION,
+    )
+    assert rejected["commands"][0]["status"] == "rejected"
+    assert "Linked-account goals" in rejected["commands"][0]["error"]
 
 
 def test_mobile_command_is_idempotent_across_retries(db):
@@ -154,6 +319,7 @@ def test_local_https_server_pairs_and_syncs(db):
         ) as response:
             hello = json.load(response)
         assert hello["protocol_version"] == 1
+        assert hello["entity_set_version"] == ENTITY_SET_VERSION
         assert hello["certificate_fingerprint"] == details["fingerprint"]
 
         pair_request = urllib.request.Request(
@@ -169,11 +335,17 @@ def test_local_https_server_pairs_and_syncs(db):
         )
         with urllib.request.urlopen(pair_request, context=context, timeout=5) as response:
             pairing = json.load(response)
+        assert pairing["entity_set_version"] == ENTITY_SET_VERSION
 
         sync_request = urllib.request.Request(
             f"{base_url}/v1/sync",
             data=json.dumps(
-                {"device_id": device_id, "cursor": 0, "commands": []}
+                {
+                    "device_id": device_id,
+                    "cursor": 0,
+                    "entity_set_version": 0,
+                    "commands": [],
+                }
             ).encode(),
             headers={
                 "Content-Type": "application/json",
@@ -183,6 +355,7 @@ def test_local_https_server_pairs_and_syncs(db):
         with urllib.request.urlopen(sync_request, context=context, timeout=5) as response:
             synced = json.load(response)
         assert synced["snapshot"] is True
+        assert synced["entity_set_version"] == ENTITY_SET_VERSION
         assert any(change["entity"] == "accounts" for change in synced["changes"])
     finally:
         server.stop()

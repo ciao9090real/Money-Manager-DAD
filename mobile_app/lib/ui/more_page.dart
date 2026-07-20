@@ -5,10 +5,20 @@ import '../theme/app_theme.dart';
 import 'widgets.dart';
 
 class MorePage extends StatelessWidget {
-  const MorePage({super.key, required this.controller, required this.onPair});
+  const MorePage({
+    super.key,
+    required this.controller,
+    required this.onPair,
+    required this.onOpenBudgets,
+    required this.onOpenGoals,
+    required this.onOpenLoan,
+  });
 
   final AppController controller;
   final VoidCallback onPair;
+  final VoidCallback onOpenBudgets;
+  final VoidCallback onOpenGoals;
+  final ValueChanged<String> onOpenLoan;
 
   @override
   Widget build(BuildContext context) {
@@ -16,8 +26,31 @@ class MorePage extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 108),
       children: [
         const ScreenHeader(
-          title: 'Portfolio & sync',
-          subtitle: 'Investments, loans, and this phone connection',
+          title: 'Planning, portfolio & sync',
+          subtitle: 'Your plans, long-term finances, and phone connection',
+        ),
+        const SizedBox(height: 22),
+        const SectionHeader(title: 'Planning'),
+        const SizedBox(height: 9),
+        SurfaceCard(
+          padding: EdgeInsets.zero,
+          child: Column(
+            children: [
+              _PlanningRow(
+                icon: Icons.donut_small_outlined,
+                title: 'Budgets',
+                subtitle: 'Track this month against your category limits',
+                onTap: onOpenBudgets,
+              ),
+              const Divider(height: 1, indent: 58),
+              _PlanningRow(
+                icon: Icons.flag_outlined,
+                title: 'Savings goals',
+                subtitle: 'See progress and add manual contributions',
+                onTap: onOpenGoals,
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 22),
         const SectionHeader(title: 'Investments'),
@@ -60,7 +93,7 @@ class MorePage extends StatelessWidget {
         const SizedBox(height: 9),
         SurfaceCard(
           padding: EdgeInsets.zero,
-          child: controller.loans.isEmpty
+          child: controller.loanRecords.isEmpty
               ? const EmptyState(
                   icon: Icons.account_balance_outlined,
                   title: 'No loans',
@@ -71,21 +104,21 @@ class MorePage extends StatelessWidget {
                   children: [
                     for (
                       var index = 0;
-                      index < controller.loans.length;
+                      index < controller.loanRecords.length;
                       index++
                     ) ...[
                       _PortfolioRow(
                         icon: Icons.account_balance_outlined,
-                        title:
-                            '${controller.loans[index].payload['name'] ?? 'Loan'}',
-                        subtitle: prettyType(
-                          '${controller.loans[index].payload['direction'] ?? controller.loans[index].payload['kind'] ?? 'loan'}',
+                        title: controller.loanRecords[index].name,
+                        subtitle:
+                            '${prettyType(controller.loanRecords[index].direction)} · ${prettyType(controller.loanRecords[index].status)}',
+                        amount: controller.outstandingForLoan(
+                          controller.loanRecords[index].id,
                         ),
-                        amount: controller.balanceFor(
-                          '${controller.loans[index].payload['account_id'] ?? ''}',
-                        ),
+                        onTap: () =>
+                            onOpenLoan(controller.loanRecords[index].id),
                       ),
-                      if (index != controller.loans.length - 1)
+                      if (index != controller.loanRecords.length - 1)
                         const Divider(height: 1, indent: 58),
                     ],
                   ],
@@ -130,21 +163,56 @@ class MorePage extends StatelessWidget {
   }
 }
 
-class _PortfolioRow extends StatelessWidget {
-  const _PortfolioRow({
+class _PlanningRow extends StatelessWidget {
+  const _PlanningRow({
     required this.icon,
     required this.title,
     required this.subtitle,
-    required this.amount,
+    required this.onTap,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
-  final int amount;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) => ListTile(
+    onTap: onTap,
+    leading: Container(
+      width: 38,
+      height: 38,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: AppColors.primarySoft,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Icon(icon, color: AppColors.primary, size: 20),
+    ),
+    title: Text(title),
+    subtitle: Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis),
+    trailing: const Icon(Icons.chevron_right),
+  );
+}
+
+class _PortfolioRow extends StatelessWidget {
+  const _PortfolioRow({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    this.amount,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final int? amount;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+    onTap: onTap,
     leading: Container(
       width: 38,
       height: 38,
@@ -157,7 +225,17 @@ class _PortfolioRow extends StatelessWidget {
     ),
     title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
     subtitle: Text(subtitle),
-    trailing: AmountText(amount, neutral: true, emphasized: true),
+    trailing: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (amount != null)
+          AmountText(amount!, neutral: true, emphasized: true),
+        if (onTap != null) ...[
+          const SizedBox(width: 4),
+          const Icon(Icons.chevron_right),
+        ],
+      ],
+    ),
   );
 }
 
