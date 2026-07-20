@@ -34,6 +34,13 @@ closes, then charts assets, liabilities, and net worth across the last twelve
 months. Missing month-end points are backfilled from the local ledger where the
 historical data is available and are marked as estimates in the read model.
 
+The Loans page includes a prospective payoff planner. It derives a monthly
+payment from the remaining term when a due date exists, produces a cent-accurate
+principal/interest schedule, and compares the projected payoff date and total
+interest with an optional extra monthly payment. Snowball and avalanche strategy
+calculations are also available in the service layer. These projections do not
+change the ledger's principal-only treatment of already recorded repayments.
+
 The Upcoming page supports wages, fixed subscriptions, variable bills, weekly
 through yearly schedules, pausing, skipping, and explicitly recording an amount.
 Recording creates a linked income or expense and advances the schedule atomically. The app

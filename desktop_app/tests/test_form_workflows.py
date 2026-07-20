@@ -14,6 +14,7 @@ from app.core.database import connect
 from app.services.account_service import AccountService
 from app.services.category_service import CategoryService
 from app.services.investment_service import InvestmentService
+from app.services.loan_service import LoanService
 from app.services.recurring_service import RecurringService
 from app.ui.dashboard_page import DashboardPage
 from app.ui.date_picker import DatePicker
@@ -25,7 +26,9 @@ from app.ui.investment_form import (
 from app.ui.investments_page import InvestmentsPage
 from app.ui.recurring_form import RecurringRuleForm
 from app.ui.loan_form import LoanForm
+from app.ui.loans_page import LoansPage
 from app.ui.transaction_form import TransactionForm
+from app.utils.money import format_money
 
 
 @pytest.fixture(scope="module")
@@ -167,6 +170,42 @@ def test_loan_form_switches_borrowed_and_lent_wording(qt_app, tmp_path, monkeypa
             for frame in form.findChildren(QFrame)
         )
         form.close()
+    finally:
+        db.close()
+
+
+def test_loans_page_renders_payoff_comparison(qt_app, tmp_path, monkeypatch):
+    monkeypatch.setenv("MONEY_MANAGER_DAD_DATA_DIR", str(tmp_path))
+    db = connect()
+    try:
+        account = AccountService(db).create_account(
+            "Current", "current_account", opening_balance="20000"
+        )
+        today = QDate.currentDate()
+        LoanService(db).create_loan(
+            "borrowed",
+            "Car loan",
+            "Bank",
+            account.id,
+            "10000",
+            today.toString("yyyy-MM-dd"),
+            due_date=today.addYears(2).toString("yyyy-MM-dd"),
+            interest_rate="6",
+        )
+        page = LoansPage(db, lambda _pages: None)
+        page.refresh()
+        page.table.selectRow(0)
+        page.extra_payment.setText("50")
+
+        page.calculate_payoff()
+
+        assert page.payoff_metric_values["payoff_date"].text() != "—"
+        assert page.payoff_metric_values["interest_saved"].text() != format_money(0)
+        assert page.amortization_table.rowCount() > 0
+        assert page.amortization_table.rowCount() <= page.AMORTIZATION_PAGE_SIZE
+        page.close()
+        page.deleteLater()
+        qt_app.processEvents()
     finally:
         db.close()
 
