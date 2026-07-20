@@ -21,7 +21,7 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 .\.venv\Scripts\python.exe -m PyInstaller `
     --name MoneyManager `
     --windowed `
-    --onedir `
+    --onefile `
     --noconfirm `
     --clean `
     main.py
