@@ -25,6 +25,7 @@ def row_to_transaction(row: sqlite3.Row) -> Transaction:
         recurring_rule_id=row["recurring_rule_id"],
         investment_id=row["investment_id"],
         loan_id=row["loan_id"],
+        savings_goal_id=row["savings_goal_id"],
         notes=row["notes"],
         status=row["status"],
         created_at=row["created_at"],
@@ -49,6 +50,7 @@ class TransactionRepository:
         recurring_rule_id: str | None = None,
         investment_id: str | None = None,
         loan_id: str | None = None,
+        savings_goal_id: str | None = None,
         start_date: str | None = None,
         end_date: str | None = None,
         search_text: str | None = None,
@@ -86,6 +88,9 @@ class TransactionRepository:
         if loan_id is not None:
             conditions.append("loan_id = ?")
             params.append(loan_id)
+        if savings_goal_id is not None:
+            conditions.append("savings_goal_id = ?")
+            params.append(savings_goal_id)
         if exclude_investment_adjustments:
             conditions.append(
                 "NOT (type = 'adjustment' AND investment_id IS NOT NULL)"
@@ -149,8 +154,8 @@ class TransactionRepository:
             INSERT INTO transactions (
                 id, date, type, account_id, payment_method_id, amount_cents,
                 description, category_id, transfer_group_id, recurring_rule_id,
-                investment_id, loan_id, notes, status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                investment_id, loan_id, savings_goal_id, notes, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 transaction_id,
@@ -165,6 +170,7 @@ class TransactionRepository:
                 transaction.recurring_rule_id,
                 transaction.investment_id,
                 transaction.loan_id,
+                transaction.savings_goal_id,
                 transaction.notes,
                 transaction.status,
             ),
@@ -201,7 +207,7 @@ class TransactionRepository:
             UPDATE transactions
             SET date = ?, type = ?, account_id = ?, payment_method_id = ?, amount_cents = ?,
                 description = ?, category_id = ?, transfer_group_id = ?, recurring_rule_id = ?,
-                investment_id = ?, loan_id = ?, notes = ?, status = ?,
+                investment_id = ?, loan_id = ?, savings_goal_id = ?, notes = ?, status = ?,
                 updated_at = {UTC_NOW}, revision = revision + 1
             WHERE id = ? AND deleted_at IS NULL
             """,
@@ -217,6 +223,7 @@ class TransactionRepository:
                 transaction.recurring_rule_id,
                 transaction.investment_id,
                 transaction.loan_id,
+                transaction.savings_goal_id,
                 transaction.notes,
                 transaction.status,
                 transaction.id,

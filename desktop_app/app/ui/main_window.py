@@ -20,6 +20,7 @@ from app.repositories.settings_repository import SettingsRepository
 from app.ui.accounts_page import AccountsPage
 from app.ui.budgets_page import BudgetsPage
 from app.ui.dashboard_page import DashboardPage
+from app.ui.goals_page import GoalsPage
 from app.ui.investments_page import InvestmentsPage
 from app.ui.loans_page import LoansPage
 from app.ui.settings_page import SettingsPage
@@ -53,6 +54,7 @@ class MainWindow(QMainWindow):
         self.accounts = AccountsPage(db, on_changed=self.invalidate, notify=self.show_status)
         self.transactions = TransactionsPage(db, on_changed=self.invalidate, notify=self.show_status)
         self.budgets = BudgetsPage(db, on_changed=self.invalidate, notify=self.show_status)
+        self.goals = GoalsPage(db, on_changed=self.invalidate, notify=self.show_status)
         self.investments = InvestmentsPage(db, on_changed=self.invalidate, notify=self.show_status)
         self.loans = LoansPage(db, on_changed=self.invalidate, notify=self.show_status)
         self.upcoming = UpcomingPage(db, on_changed=self.invalidate, notify=self.show_status)
@@ -74,6 +76,7 @@ class MainWindow(QMainWindow):
             ("Accounts", "accounts", self.accounts),
             ("Transactions", "transactions", self.transactions),
             ("Budgets", "transactions", self.budgets),
+            ("Goals", "investments", self.goals),
             ("Investments", "investments", self.investments),
             ("Loans", "loans", self.loans),
             ("Upcoming", "upcoming", self.upcoming),
@@ -86,6 +89,7 @@ class MainWindow(QMainWindow):
             "accounts",
             "transactions",
             "budgets",
+            "goals",
             "investments",
             "loans",
             "upcoming",
@@ -96,6 +100,7 @@ class MainWindow(QMainWindow):
             "accounts",
             "transactions",
             "budgets",
+            "goals",
             "investments",
             "loans",
             "upcoming",
@@ -159,8 +164,23 @@ class MainWindow(QMainWindow):
         self._select_page(self.page_keys.index("transactions"))
 
     def invalidate(self, tags: set[str]) -> None:
+        expanded_tags = set(tags)
+        if "transactions" in tags:
+            expanded_tags.update({"budgets", "goals"})
+        if tags & {"accounts", "investments", "loans"}:
+            expanded_tags.add("goals")
         self.dirty_pages.update(
-            tags & {"dashboard", "accounts", "transactions", "budgets", "investments", "loans", "upcoming"}
+            expanded_tags
+            & {
+                "dashboard",
+                "accounts",
+                "transactions",
+                "budgets",
+                "goals",
+                "investments",
+                "loans",
+                "upcoming",
+            }
         )
         self._refresh_selected_if_dirty()
 

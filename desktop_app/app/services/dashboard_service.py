@@ -10,6 +10,7 @@ from app.repositories.loan_repository import LoanRepository
 from app.repositories.payment_method_repository import PaymentMethodRepository
 from app.repositories.transaction_repository import TransactionRepository
 from app.services.budget_service import BudgetService
+from app.services.goal_service import GoalService
 from app.utils.dates import month_bounds
 
 
@@ -25,6 +26,7 @@ class DashboardService:
         self.accounts = AccountRepository(db)
         self.categories = CategoryRepository(db)
         self.budget_service = BudgetService(db)
+        self.goal_service = GoalService(db)
         self.loans = LoanRepository(db)
         self.payment_methods = PaymentMethodRepository(db)
         self.transactions = TransactionRepository(db)
@@ -177,6 +179,17 @@ class DashboardService:
             }
             for status in statuses
         ]
+
+    def goal_highlights(self, reference_date: date | None = None):
+        progress = self.goal_service.list_progress(reference_date)
+        return sorted(
+            progress,
+            key=lambda item: (
+                item.goal.target_date is None,
+                item.goal.target_date or "9999-12-31",
+                -item.percent_complete,
+            ),
+        )[:3]
 
     def scope_summary(
         self,

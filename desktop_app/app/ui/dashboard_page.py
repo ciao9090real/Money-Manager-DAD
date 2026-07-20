@@ -157,6 +157,9 @@ class DashboardPage(QWidget):
         self.budgets_card = self._build_budgets_card()
         layout.addWidget(self.budgets_card)
 
+        self.goals_card = self._build_goals_card()
+        layout.addWidget(self.goals_card)
+
         self.scope_selector_card = self._build_scope_selector()
         layout.addWidget(self.scope_selector_card)
 
@@ -398,6 +401,23 @@ class DashboardPage(QWidget):
         layout.addWidget(self.budgets_table)
         return card
 
+    def _build_goals_card(self) -> QFrame:
+        card, layout = create_card(
+            "Savings goals",
+            subtitle="Progress toward your nearest dated targets",
+        )
+        self.goals_empty = empty_state(
+            "No savings goals yet", "Create a target from the Goals page."
+        )
+        self.goals_table = QTableWidget(0, 4)
+        self.goals_table.setHorizontalHeaderLabels(
+            ["Goal", "Saved", "Target", "Progress"]
+        )
+        style_table(self.goals_table, visible_rows=3)
+        layout.addWidget(self.goals_empty)
+        layout.addWidget(self.goals_table)
+        return card
+
     @staticmethod
     def _forecast_metric(title: str) -> tuple[QWidget, QLabel, QLabel]:
         container = QWidget()
@@ -553,6 +573,7 @@ class DashboardPage(QWidget):
             self.reporting.cash_forecast(starting_balance=global_data["liquidity"])
         )
         self._refresh_budgets(global_data["budget_statuses"])
+        self._refresh_goals(self.service.goal_highlights())
         cash_flow = self.reporting.monthly_cash_flow()
         self.net_worth_chart.set_data(self.net_worth_service.history())
         self.cash_flow_chart.set_data(
@@ -607,6 +628,30 @@ class DashboardPage(QWidget):
                 used.setForeground(QColor("#72d6b2"))
             self.budgets_table.setItem(row, 3, used)
         fit_item_view_height(self.budgets_table, len(statuses), maximum_rows=3)
+
+    def _refresh_goals(self, progress_items: list) -> None:
+        self.goals_empty.setVisible(not progress_items)
+        self.goals_table.setVisible(bool(progress_items))
+        self.goals_table.setRowCount(len(progress_items))
+        for row, progress in enumerate(progress_items):
+            self.goals_table.setItem(row, 0, QTableWidgetItem(progress.goal.name))
+            self.goals_table.setItem(
+                row, 1, amount_item(progress.current_amount, neutral=True)
+            )
+            self.goals_table.setItem(
+                row, 2, amount_item(progress.goal.target_amount, neutral=True)
+            )
+            progress_item = QTableWidgetItem(f"{progress.percent_complete:.2f}%")
+            tone = (
+                Colors.POSITIVE
+                if progress.percent_complete >= 100 or progress.on_track is True
+                else Colors.NEGATIVE
+                if progress.on_track is False
+                else Colors.TEXT_SECONDARY
+            )
+            progress_item.setForeground(QColor(tone))
+            self.goals_table.setItem(row, 3, progress_item)
+        fit_item_view_height(self.goals_table, len(progress_items), maximum_rows=3)
 
     def _refresh_forecast(self, data: dict) -> None:
         for value_label, helper_label, balance_key, change_key in (

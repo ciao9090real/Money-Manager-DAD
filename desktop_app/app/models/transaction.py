@@ -24,3 +24,4 @@ class Transaction:
     updated_at: str | None = None
     deleted_at: str | None = None
     revision: int = 1
+    savings_goal_id: str | None = None

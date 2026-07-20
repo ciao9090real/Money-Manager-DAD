@@ -93,6 +93,7 @@ class TransactionService:
         notes: str | None = None,
         investment_id: str | None = None,
         loan_id: str | None = None,
+        savings_goal_id: str | None = None,
     ) -> Transaction:
         with unit_of_work(self.db):
             self._require_account(account_id, active=True)
@@ -106,6 +107,7 @@ class TransactionService:
                     description=description.strip(),
                     investment_id=investment_id,
                     loan_id=loan_id,
+                    savings_goal_id=savings_goal_id,
                     notes=notes,
                 )
             )
@@ -119,6 +121,7 @@ class TransactionService:
         description: str = "",
         notes: str | None = None,
         investment_id: str | None = None,
+        savings_goal_id: str | None = None,
     ) -> tuple[Transaction, Transaction]:
         with unit_of_work(self.db):
             self._require_account(source_account_id, active=True)
@@ -138,6 +141,7 @@ class TransactionService:
                     description=description.strip(),
                     transfer_group_id=group_id,
                     investment_id=investment_id,
+                    savings_goal_id=savings_goal_id,
                     notes=notes,
                 )
             )
@@ -151,6 +155,7 @@ class TransactionService:
                     description=description.strip(),
                     transfer_group_id=group_id,
                     investment_id=investment_id,
+                    savings_goal_id=savings_goal_id,
                     notes=notes,
                 )
             )
@@ -194,6 +199,10 @@ class TransactionService:
                 raise ValueError("Change investment entries from the Investments page")
             if existing.loan_id:
                 raise ValueError("Change loan entries from the Loans page")
+            if existing.savings_goal_id:
+                raise ValueError(
+                    "Change savings goal entries from the Savings Goals page"
+                )
             cleaned_type = self._normalize_type(transaction_type)
             if cleaned_type == "transfer":
                 return self._update_as_transfer(
@@ -224,6 +233,10 @@ class TransactionService:
                 raise ValueError("Change investment entries from the Investments page")
             if transaction.loan_id:
                 raise ValueError("Change loan entries from the Loans page")
+            if transaction.savings_goal_id:
+                raise ValueError(
+                    "Change savings goal entries from the Savings Goals page"
+                )
             if transaction.transfer_group_id:
                 for linked in self.transactions.list_by_transfer_group(transaction.transfer_group_id):
                     if linked.id is not None:
@@ -291,6 +304,7 @@ class TransactionService:
                 recurring_rule_id=existing.recurring_rule_id,
                 investment_id=existing.investment_id,
                 loan_id=existing.loan_id,
+                savings_goal_id=existing.savings_goal_id,
                 notes=notes,
             )
         )
@@ -324,11 +338,13 @@ class TransactionService:
             recurring_rule_id = outgoing.recurring_rule_id
             investment_id = outgoing.investment_id
             loan_id = outgoing.loan_id
+            savings_goal_id = outgoing.savings_goal_id
         else:
             outgoing_id = existing.id
             recurring_rule_id = existing.recurring_rule_id
             investment_id = existing.investment_id
             loan_id = existing.loan_id
+            savings_goal_id = existing.savings_goal_id
             incoming = self.transactions.create(
                 Transaction(
                     id=None,
@@ -340,6 +356,7 @@ class TransactionService:
                     transfer_group_id=group_id,
                     investment_id=investment_id,
                     loan_id=loan_id,
+                    savings_goal_id=savings_goal_id,
                     notes=notes,
                 )
             )
@@ -357,6 +374,7 @@ class TransactionService:
                 recurring_rule_id=recurring_rule_id,
                 investment_id=investment_id,
                 loan_id=loan_id,
+                savings_goal_id=savings_goal_id,
                 notes=notes,
             )
         )
@@ -371,6 +389,7 @@ class TransactionService:
                 transfer_group_id=group_id,
                 investment_id=investment_id,
                 loan_id=loan_id,
+                savings_goal_id=savings_goal_id,
                 notes=notes,
             )
         )

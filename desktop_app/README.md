@@ -4,7 +4,7 @@ Modern local-first Windows finance manager built with Python, PySide6, SQLite, a
 
 The interface includes a responsive financial dashboard, collapsible navigation,
 searchable and paginated activity, contextual account controls, monthly category
-budgets with optional rollover, recurring income and payment schedules,
+budgets with optional rollover, savings goals, recurring income and payment schedules,
 three- and six-month cash forecasts, a historical net-worth chart, a manually
 valued investment portfolio, polished editors, and
 dedicated local storage, backup, export, and category tools.
@@ -17,7 +17,7 @@ The current desktop baseline is tagged `desktop-baseline-v1`. Dependencies are
 fully pinned in `requirements.lock`, and the Windows CI workflow compiles the
 source, runs the database/migration tests, and packages the executable.
 
-Schema version 13 adds daily net-worth snapshots alongside sync-ready monthly budgets, loan, investment,
+Schema version 14 adds savings goals and goal-tagged contribution transfers alongside daily net-worth snapshots, sync-ready monthly budgets, loan, investment,
 recurring-payment, and synchronization-ready ledger foundation. Existing databases are backed up and
 migrated automatically on first launch. Accounts, categories, payment methods,
 transactions, recurring rules, investments, and loans use UUIDs, exact integer cents,
@@ -46,6 +46,13 @@ coverage. Savings rate is net recorded income divided by income for the selected
 calendar window. Coverage compares non-negative liquid balances with average
 spending across the previous six completed months, using named three- and
 six-month warning/healthy thresholds.
+
+The Savings Goals page supports account-linked targets and manually tracked
+targets. Linked goals read the selected account balance directly. Manual
+contributions are recorded as tagged account-to-account transfers, preserving
+total net worth while keeping a local audit trail. Goal cards show completion,
+deadline pace, and the monthly amount still required; the Dashboard surfaces
+the three nearest dated goals.
 
 The Upcoming page supports wages, fixed subscriptions, variable bills, weekly
 through yearly schedules, pausing, skipping, and explicitly recording an amount.

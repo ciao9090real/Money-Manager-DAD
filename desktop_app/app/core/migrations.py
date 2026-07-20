@@ -6,7 +6,7 @@ from pathlib import Path
 from uuid import uuid4
 
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 UTC_NOW_SQL = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"
 
 
@@ -66,6 +66,9 @@ def migrate(connection: sqlite3.Connection) -> None:
         if version < 13:
             _run_migration(connection, 13, _migrate_v13)
             version = 13
+        if version < 14:
+            _run_migration(connection, 14, _migrate_v14)
+            version = 14
         assert_database_integrity(connection)
     except Exception:
         connection.rollback()
@@ -1538,6 +1541,93 @@ def _migrate_v13(connection: sqlite3.Connection) -> None:
                 entity_type, entity_id, deleted_at, revision, device_id
             ) VALUES (
                 'net_worth_snapshots', NEW.date, NEW.deleted_at, NEW.revision,
+                (SELECT value FROM sync_metadata WHERE key = 'active_device_id')
+            )
+            ON CONFLICT(entity_type, entity_id) DO UPDATE SET
+                deleted_at = excluded.deleted_at,
+                revision = excluded.revision,
+                device_id = excluded.device_id;
+        END;
+        """,
+    )
+
+
+def _migrate_v14(connection: sqlite3.Connection) -> None:
+    _execute_script(
+        connection,
+        f"""
+        CREATE TABLE savings_goals (
+            id TEXT PRIMARY KEY CHECK (length(id) = 36),
+            name TEXT NOT NULL,
+            target_amount_cents INTEGER NOT NULL CHECK (target_amount_cents > 0),
+            target_date TEXT CHECK (
+                target_date IS NULL
+                OR target_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+            ),
+            linked_account_id TEXT REFERENCES accounts(id),
+            is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+            created_at TEXT NOT NULL DEFAULT ({UTC_NOW_SQL}),
+            updated_at TEXT NOT NULL DEFAULT ({UTC_NOW_SQL}),
+            deleted_at TEXT,
+            revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1)
+        );
+
+        ALTER TABLE transactions
+            ADD COLUMN savings_goal_id TEXT REFERENCES savings_goals(id);
+
+        CREATE INDEX idx_savings_goals_active_target
+            ON savings_goals(is_active, target_date) WHERE deleted_at IS NULL;
+        CREATE INDEX idx_savings_goals_linked_account
+            ON savings_goals(linked_account_id) WHERE deleted_at IS NULL;
+        CREATE INDEX idx_transactions_savings_goal
+            ON transactions(savings_goal_id, date) WHERE deleted_at IS NULL;
+
+        CREATE TRIGGER validate_savings_goals_update
+        BEFORE UPDATE ON savings_goals
+        WHEN NEW.revision != OLD.revision + 1
+        BEGIN
+            SELECT RAISE(ABORT, 'invalid savings goal revision');
+        END;
+
+        CREATE TRIGGER capture_savings_goals_insert
+        AFTER INSERT ON savings_goals
+        BEGIN
+            INSERT INTO change_log (
+                entity_type, entity_id, operation, revision, device_id
+            ) VALUES (
+                'savings_goals', NEW.id, 'insert', NEW.revision,
+                (SELECT value FROM sync_metadata WHERE key = 'active_device_id')
+            );
+        END;
+
+        CREATE TRIGGER capture_savings_goals_update
+        AFTER UPDATE ON savings_goals
+        BEGIN
+            INSERT INTO change_log (
+                entity_type, entity_id, operation, revision, device_id
+            ) VALUES (
+                'savings_goals', NEW.id,
+                CASE WHEN NEW.deleted_at IS NOT NULL AND OLD.deleted_at IS NULL
+                     THEN 'delete' ELSE 'update' END,
+                NEW.revision,
+                (SELECT value FROM sync_metadata WHERE key = 'active_device_id')
+            );
+        END;
+
+        CREATE TRIGGER prevent_savings_goals_hard_delete
+        BEFORE DELETE ON savings_goals
+        BEGIN
+            SELECT RAISE(ABORT, 'hard delete is not allowed; use a tombstone');
+        END;
+
+        CREATE TRIGGER tombstone_savings_goals_delete
+        AFTER UPDATE OF deleted_at ON savings_goals
+        WHEN NEW.deleted_at IS NOT NULL AND OLD.deleted_at IS NULL
+        BEGIN
+            INSERT INTO tombstones (
+                entity_type, entity_id, deleted_at, revision, device_id
+            ) VALUES (
+                'savings_goals', NEW.id, NEW.deleted_at, NEW.revision,
                 (SELECT value FROM sync_metadata WHERE key = 'active_device_id')
             )
             ON CONFLICT(entity_type, entity_id) DO UPDATE SET

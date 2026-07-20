@@ -18,12 +18,14 @@ from app.services.payment_method_service import PaymentMethodService
 from app.services.recurring_service import RecurringService
 from app.services.transaction_service import TransactionService
 from app.services.category_service import CategoryService
+from app.services.goal_service import GoalService
 from app.ui.account_form import AccountForm
 from app.ui.backup_password_dialog import BackupPasswordDialog
 from app.ui.budget_form import BudgetForm
 from app.ui.main_window import MainWindow
 from app.ui.investment_form import InvestmentForm
 from app.ui.loan_form import LoanForm, LoanPaymentDialog
+from app.ui.goal_form import GoalContributionDialog, GoalForm
 from app.ui.recurring_form import RecurringRuleForm
 from app.ui.transaction_form import TransactionForm
 
@@ -105,6 +107,23 @@ def main() -> None:
             app.processEvents()
             budget_form.grab().save(str(output / "ui-budget-form.png"))
             budget_form.close()
+            goal_service = GoalService(db)
+            goal_form = GoalForm(account_service.list_accounts())
+            goal_form.show()
+            app.processEvents()
+            goal_form.grab().save(str(output / "ui-goal-form.png"))
+            goal_form.close()
+            manual_goal = next(
+                goal for goal in goal_service.list_goals() if goal.linked_account_id is None
+            )
+            contribution_form = GoalContributionDialog(
+                manual_goal,
+                account_service.list_accounts(),
+            )
+            contribution_form.show()
+            app.processEvents()
+            contribution_form.grab().save(str(output / "ui-goal-contribution-form.png"))
+            contribution_form.close()
             recurring_form = RecurringRuleForm(
                 account_service.list_accounts(),
                 CategoryService(db).list_categories(),
@@ -181,6 +200,7 @@ def seed(db) -> None:
     loans = LoanService(db)
     payments = PaymentMethodService(db)
     budgets = BudgetService(db)
+    goals = GoalService(db)
     bank = accounts.create_account("Everyday Banking", "bank")
     current = accounts.create_account(
         "Main Current", "current_account", parent_id=bank.id, opening_balance="2840.50"
@@ -219,6 +239,25 @@ def seed(db) -> None:
     )
     budgets.set_budget(
         expense_categories["Utilities"], "140", start_date="2026-07-01"
+    )
+    goals.create_goal(
+        "Emergency reserve",
+        "18000",
+        "2027-01-31",
+        linked_account_id=savings.id,
+    )
+    holiday_goal = goals.create_goal(
+        "Family holiday",
+        "3500",
+        "2027-06-30",
+    )
+    goals.add_contribution(
+        holiday_goal.id,
+        current.id,
+        savings.id,
+        "400",
+        "2026-07-06",
+        "Initial holiday contribution",
     )
     transactions.add_transfer(
         current.id, savings.id, "500", "2026-07-08", "Monthly savings"
