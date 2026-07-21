@@ -2,8 +2,8 @@
 
 Money Manager is a local-first personal finance system with a Windows desktop app and an Android companion.
 
-- The Windows app owns the complete editing workflow and stores data in local SQLite.
-- The Android app keeps an independent SQLite cache for offline access.
+- The Windows app owns the complete editing workflow and stores data in a SQLCipher-encrypted local database. Its random key is protected for the signed-in Windows user.
+- The Android app keeps an independent SQLCipher-encrypted cache for offline access and requires an enrolled fingerprint or other device biometric whenever it opens or returns from the background.
 - Sync is opt-in, direct over local Wi-Fi, authenticated, and protected with pinned local HTTPS.
 - There is no cloud database, web deployment, or online account.
 
@@ -34,6 +34,8 @@ The database is stored by default at:
 ```text
 %LOCALAPPDATA%\MoneyManagerDAD\money_manager.db
 ```
+
+Settings includes a plain-language backup center plus checked CSV import/export. Secure `.mmbak` backups use a password and are portable; automatic recovery copies are encrypted for the current Windows account. CSV imports are fully validated, exact duplicates are skipped, and a recovery point is created before any rows are written.
 
 ## Android
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import date
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QUrl
@@ -19,12 +20,15 @@ from PySide6.QtWidgets import (
 )
 
 from app.core.app_info import APP_VERSION
+from app.core.database_security import DB_ERROR_TYPES
 from app.core.paths import app_data_dir, backup_dir, database_path
 from app.services.backup_service import BackupService
 from app.services.export_service import ExportService
+from app.services.import_service import ImportService
 from app.sync.pairing_qr import pairing_qr_image
 from app.sync.server import LocalSyncServer
 from app.ui.backup_password_dialog import BackupPasswordDialog
+from app.ui.backup_manager_dialog import BackupManagerDialog
 from app.ui.category_manager import CategoryManagerDialog
 from app.ui.components import (
     badge,
@@ -55,8 +59,8 @@ class SettingsPage(QWidget):
         )
 
         storage_card, storage_layout = create_card(
-            "Local database",
-            subtitle="Your financial data is stored only on this computer",
+            "Encrypted local database",
+            subtitle="Protected with SQLCipher and a key tied to your Windows account",
         )
         storage_body = QHBoxLayout()
         storage_body.setSpacing(16)
@@ -131,27 +135,27 @@ class SettingsPage(QWidget):
         self.tools_grid.setHorizontalSpacing(16)
         self.tools_grid.setVerticalSpacing(16)
 
-        backup_button = primary_button("Create backup", "backup")
-        backup_button.clicked.connect(self.create_backup)
-        encrypted_backup_button = secondary_button("Encrypted", "shield")
-        encrypted_backup_button.setToolTip("Create password-encrypted backup")
+        backup_button = primary_button("Manage backups", "backup")
+        backup_button.clicked.connect(self.manage_backups)
+        encrypted_backup_button = secondary_button("Secure backup", "shield")
+        encrypted_backup_button.setToolTip("Create a password-protected backup")
         encrypted_backup_button.clicked.connect(self.create_encrypted_backup)
-        restore_button = secondary_button("Restore backup", "restore")
-        restore_button.clicked.connect(self.restore_backup)
         backup_card = self._tool_card(
             "Backup & recovery",
-            "Daily snapshots are automatic. Manual copies can be password protected.",
+            "See, check, create, and restore backups with plain-language guidance.",
             "backup",
-            actions_row(backup_button, encrypted_backup_button, restore_button),
+            actions_row(backup_button, encrypted_backup_button),
         )
 
         export_button = soft_button("Export CSV", "download")
         export_button.clicked.connect(self.export_transactions)
+        import_button = secondary_button("Import CSV", "restore")
+        import_button.clicked.connect(self.import_transactions)
         export_card = self._tool_card(
-            "Transaction export",
-            "Create a portable CSV file for spreadsheets and analysis.",
+            "Import & export",
+            "Move transactions to or from a spreadsheet with a safety preview.",
             "download",
-            export_button,
+            actions_row(import_button, export_button),
         )
 
         categories_button = soft_button("Manage categories", "tag")
@@ -186,14 +190,15 @@ class SettingsPage(QWidget):
         privacy_text.setSpacing(8)
         description = QLabel(
             "No cloud database, advertising tracker, or remote finance service is connected. "
-            "Backups and exports remain under your control."
+            "The Windows database and Android cache are encrypted. Backups and exports remain under your control."
         )
         description.setWordWrap(True)
         description.setProperty("role", "subtitle")
         chips = QHBoxLayout()
         chips.setSpacing(8)
         chips.addWidget(badge("Offline ready", "positive"))
-        chips.addWidget(badge("SQLite + WAL", "info"))
+        chips.addWidget(badge("Encrypted Windows database", "positive"))
+        chips.addWidget(badge("Encrypted Android cache", "info"))
         chips.addWidget(badge(f"Version {APP_VERSION}", "neutral"))
         chips.addStretch()
         privacy_text.addWidget(description)
@@ -257,12 +262,25 @@ class SettingsPage(QWidget):
         self.notify("Database path copied")
 
     def create_backup(self) -> None:
+        """Dashboard shortcut: manual backups should always be portable and secure."""
+        self.create_encrypted_backup()
+
+    def create_local_recovery_backup(self) -> Path | None:
         try:
             target = BackupService(self.db).create_backup()
-            self.notify("Backup created")
-            QMessageBox.information(self, "Backup created", str(target))
-        except (OSError, RuntimeError, sqlite3.Error) as exc:
+            self.notify("Recovery point created")
+            return target
+        except (OSError, RuntimeError, *DB_ERROR_TYPES) as exc:
             QMessageBox.warning(self, "Backup failed", str(exc))
+            return None
+
+    def manage_backups(self) -> None:
+        BackupManagerDialog(
+            self.db,
+            on_changed=self.on_changed,
+            notify=self.notify,
+            parent=self,
+        ).exec()
 
     def create_encrypted_backup(self) -> None:
         dialog = BackupPasswordDialog(confirm_password=True, parent=self)
@@ -278,7 +296,7 @@ class SettingsPage(QWidget):
                 "Encrypted backup created",
                 f"The password-protected backup was saved to:\n\n{target}",
             )
-        except (OSError, ValueError, RuntimeError, sqlite3.Error) as exc:
+        except (OSError, ValueError, RuntimeError, *DB_ERROR_TYPES) as exc:
             QMessageBox.warning(self, "Encrypted backup failed", str(exc))
 
     def restore_backup(self) -> None:
@@ -319,16 +337,103 @@ class SettingsPage(QWidget):
                 "Backup restored",
                 f"The backup was restored successfully.\n\nYour previous database was saved to:\n{rollback}",
             )
-        except (OSError, ValueError, RuntimeError, sqlite3.Error) as exc:
+        except (OSError, ValueError, RuntimeError, *DB_ERROR_TYPES) as exc:
             QMessageBox.warning(self, "Restore failed", str(exc))
 
     def export_transactions(self) -> None:
+        documents = Path.home() / "Documents"
+        initial = documents / f"Money Manager transactions {date.today():%Y-%m-%d}.csv"
+        target, _filter = QFileDialog.getSaveFileName(
+            self,
+            "Export transactions",
+            str(initial),
+            "CSV spreadsheet (*.csv)",
+        )
+        if not target:
+            return
+        if not target.lower().endswith(".csv"):
+            target += ".csv"
         try:
-            target = ExportService(self.db).export_transactions_csv()
+            exported = ExportService(self.db).export_transactions_csv(Path(target))
             self.notify("Export created")
-            QMessageBox.information(self, "Export created", str(target))
+            QMessageBox.information(
+                self,
+                "Export ready",
+                f"Your spreadsheet was saved here:\n\n{exported}\n\n"
+                "It contains one row per income, expense, or transfer and can be imported again later.",
+            )
         except OSError as exc:
             QMessageBox.warning(self, "Export failed", str(exc))
+
+    def import_transactions(self) -> None:
+        source, _filter = QFileDialog.getOpenFileName(
+            self,
+            "Import transactions from CSV",
+            str(Path.home() / "Documents"),
+            "CSV spreadsheet (*.csv);;All files (*)",
+        )
+        if not source:
+            return
+        service = ImportService(self.db)
+        try:
+            preview = service.preview_transactions_csv(Path(source))
+        except (OSError, ValueError, *DB_ERROR_TYPES) as exc:
+            QMessageBox.warning(self, "CSV could not be checked", str(exc))
+            return
+        if preview.errors:
+            shown = "\n".join(preview.errors[:12])
+            remaining = len(preview.errors) - 12
+            if remaining > 0:
+                shown += f"\n…and {remaining} more problem{'s' if remaining != 1 else ''}"
+            QMessageBox.warning(
+                self,
+                "Fix the CSV before importing",
+                "Nothing was imported. These rows need attention:\n\n" + shown,
+            )
+            return
+        if preview.import_count == 0:
+            QMessageBox.information(
+                self,
+                "Nothing new to import",
+                f"All {preview.duplicate_count} transaction rows are already in Money Manager.",
+            )
+            return
+        duplicate_note = (
+            f"\n\n{preview.duplicate_count} exact duplicate"
+            f"{'s' if preview.duplicate_count != 1 else ''} will be skipped."
+            if preview.duplicate_count
+            else ""
+        )
+        answer = QMessageBox.question(
+            self,
+            "Import checked transactions?",
+            f"Money Manager found {preview.import_count} new transaction"
+            f"{'s' if preview.import_count != 1 else ''} ready to import."
+            f"{duplicate_note}\n\nA recovery point will be made first.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        rollback = self.create_local_recovery_backup()
+        if rollback is None:
+            return
+        try:
+            imported = service.import_transactions(preview)
+        except (OSError, ValueError, *DB_ERROR_TYPES) as exc:
+            QMessageBox.warning(
+                self,
+                "Import failed safely",
+                f"No partial import was kept.\n\n{exc}",
+            )
+            return
+        self.on_changed({"dashboard", "accounts", "transactions"})
+        self.notify(f"Imported {imported} transactions")
+        QMessageBox.information(
+            self,
+            "Import complete",
+            f"Imported {imported} transaction{'s' if imported != 1 else ''}.\n\n"
+            f"Your before-import recovery point is here:\n{rollback}",
+        )
 
     def manage_categories(self) -> None:
         CategoryManagerDialog(self.db, self.on_changed, self.notify).exec()

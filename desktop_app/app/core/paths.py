@@ -33,7 +33,10 @@ def database_path() -> Path:
     return app_data_dir() / "money_manager.db"
 
 
+def database_key_path() -> Path:
+    return app_data_dir() / "database.key"
+
+
 def ensure_app_dirs() -> None:
     for path in (app_data_dir(), backup_dir(), export_dir(), log_dir()):
         path.mkdir(parents=True, exist_ok=True)
-

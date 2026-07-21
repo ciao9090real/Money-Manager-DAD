@@ -5,6 +5,8 @@ from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
+from app.core.database_security import backup_connection
+
 
 SCHEMA_VERSION = 14
 UTC_NOW_SQL = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"
@@ -124,11 +126,7 @@ def _backup_before_migration(connection: sqlite3.Connection, from_version: int) 
     backup_directory.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     target = backup_directory / f"money_manager_pre_migration_v{from_version}_{timestamp}.db"
-    destination = sqlite3.connect(target)
-    try:
-        connection.backup(destination)
-    finally:
-        destination.close()
+    backup_connection(connection, target)
     backups = sorted(
         backup_directory.glob("money_manager_pre_migration_v*.db"), reverse=True
     )

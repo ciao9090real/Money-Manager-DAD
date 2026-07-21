@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.core.database_security import DB_INTEGRITY_ERROR_TYPES
 from app.models.budget import Budget, BudgetStatus
 from app.models.category import Category
 from app.services.budget_service import BudgetService
@@ -283,7 +284,7 @@ class BudgetsPage(QWidget):
             try:
                 self.service.set_budget(**form.values())
                 self._changed("Budget saved")
-            except (ValueError, sqlite3.IntegrityError) as exc:
+            except (ValueError, *DB_INTEGRITY_ERROR_TYPES) as exc:
                 QMessageBox.warning(self, "Could not save budget", str(exc))
 
     def edit_budget(self) -> None:
@@ -300,7 +301,7 @@ class BudgetsPage(QWidget):
             try:
                 self.service.set_budget(**form.values())
                 self._changed("Budget updated")
-            except (ValueError, sqlite3.IntegrityError) as exc:
+            except (ValueError, *DB_INTEGRITY_ERROR_TYPES) as exc:
                 QMessageBox.warning(self, "Could not update budget", str(exc))
 
     def archive_budget(self) -> None:
@@ -310,7 +311,7 @@ class BudgetsPage(QWidget):
         try:
             self.service.set_active(budget.id, False)
             self._changed("Budget archived")
-        except (ValueError, sqlite3.IntegrityError) as exc:
+        except (ValueError, *DB_INTEGRITY_ERROR_TYPES) as exc:
             QMessageBox.warning(self, "Could not archive budget", str(exc))
 
     def _expense_categories(self) -> list[Category]:

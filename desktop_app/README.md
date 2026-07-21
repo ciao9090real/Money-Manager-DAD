@@ -1,6 +1,6 @@
 # Money Manager Desktop
 
-Modern local-first Windows finance manager built with Python, PySide6, SQLite, and PyInstaller.
+Modern local-first Windows finance manager built with Python, PySide6, SQLCipher, and PyInstaller.
 
 The interface includes a responsive financial dashboard, collapsible navigation,
 searchable and paginated activity, contextual account controls, monthly category
@@ -79,7 +79,15 @@ Data is stored outside the repository in:
 C:\Users\<username>\AppData\Local\MoneyManagerDAD\money_manager.db
 ```
 
-The app also creates local `backups`, `exports`, and `logs` folders beside the database. The folder name remains `MoneyManagerDAD` so existing local data keeps working after the visible app rename.
+The app also creates local `backups`, `exports`, and `logs` folders beside the database. The folder name remains `MoneyManagerDAD` so existing local data keeps working after the visible app rename. `database.key` contains only a DPAPI-protected random key; it is not a password and is usable only by the same signed-in Windows user on that computer.
+
+## Backups, imports, and exports
+
+Open **Settings > Backup & recovery > Manage backups** to see automatic, before-restore, and secure manual backups together. The list shows when each copy was made, how it is protected, its size, and whether it has passed an integrity check. Password-protected backups can be checked on demand before they are needed.
+
+Use **Secure backup** for copies kept on USB storage or in a cloud folder. The password cannot be recovered. Automatic and before-restore copies are SQLCipher encrypted for the current Windows account and are intended for local recovery.
+
+Open **Settings > Import & export** for spreadsheet transfers. Exports contain one row per income, expense, or transfer with these headings: `date`, `type`, `account`, `amount`, `description`, `notes`, `category`, and `target_account`. Import checks every row first, reports all readable problems together, skips exact duplicates, creates a recovery point, and commits the complete import atomically. Account and category names must already exist and be active.
 
 ## Run In Development
 
@@ -107,7 +115,7 @@ cd desktop_app
 The executable is created at:
 
 ```text
-desktop_app\dist\MoneyManager\MoneyManager.exe
+desktop_app\dist\MoneyManager.exe
 ```
 
 The user database is not bundled into the executable.
@@ -117,14 +125,15 @@ The user database is not bundled into the executable.
 Every connection enables foreign keys, WAL mode, normal synchronous writes, and
 a 10-second busy timeout. Migrations create a timestamped SQLite snapshot first
 and run integrity and foreign-key checks before and after the schema change.
+The active database is encrypted with SQLCipher. A fresh 256-bit key is generated locally and wrapped by Windows DPAPI, tying it to the signed-in Windows account. Existing plain databases are moved through an encrypted, integrity-checked copy before the old file is removed.
+
 Manual and automatic daily backups use SQLite's online backup API so WAL data is
-included. Restore validates the selected database and creates a rollback backup
+included. Local recovery copies retain SQLCipher protection. Restore validates the selected database and creates a rollback backup
 of the current data before replacement. Settings can also create `.mmbak`
 password-encrypted manual backups. These use the vetted `cryptography` package,
 Scrypt password key derivation with a fresh random salt, and Fernet authenticated
 encryption. The password is never stored and cannot be recovered by the app.
-Automatic daily and before-restore snapshots remain local SQLite files so
-recovery does not depend on a remembered password.
+Automatic daily and before-restore snapshots use the Windows-protected database key so local recovery does not depend on a remembered password. A `.mmbak` password backup is required for recovery on another computer or Windows profile.
 
 Recently Deleted restores soft-deleted transactions, paired transfers, and
 recurring schedules. Accounts, categories, and payment methods use their own

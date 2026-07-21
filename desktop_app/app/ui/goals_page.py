@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.core.database_security import DB_INTEGRITY_ERROR_TYPES
 from app.models.goal import GoalProgress, SavingsGoal
 from app.services.account_service import AccountService
 from app.services.goal_service import GoalService
@@ -210,7 +211,7 @@ class GoalsPage(QWidget):
             try:
                 self.service.create_goal(**form.values())
                 self._changed("Savings goal created")
-            except (ValueError, sqlite3.IntegrityError) as exc:
+            except (ValueError, *DB_INTEGRITY_ERROR_TYPES) as exc:
                 QMessageBox.warning(self, "Could not save goal", str(exc))
 
     def edit_goal(self, goal_id: str | None) -> None:
@@ -222,7 +223,7 @@ class GoalsPage(QWidget):
             try:
                 self.service.update_goal(goal.id, **form.values())
                 self._changed("Savings goal updated")
-            except (ValueError, sqlite3.IntegrityError) as exc:
+            except (ValueError, *DB_INTEGRITY_ERROR_TYPES) as exc:
                 QMessageBox.warning(self, "Could not update goal", str(exc))
 
     def archive_goal(self, goal_id: str | None) -> None:
@@ -232,7 +233,7 @@ class GoalsPage(QWidget):
         try:
             self.service.set_active(goal.id, False)
             self._changed("Savings goal archived")
-        except (ValueError, sqlite3.IntegrityError) as exc:
+        except (ValueError, *DB_INTEGRITY_ERROR_TYPES) as exc:
             QMessageBox.warning(self, "Could not archive goal", str(exc))
 
     def add_contribution(self, goal_id: str | None) -> None:
@@ -264,7 +265,7 @@ class GoalsPage(QWidget):
                     "Goal contribution recorded",
                     {"goals", "accounts", "transactions", "dashboard"},
                 )
-            except (ValueError, sqlite3.IntegrityError) as exc:
+            except (ValueError, *DB_INTEGRITY_ERROR_TYPES) as exc:
                 QMessageBox.warning(self, "Could not record contribution", str(exc))
 
     def _goal_accounts(self, include_inactive: bool = False):

@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import 'app_controller.dart';
 import 'data/local_database.dart';
 import 'data/sync_client.dart';
+import 'security/app_security.dart';
 import 'theme/app_theme.dart';
 import 'ui/app_shell.dart';
+import 'ui/secure_app_gate.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -12,14 +14,14 @@ Future<void> main() async {
     database: LocalDatabase(),
     syncClient: SyncClient(),
   );
-  await controller.initialize();
   runApp(MoneyManagerApp(controller: controller));
 }
 
 class MoneyManagerApp extends StatelessWidget {
-  const MoneyManagerApp({super.key, required this.controller});
+  const MoneyManagerApp({super.key, required this.controller, this.security});
 
   final AppController controller;
+  final AppSecurity? security;
 
   @override
   Widget build(BuildContext context) {
@@ -29,7 +31,11 @@ class MoneyManagerApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         title: 'Money Manager',
         theme: AppTheme.light,
-        home: const AppShell(),
+        home: SecureAppGate(
+          controller: controller,
+          security: security ?? AppSecurity.device(),
+          child: const AppShell(),
+        ),
       ),
     );
   }

@@ -27,4 +27,4 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     main.py
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-Write-Host "Built dist\MoneyManager\MoneyManager.exe"
+Write-Host "Built dist\MoneyManager.exe"

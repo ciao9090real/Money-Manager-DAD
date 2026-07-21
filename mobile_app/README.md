@@ -2,6 +2,16 @@
 
 The Android companion keeps its own SQLite cache and works offline after pairing. Sync is direct between the phone and the Windows desktop over the same local Wi-Fi network; there is no cloud account or shared database file.
 
+## Security requirements
+
+- Enroll a fingerprint in Android before opening Money Manager. There is no app-specific PIN fallback; Android displays the phone's protected biometric prompt.
+- The app authenticates on launch and every time it returns from the background.
+- The offline cache is encrypted with SQLCipher. Its random 256-bit key is stored through Android Keystore-backed secure storage.
+- Screenshots and recent-app previews are blocked by Android's secure-window flag.
+- Android system backup is disabled for the app. The desktop remains the recoverable source of truth.
+
+On the first upgraded launch, an existing plain phone cache is copied into an encrypted database, checked, and swapped atomically. Pending offline commands are preserved. If Android secure storage is cleared or becomes unavailable, the encrypted cache cannot be recovered locally; pair with the desktop again to obtain a fresh snapshot.
+
 ## Tooling
 
 1. Install Android Studio and its Android SDK.
@@ -30,6 +40,8 @@ The phone can browse accounts, balances, transactions, investments, loans, recur
 Budget and goal setup remains on the desktop, which is the source of truth. The phone can queue income, expenses, transfers, recurring-payment records, and manual savings-goal contributions offline. The desktop validates and applies those commands exactly once on the next sync.
 
 When a release adds newly synchronized record types, the phone requests one fresh snapshot and stores the new data-set version atomically with its cursor. Existing offline records and pending commands remain safe if a sync is interrupted.
+
+Backups and CSV imports/exports are managed in the Windows app under **Settings**. The phone cache should not be copied as a backup because its encryption key is tied to the device.
 
 ## Validate
 

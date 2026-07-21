@@ -137,19 +137,22 @@ class MorePage extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.shield_outlined, color: AppColors.primary),
+              const Icon(
+                Icons.enhanced_encryption_outlined,
+                color: AppColors.primary,
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Local and private',
+                      'Encrypted and fingerprint locked',
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const SizedBox(height: 5),
                     Text(
-                      'No cloud account is used. This phone stores an offline SQLite cache and syncs only with your paired desktop over local Wi-Fi.',
+                      'The phone cache is encrypted with SQLCipher, the app locks whenever it leaves the screen, and screenshots are blocked. Backups and spreadsheet imports are managed on the desktop, which remains the source of truth.',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],

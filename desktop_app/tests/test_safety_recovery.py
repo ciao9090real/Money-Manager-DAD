@@ -65,6 +65,28 @@ def test_encrypted_backup_restores_with_correct_password(services):
     assert TransactionService(db).list_transactions() == []
 
 
+def test_backup_inventory_and_integrity_check_are_plain_language(services):
+    db, accounts, _transactions, _recurring, _trash = services
+    accounts.create_account("Current", "current_account", opening_balance="100")
+    service = BackupService(db)
+    plain = service.create_backup()
+    secure = service.create_encrypted_backup("correct horse battery staple")
+
+    inventory = service.list_backups()
+    by_path = {item.path: item for item in inventory}
+
+    assert by_path[plain.resolve()].status == "Ready"
+    assert by_path[plain.resolve()].protection == "None"
+    assert by_path[secure.resolve()].status == "Locked"
+    assert by_path[secure.resolve()].protection == "Password"
+    inspection = service.inspect_backup(
+        secure,
+        password="correct horse battery staple",
+    )
+    assert inspection.encrypted is True
+    assert inspection.integrity == "ok"
+
+
 def test_encrypted_backup_rejects_wrong_password_without_changing_data(services):
     db, accounts, transactions, _recurring, _trash = services
     current = accounts.create_account("Current", "current_account", opening_balance="100")

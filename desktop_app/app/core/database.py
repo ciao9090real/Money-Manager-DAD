@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from app.core.migrations import assert_database_integrity, migrate
 from app.core.paths import database_path, ensure_app_dirs
+from app.core.database_security import connect_encrypted, encryption_enabled
 
 
 def connect(path: Path | None = None) -> sqlite3.Connection:
@@ -17,9 +18,13 @@ def connect(path: Path | None = None) -> sqlite3.Connection:
     reused accidentally by a report or synchronization worker.
     """
     ensure_app_dirs()
+    explicit_path = path is not None
     db_path = path or database_path()
-    connection = sqlite3.connect(db_path, timeout=10)
-    connection.row_factory = sqlite3.Row
+    if encryption_enabled(explicit_path=explicit_path):
+        connection = connect_encrypted(db_path, timeout=10)
+    else:
+        connection = sqlite3.connect(db_path, timeout=10)
+        connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
     connection.execute("PRAGMA journal_mode = WAL")
     connection.execute("PRAGMA synchronous = NORMAL")

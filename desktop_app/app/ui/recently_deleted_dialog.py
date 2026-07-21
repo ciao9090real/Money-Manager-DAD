@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from app.core.database_security import DB_ERROR_TYPES
 from app.services.trash_service import TrashService
 from app.ui.components import create_card, empty_state, primary_button, secondary_button, style_table
 
@@ -108,7 +109,7 @@ class RecentlyDeletedDialog(QDialog):
             return
         try:
             self.service.restore(entity_type, entity_id)
-        except (ValueError, sqlite3.Error) as exc:
+        except (ValueError, *DB_ERROR_TYPES) as exc:
             QMessageBox.warning(self, "Could not restore item", str(exc))
             return
         self.on_changed({"dashboard", "transactions", "upcoming"})

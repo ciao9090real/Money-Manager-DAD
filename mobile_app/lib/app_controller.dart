@@ -40,6 +40,8 @@ class AppController extends ChangeNotifier {
   bool isSyncing = false;
   String? syncError;
   String? lastSyncAt;
+  bool _initialized = false;
+  int _sessionGeneration = 0;
 
   bool get isPaired => credentials != null;
   int get pendingCount =>
@@ -47,10 +49,36 @@ class AppController extends ChangeNotifier {
   int get failedCount =>
       pendingCommands.where((command) => command.status == 'failed').length;
 
-  Future<void> initialize() async {
-    await database.initialize();
+  Future<void> initialize({required String databasePassword}) async {
+    if (_initialized) return;
+    await database.initialize(password: databasePassword);
     credentials = await _readCredentials();
     await reload();
+    _initialized = true;
+  }
+
+  Future<void> lock() async {
+    _sessionGeneration += 1;
+    _initialized = false;
+    await database.close();
+    allAccounts = const [];
+    accounts = const [];
+    categories = const [];
+    transactions = const [];
+    recurring = const [];
+    investments = const [];
+    loans = const [];
+    budgets = const [];
+    netWorthSnapshots = const [];
+    savingsGoals = const [];
+    loanRecords = const [];
+    loanPayments = const [];
+    pendingCommands = const [];
+    credentials = null;
+    isSyncing = false;
+    syncError = null;
+    lastSyncAt = null;
+    notifyListeners();
   }
 
   Future<void> reload() async {
@@ -934,6 +962,7 @@ class AppController extends ChangeNotifier {
     required String code,
     required String fingerprintPrefix,
   }) async {
+    final session = _sessionGeneration;
     final existingDeviceId = await secureStorage.read(key: 'device_id');
     final deviceId = existingDeviceId ?? const Uuid().v4();
     isSyncing = true;
@@ -947,23 +976,28 @@ class AppController extends ChangeNotifier {
         deviceId: deviceId,
         displayName: 'Android phone',
       );
+      if (session != _sessionGeneration) return;
       await _writeCredentials(paired);
       credentials = paired;
       isSyncing = false;
       notifyListeners();
       await syncNow();
     } catch (error) {
+      if (session != _sessionGeneration) return;
       syncError = '$error';
       rethrow;
     } finally {
-      isSyncing = false;
-      notifyListeners();
+      if (session == _sessionGeneration) {
+        isSyncing = false;
+        notifyListeners();
+      }
     }
   }
 
   Future<void> syncNow() async {
     final paired = credentials;
     if (paired == null || isSyncing) return;
+    final session = _sessionGeneration;
     isSyncing = true;
     syncError = null;
     notifyListeners();
@@ -982,18 +1016,22 @@ class AppController extends ChangeNotifier {
           entitySetVersion: entitySetVersion,
           commands: commands,
         );
+        if (session != _sessionGeneration) return;
         await database.applyExchange(response);
         hasMore = response['has_more'] == true;
         includeCommands = false;
       }
-      await reload();
+      if (session == _sessionGeneration) await reload();
     } catch (error) {
+      if (session != _sessionGeneration) return;
       syncError = '$error';
       await reload();
       rethrow;
     } finally {
-      isSyncing = false;
-      notifyListeners();
+      if (session == _sessionGeneration) {
+        isSyncing = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -1114,7 +1152,14 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> unpair() async {
-    await secureStorage.deleteAll();
+    for (final key in const [
+      'desktop_url',
+      'device_id',
+      'auth_token',
+      'fingerprint',
+    ]) {
+      await secureStorage.delete(key: key);
+    }
     await database.clearSyncedData();
     credentials = null;
     syncError = null;

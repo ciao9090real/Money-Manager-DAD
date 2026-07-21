@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from app.core.database_security import DB_INTEGRITY_ERROR_TYPES
 from app.models.category import Category
 from app.services.category_service import CategoryService
 from app.ui.components import (
@@ -106,7 +107,7 @@ class CategoryManagerDialog(QDialog):
             try:
                 self.service.create_category(**form.values())
                 self._changed("Category created")
-            except (ValueError, sqlite3.IntegrityError) as exc:
+            except (ValueError, *DB_INTEGRITY_ERROR_TYPES) as exc:
                 QMessageBox.warning(self, "Could not save category", str(exc))
 
     def edit_category(self) -> None:
@@ -118,7 +119,7 @@ class CategoryManagerDialog(QDialog):
             try:
                 self.service.update_category(category.id, **form.values())
                 self._changed("Category updated")
-            except (ValueError, sqlite3.IntegrityError) as exc:
+            except (ValueError, *DB_INTEGRITY_ERROR_TYPES) as exc:
                 QMessageBox.warning(self, "Could not save category", str(exc))
 
     def toggle_category(self) -> None:
@@ -132,7 +133,7 @@ class CategoryManagerDialog(QDialog):
             else:
                 self.service.restore_category(category.id)
                 self._changed("Category restored")
-        except (ValueError, sqlite3.IntegrityError) as exc:
+        except (ValueError, *DB_INTEGRITY_ERROR_TYPES) as exc:
             QMessageBox.warning(self, "Could not update category", str(exc))
 
     def _selected_category(self) -> Category | None:
@@ -196,6 +197,6 @@ def create_category_dialog(
         return None
     try:
         return service.create_category(**form.values())
-    except (ValueError, sqlite3.IntegrityError) as exc:
+    except (ValueError, *DB_INTEGRITY_ERROR_TYPES) as exc:
         QMessageBox.warning(parent, "Could not save category", str(exc))
         return None
