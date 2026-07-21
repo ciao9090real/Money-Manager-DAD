@@ -53,6 +53,12 @@ jobs:
           --clean
           main.py
 
+      - name: Generate checksum
+        shell: pwsh
+        run: |
+          $hash = Get-FileHash .\dist\MoneyManager.exe -Algorithm SHA256
+          "$($hash.Hash)  MoneyManager.exe" | Out-File -FilePath .\dist\MoneyManager.exe.sha256.txt -Encoding ascii
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -60,10 +66,18 @@ jobs:
           name: Money Manager ${{ env.RELEASE_TAG }}
           generate_release_notes: true
           fail_on_unmatched_files: true
-          files: desktop_app/dist/MoneyManager.exe
+          files: |
+            desktop_app/dist/MoneyManager.exe
+            desktop_app/dist/MoneyManager.exe.sha256.txt
 
       - name: Add permanent download link to job summary
         shell: pwsh
         run: |
           $downloadUrl = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:RELEASE_TAG/MoneyManager.exe"
+          $checksumUrl = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:RELEASE_TAG/MoneyManager.exe.sha256.txt"
+          $hash = Get-Content .\dist\MoneyManager.exe.sha256.txt
           "Download: [$downloadUrl]($downloadUrl)" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "Checksum: [$checksumUrl]($checksumUrl)" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "``````" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "$hash" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "``````" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
