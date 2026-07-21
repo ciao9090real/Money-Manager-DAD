@@ -23,6 +23,7 @@ class Investment:
 class InvestmentSnapshot:
     investment: Investment
     contributed: Decimal
+    gross_contributed: Decimal
     current_value: Decimal
     gain_loss: Decimal
     return_percent: Decimal

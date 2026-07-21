@@ -105,6 +105,74 @@ def test_add_funds_and_update_value_calculate_performance(services):
     ]
 
 
+def test_partial_withdrawal_moves_cash_without_counting_it_as_a_loss(services):
+    db, accounts, investments = services
+    source = accounts.create_account(
+        "Current",
+        "current_account",
+        opening_balance="1000",
+    )
+    destination = accounts.create_account("Savings", "savings_account")
+    created = investments.create_investment(
+        "Global index",
+        "etf",
+        source.id,
+        "200",
+        "2026-07-01",
+        current_value="220",
+    )
+    net_worth_before = DashboardService(db).summary()["net_worth"]
+
+    withdrawn = investments.withdraw_funds(
+        created.investment.id,
+        destination.id,
+        "50",
+        "2026-07-16",
+    )
+
+    assert withdrawn.current_value == Decimal("170.00")
+    assert withdrawn.contributed == Decimal("150.00")
+    assert withdrawn.gross_contributed == Decimal("200.00")
+    assert withdrawn.gain_loss == Decimal("20.00")
+    assert withdrawn.return_percent == Decimal("10.00")
+    assert accounts.account_balance(destination.id) == Decimal("50.00")
+    assert accounts.account_balance(withdrawn.investment.account_id) == Decimal(
+        "170.00"
+    )
+    assert DashboardService(db).summary()["net_worth"] == net_worth_before
+    history = investments.value_history(created.investment.id)
+    assert (history[-1].contributed, history[-1].value) == (
+        Decimal("150.00"),
+        Decimal("170.00"),
+    )
+
+
+def test_partial_withdrawal_rejects_full_liquidation(services):
+    _db, accounts, investments = services
+    source = accounts.create_account("Current", "current_account", opening_balance="500")
+    created = investments.create_investment(
+        "Index",
+        "etf",
+        source.id,
+        "100",
+        "2026-07-01",
+    )
+
+    with pytest.raises(ValueError, match="use Delete to liquidate"):
+        investments.withdraw_funds(
+            created.investment.id,
+            source.id,
+            "100",
+            "2026-07-16",
+        )
+
+    assert accounts.account_balance(source.id) == Decimal("400.00")
+    assert investments.get_snapshot(created.investment.id).current_value == Decimal(
+        "100.00"
+    )
+    assert len(investments.value_history(created.investment.id)) == 1
+
+
 def test_value_history_preserves_every_same_day_update(services):
     _db, accounts, investments = services
     source = accounts.create_account("Current", "current_account", opening_balance="500")

@@ -151,6 +151,47 @@ class InvestmentService:
             )
             return self._snapshot(investment_id)
 
+    def withdraw_funds(
+        self,
+        investment_id: str,
+        destination_account_id: str,
+        amount: object,
+        date: str,
+    ) -> InvestmentSnapshot:
+        with unit_of_work(self.db):
+            investment = self._investment(investment_id)
+            self._funding_account(destination_account_id)
+            if destination_account_id == investment.account_id:
+                raise ValueError(
+                    "Destination and investment accounts must be different"
+                )
+            transaction_date = self._investment_date(date)
+            self._require_current_timeline_date(investment.id, transaction_date)
+            withdrawal = require_positive(amount)
+            current_value = self.accounts.account_balance(investment.account_id)
+            if current_value <= 0:
+                raise ValueError("This investment has no funds available to withdraw")
+            if withdrawal >= current_value:
+                raise ValueError(
+                    "Withdrawal must be less than the current value; "
+                    "use Delete to liquidate the portfolio"
+                )
+            self.transactions.add_transfer(
+                investment.account_id,
+                destination_account_id,
+                withdrawal,
+                transaction_date,
+                f"Withdraw from {investment.name}",
+                investment_id=investment.id,
+            )
+            remaining_value = self.accounts.account_balance(investment.account_id)
+            self.investments.record_value(
+                investment.id,
+                transaction_date,
+                remaining_value,
+            )
+            return self._snapshot(investment_id)
+
     def update_value(
         self,
         investment_id: str,
@@ -234,6 +275,11 @@ class InvestmentService:
             transaction_date = self._investment_date(date)
             self._require_current_timeline_date(investment.id, transaction_date)
             shares = self.liquidation_plan(investment_id)
+            self.investments.record_value(
+                investment.id,
+                transaction_date,
+                Decimal("0"),
+            )
             for share in shares:
                 if not share.proceeds:
                     continue
@@ -248,18 +294,14 @@ class InvestmentService:
             remaining = self.accounts.account_balance(investment.account_id)
             if remaining:
                 raise RuntimeError("Investment liquidation did not settle to zero")
-            self.investments.record_value(
-                investment.id,
-                transaction_date,
-                Decimal("0"),
-            )
             self.investments.delete(investment.id)
             self.account_repository.deactivate(investment.account_id)
 
     def list_snapshots(self) -> list[InvestmentSnapshot]:
         return [
-            self._make_snapshot(investment, contributed, current)
-            for investment, contributed, current in self.investments.list_with_values()
+            self._make_snapshot(investment, contributed, gross_contributed, current)
+            for investment, contributed, gross_contributed, current
+            in self.investments.list_with_values()
         ]
 
     def get_snapshot(self, investment_id: str) -> InvestmentSnapshot | None:
@@ -425,16 +467,20 @@ class InvestmentService:
     def summary(self) -> dict[str, Decimal | int]:
         snapshots = self.list_snapshots()
         contributed = sum((item.contributed for item in snapshots), Decimal("0"))
+        gross_contributed = sum(
+            (item.gross_contributed for item in snapshots), Decimal("0")
+        )
         current_value = sum((item.current_value for item in snapshots), Decimal("0"))
         gain_loss = current_value - contributed
         return_percent = (
-            (gain_loss / contributed * Decimal("100")).quantize(Decimal("0.01"))
-            if contributed
+            (gain_loss / gross_contributed * Decimal("100")).quantize(Decimal("0.01"))
+            if gross_contributed
             else Decimal("0")
         )
         return {
             "count": len(snapshots),
             "contributed": contributed,
+            "gross_contributed": gross_contributed,
             "current_value": current_value,
             "gain_loss": gain_loss,
             "return_percent": return_percent,
@@ -450,17 +496,19 @@ class InvestmentService:
     def _make_snapshot(
         investment: Investment,
         contributed: Decimal,
+        gross_contributed: Decimal,
         current_value: Decimal,
     ) -> InvestmentSnapshot:
         gain_loss = current_value - contributed
         return_percent = (
-            (gain_loss / contributed * Decimal("100")).quantize(Decimal("0.01"))
-            if contributed
+            (gain_loss / gross_contributed * Decimal("100")).quantize(Decimal("0.01"))
+            if gross_contributed
             else Decimal("0")
         )
         return InvestmentSnapshot(
             investment=investment,
             contributed=contributed,
+            gross_contributed=gross_contributed,
             current_value=current_value,
             gain_loss=gain_loss,
             return_percent=return_percent,

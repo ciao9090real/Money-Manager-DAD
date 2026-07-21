@@ -151,6 +151,46 @@ class AddInvestmentFundsDialog(QDialog):
         }
 
 
+class WithdrawInvestmentFundsDialog(QDialog):
+    def __init__(self, snapshot: InvestmentSnapshot, funding_accounts: list[Account]):
+        super().__init__()
+        self.setWindowTitle("Withdraw investment funds")
+        self.destination_account = QComboBox()
+        for account in funding_accounts:
+            self.destination_account.addItem(account.name, account.id)
+        available = QLineEdit(format_money(snapshot.current_value))
+        available.setReadOnly(True)
+        available.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self.amount = QLineEdit()
+        self.amount.setPlaceholderText("0.00")
+        self.amount.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self.date = DatePicker(QDate.currentDate())
+        self.date.setMaximumDate(QDate.currentDate())
+
+        form = QFormLayout()
+        form.addRow("Available value", available)
+        form.addRow("Send to", self.destination_account)
+        form.addRow("Amount", self.amount)
+        form.addRow("Date", self.date)
+        dialog_shell(
+            self,
+            "Withdraw funds",
+            snapshot.investment.name,
+            form,
+            "Withdraw",
+            "transactions",
+            minimum_width=460,
+        )
+        self.amount.setFocus()
+
+    def values(self) -> dict:
+        return {
+            "destination_account_id": self.destination_account.currentData(),
+            "amount": self.amount.text(),
+            "date": self.date.date().toString("yyyy-MM-dd"),
+        }
+
+
 class UpdateInvestmentValueDialog(QDialog):
     def __init__(self, snapshot: InvestmentSnapshot):
         super().__init__()

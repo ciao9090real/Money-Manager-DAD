@@ -47,6 +47,7 @@ from app.ui.investment_form import (
     EditInvestmentValueDialog,
     InvestmentForm,
     UpdateInvestmentValueDialog,
+    WithdrawInvestmentFundsDialog,
 )
 from app.ui.theme import Colors
 from app.utils.dates import format_display_date
@@ -80,9 +81,9 @@ class InvestmentsPage(QWidget):
         self.metric_values: dict[str, QLabel] = {}
         for key, label, helper, tone in (
             ("current_value", "Portfolio value", "Latest recorded values", None),
-            ("contributed", "Total contributed", "Money moved into investments", None),
-            ("gain_loss", "Gain / loss", "Value minus contributions", None),
-            ("return_percent", "Overall return", "Gain or loss on contributions", None),
+            ("contributed", "Net invested", "Deposits minus withdrawals", None),
+            ("gain_loss", "Gain / loss", "Value adjusted for money moved", None),
+            ("return_percent", "Overall return", "Gain or loss on total deposits", None),
         ):
             card, value = metric_card(label, "€0.00", helper, tone)
             self.metric_widgets.append(card)
@@ -176,7 +177,7 @@ class InvestmentsPage(QWidget):
 
         self.table = QTableWidget(0, 6)
         self.table.setHorizontalHeaderLabels(
-            ["Investment", "Type", "Contributed", "Current value", "Gain / loss", "Return"]
+            ["Investment", "Type", "Net invested", "Current value", "Gain / loss", "Return"]
         )
         style_table(self.table)
         header = self.table.horizontalHeader()
@@ -190,6 +191,10 @@ class InvestmentsPage(QWidget):
         self.result_label.setProperty("role", "count")
         self.edit_button = ghost_button("Edit", "edit")
         self.add_funds_button = soft_button("Add funds", "plus")
+        self.withdraw_button = soft_button("Withdraw", "transactions")
+        self.withdraw_button.setToolTip(
+            "Withdraw part of this portfolio to an active account"
+        )
         self.update_value_button = soft_button("Update value", "investments")
         self.delete_button = danger_button("Delete", "delete")
         self.delete_button.setToolTip(
@@ -197,11 +202,13 @@ class InvestmentsPage(QWidget):
         )
         self.edit_button.clicked.connect(self.edit_investment)
         self.add_funds_button.clicked.connect(self.add_funds)
+        self.withdraw_button.clicked.connect(self.withdraw_funds)
         self.update_value_button.clicked.connect(self.update_value)
         self.delete_button.clicked.connect(self.delete_investment)
         for button in (
             self.edit_button,
             self.add_funds_button,
+            self.withdraw_button,
             self.update_value_button,
             self.delete_button,
         ):
@@ -216,12 +223,13 @@ class InvestmentsPage(QWidget):
         controls_layout.addStretch()
         controls_layout.addWidget(self.edit_button)
         controls_layout.addWidget(self.add_funds_button)
+        controls_layout.addWidget(self.withdraw_button)
         controls_layout.addWidget(self.update_value_button)
         controls_layout.addWidget(self.delete_button)
 
         card, card_layout = create_card(
             "Portfolio",
-            subtitle="Contributions and manually recorded market values",
+            subtitle="Deposits, withdrawals, and manually recorded market values",
         )
         self.portfolio_card = card
         card_layout.addWidget(controls)
@@ -437,6 +445,29 @@ class InvestmentsPage(QWidget):
             except ValueError as exc:
                 QMessageBox.warning(self, "Could not update value", str(exc))
 
+    def withdraw_funds(self) -> None:
+        snapshot = self._selected_snapshot()
+        if not snapshot:
+            return
+        accounts = self._funding_accounts()
+        if not accounts:
+            QMessageBox.information(
+                self,
+                "No destination account",
+                "No active destination account is available.",
+            )
+            return
+        dialog = WithdrawInvestmentFundsDialog(snapshot, accounts)
+        if dialog.exec():
+            try:
+                self.service.withdraw_funds(
+                    snapshot.investment.id,
+                    **dialog.values(),
+                )
+                self._changed("Investment funds withdrawn")
+            except ValueError as exc:
+                QMessageBox.warning(self, "Could not withdraw funds", str(exc))
+
     def delete_investment(self) -> None:
         snapshot = self._selected_snapshot()
         if not snapshot:
@@ -572,6 +603,7 @@ class InvestmentsPage(QWidget):
         selected = snapshot is not None
         self.edit_button.setEnabled(selected)
         self.add_funds_button.setEnabled(selected)
+        self.withdraw_button.setEnabled(bool(snapshot and snapshot.current_value > 0))
         self.update_value_button.setEnabled(selected)
         self.delete_button.setEnabled(selected)
         if snapshot and self.history_selector.currentData() != snapshot.investment.id:

@@ -40,7 +40,7 @@ class InvestmentRepository:
 
     def list_with_values(
         self, include_inactive: bool = False
-    ) -> list[tuple[Investment, Decimal, Decimal]]:
+    ) -> list[tuple[Investment, Decimal, Decimal, Decimal]]:
         query = """
             WITH account_activity AS (
                 SELECT account_id, SUM(amount_cents) AS amount_cents
@@ -48,17 +48,23 @@ class InvestmentRepository:
                 WHERE deleted_at IS NULL
                 GROUP BY account_id
             ), contributions AS (
-                SELECT investment_id, account_id, SUM(amount_cents) AS amount_cents
+                SELECT investment_id, account_id,
+                       SUM(amount_cents) AS net_amount_cents,
+                       SUM(
+                           CASE WHEN type = 'transfer_in' THEN amount_cents ELSE 0 END
+                       ) AS gross_amount_cents
                 FROM transactions
                 WHERE investment_id IS NOT NULL
-                  AND type = 'transfer_in'
+                  AND type IN ('transfer_in', 'transfer_out')
                   AND deleted_at IS NULL
                 GROUP BY investment_id, account_id
             )
             SELECT i.*,
                    a.opening_balance_cents + COALESCE(activity.amount_cents, 0)
                        AS current_value_cents,
-                   COALESCE(contributions.amount_cents, 0) AS contributed_cents
+                   COALESCE(contributions.net_amount_cents, 0) AS contributed_cents,
+                   COALESCE(contributions.gross_amount_cents, 0)
+                       AS gross_contributed_cents
             FROM investments i
             JOIN accounts a ON a.id = i.account_id AND a.deleted_at IS NULL
             LEFT JOIN account_activity activity ON activity.account_id = i.account_id
@@ -74,6 +80,7 @@ class InvestmentRepository:
             (
                 row_to_investment(row),
                 cents_to_decimal(row["contributed_cents"]),
+                cents_to_decimal(row["gross_contributed_cents"]),
                 cents_to_decimal(row["current_value_cents"]),
             )
             for row in self.db.execute(query)
@@ -268,6 +275,22 @@ class InvestmentRepository:
             JOIN investments AS i ON i.id = t.investment_id
             WHERE t.investment_id = ?
               AND t.account_id = i.account_id
+              AND t.type IN ('transfer_in', 'transfer_out')
+              AND t.deleted_at IS NULL
+              AND i.deleted_at IS NULL
+            """,
+            (investment_id,),
+        ).fetchone()
+        return cents_to_decimal(row["amount_cents"])
+
+    def gross_contributed(self, investment_id: str) -> Decimal:
+        row = self.db.execute(
+            """
+            SELECT COALESCE(SUM(t.amount_cents), 0) AS amount_cents
+            FROM transactions AS t
+            JOIN investments AS i ON i.id = t.investment_id
+            WHERE t.investment_id = ?
+              AND t.account_id = i.account_id
               AND t.type = 'transfer_in'
               AND t.deleted_at IS NULL
               AND i.deleted_at IS NULL
@@ -286,7 +309,7 @@ class InvestmentRepository:
             JOIN investments i ON i.id = t.investment_id
             WHERE t.deleted_at IS NULL
               AND i.deleted_at IS NULL
-              AND t.type = 'transfer_in'
+              AND t.type IN ('transfer_in', 'transfer_out')
               AND t.account_id = i.account_id
         """
         params: tuple[str, ...] = ()

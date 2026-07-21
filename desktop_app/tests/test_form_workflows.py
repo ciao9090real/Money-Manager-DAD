@@ -22,6 +22,7 @@ from app.ui.investment_form import (
     AddInvestmentFundsDialog,
     InvestmentForm,
     UpdateInvestmentValueDialog,
+    WithdrawInvestmentFundsDialog,
 )
 from app.ui.investments_page import InvestmentsPage
 from app.ui.recurring_form import RecurringRuleForm
@@ -293,6 +294,7 @@ def test_investment_forms_cap_dates_at_today(qt_app, tmp_path, monkeypatch):
         dialogs = [
             InvestmentForm([account]),
             AddInvestmentFundsDialog(snapshot, [account]),
+            WithdrawInvestmentFundsDialog(snapshot, [account]),
             UpdateInvestmentValueDialog(snapshot),
         ]
 

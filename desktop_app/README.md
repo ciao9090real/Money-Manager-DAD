@@ -66,10 +66,12 @@ forecast message. The projection does not assume investment returns, loan
 interest accrual, or unscheduled income and spending.
 
 The Investments page moves contributions from a funding account into a managed
-investment account. Manual valuation updates post only the gain or loss, so the
-Dashboard and account hierarchy continue to use the central ledger. Portfolio
-value, contributions, gain or loss, and return percentage are calculated
-automatically; live market prices are not fetched.
+investment account and supports partial withdrawals back to any active funding
+account. Full liquidation remains available when deleting a portfolio. Manual
+valuation updates post only the gain or loss, so the Dashboard and account
+hierarchy continue to use the central ledger. Portfolio value, net invested
+capital, gain or loss, and return percentage are calculated automatically; live
+market prices are not fetched.
 
 Data is stored outside the repository in:
 
