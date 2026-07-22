@@ -1,7 +1,23 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+val keyProperties = Properties()
+val keyPropertiesFile = rootProject.file("key.properties")
+val hasReleaseSigningConfig = keyPropertiesFile.exists()
+
+if (hasReleaseSigningConfig) {
+    keyProperties.load(FileInputStream(keyPropertiesFile))
+} else {
+    logger.warn(
+        "WARNING: android/key.properties was not found; " +
+            "the release build will use the debug signing key.",
+    )
 }
 
 android {
@@ -26,11 +42,22 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            if (hasReleaseSigningConfig) {
+                keyAlias = keyProperties["keyAlias"] as String
+                keyPassword = keyProperties["keyPassword"] as String
+                storeFile = rootProject.file(keyProperties["storeFile"] as String)
+                storePassword = keyProperties["storePassword"] as String
+            } else {
+                initWith(getByName("debug"))
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // Release artifacts are intentionally not signed with Flutter's
-            // public debug key. Configure a private release signing key before
-            // distributing the APK or app bundle.
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",

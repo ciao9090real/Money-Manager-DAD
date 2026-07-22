@@ -27,6 +27,11 @@ jobs:
     runs-on: ubuntu-latest
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      # Signed release builds require these four repository secrets.
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
     defaults:
       run:
         working-directory: mobile_app
@@ -47,17 +52,38 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Restore Android signing keystore
+        if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
+        shell: bash
+        run: printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/upload-keystore.jks
+
+      - name: Write Android signing properties
+        if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
+        shell: bash
+        run: |
+          printf 'storePassword=%s\n' "$ANDROID_KEYSTORE_PASSWORD" > android/key.properties
+          printf 'keyPassword=%s\n' "$ANDROID_KEY_PASSWORD" >> android/key.properties
+          printf 'keyAlias=%s\n' "$ANDROID_KEY_ALIAS" >> android/key.properties
+          printf 'storeFile=app/upload-keystore.jks\n' >> android/key.properties
+
       - name: Build release APK
         run: flutter build apk --release
 
       - name: Name standalone APK
         run: mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/MoneyManager.apk
 
+      - name: Generate checksum
+        run: |
+          cd build/app/outputs/flutter-apk
+          sha256sum MoneyManager.apk > MoneyManager.apk.sha256.txt
+
       - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
           name: MoneyManager-android-release
-          path: mobile_app/build/app/outputs/flutter-apk/MoneyManager.apk
+          path: |
+            mobile_app/build/app/outputs/flutter-apk/MoneyManager.apk
+            mobile_app/build/app/outputs/flutter-apk/MoneyManager.apk.sha256.txt
           if-no-files-found: error
 
       - name: Publish APK to GitHub Release
@@ -68,10 +94,18 @@ jobs:
           name: Money Manager ${{ env.RELEASE_TAG }}
           generate_release_notes: true
           fail_on_unmatched_files: true
-          files: mobile_app/build/app/outputs/flutter-apk/MoneyManager.apk
+          files: |
+            mobile_app/build/app/outputs/flutter-apk/MoneyManager.apk
+            mobile_app/build/app/outputs/flutter-apk/MoneyManager.apk.sha256.txt
 
       - name: Add permanent download link to job summary
         if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
         run: |
           download_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/MoneyManager.apk"
+          checksum_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/MoneyManager.apk.sha256.txt"
+          hash="$(cat build/app/outputs/flutter-apk/MoneyManager.apk.sha256.txt)"
           echo "Download: [$download_url]($download_url)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Checksum: [$checksum_url]($checksum_url)" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "$hash" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
