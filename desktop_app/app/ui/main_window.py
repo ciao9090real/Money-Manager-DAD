@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QEvent, Qt, QTimer
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 from app.core.app_info import WINDOW_TITLE
 from app.core.database import unit_of_work
 from app.repositories.settings_repository import SettingsRepository
+from app.services.auth_service import AuthService
 from app.ui.accounts_page import AccountsPage
 from app.ui.budgets_page import BudgetsPage
 from app.ui.dashboard_page import DashboardPage
@@ -36,9 +37,18 @@ class MainWindow(QMainWindow):
     SIDEBAR_SETTING = "ui.sidebar_collapsed"
     SIDEBAR_AUTO_COLLAPSE_WIDTH = 1120
 
-    def __init__(self, db: sqlite3.Connection):
+    def __init__(
+        self,
+        db: sqlite3.Connection,
+        *,
+        auth_service: AuthService | None = None,
+        on_lock_requested=None,
+    ):
         super().__init__()
         self.db = db
+        self.auth_service = auth_service or AuthService(db)
+        self.on_lock_requested = on_lock_requested
+        self._lock_pending = False
         self.setWindowTitle(WINDOW_TITLE)
         self.setWindowIcon(icon("accounts", Colors.PRIMARY, 32))
         self.resize(1280, 820)
@@ -58,7 +68,13 @@ class MainWindow(QMainWindow):
         self.investments = InvestmentsPage(db, on_changed=self.invalidate, notify=self.show_status)
         self.loans = LoansPage(db, on_changed=self.invalidate, notify=self.show_status)
         self.upcoming = UpcomingPage(db, on_changed=self.invalidate, notify=self.show_status)
-        self.settings = SettingsPage(db, notify=self.show_status, on_changed=self.invalidate)
+        self.settings = SettingsPage(
+            db,
+            notify=self.show_status,
+            on_changed=self.invalidate,
+            auth_service=self.auth_service,
+            on_lock_requested=self.request_lock,
+        )
         self.dashboard = DashboardPage(
             db,
             on_add_transaction=self.transactions.add_transaction,
@@ -233,6 +249,24 @@ class MainWindow(QMainWindow):
                 self.width() < self.SIDEBAR_AUTO_COLLAPSE_WIDTH,
                 animate=True,
             )
+
+    def changeEvent(self, event) -> None:
+        super().changeEvent(event)
+        if (
+            event.type() == QEvent.Type.WindowStateChange
+            and self.isMinimized()
+            and self.on_lock_requested is not None
+        ):
+            QTimer.singleShot(0, self.request_lock)
+
+    def request_lock(self) -> None:
+        if self._lock_pending or self.on_lock_requested is None:
+            return
+        self._lock_pending = True
+        try:
+            self.on_lock_requested()
+        finally:
+            self._lock_pending = False
 
     def closeEvent(self, event) -> None:
         self.settings.shutdown_sync()

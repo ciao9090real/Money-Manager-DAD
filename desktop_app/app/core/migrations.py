@@ -8,7 +8,7 @@ from uuid import uuid4
 from app.core.database_security import backup_connection
 
 
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 UTC_NOW_SQL = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"
 
 
@@ -71,6 +71,9 @@ def migrate(connection: sqlite3.Connection) -> None:
         if version < 14:
             _run_migration(connection, 14, _migrate_v14)
             version = 14
+        if version < 15:
+            _run_migration(connection, 15, _migrate_v15)
+            version = 15
         assert_database_integrity(connection)
     except Exception:
         connection.rollback()
@@ -1633,5 +1636,26 @@ def _migrate_v14(connection: sqlite3.Connection) -> None:
                 revision = excluded.revision,
                 device_id = excluded.device_id;
         END;
+        """,
+    )
+
+
+def _migrate_v15(connection: sqlite3.Connection) -> None:
+    _execute_script(
+        connection,
+        f"""
+        CREATE TABLE app_auth (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            password_salt BLOB NOT NULL CHECK (length(password_salt) >= 16),
+            password_verifier BLOB NOT NULL CHECK (length(password_verifier) = 32),
+            hello_user_id BLOB,
+            hello_credential BLOB,
+            created_at TEXT NOT NULL DEFAULT ({UTC_NOW_SQL}),
+            updated_at TEXT NOT NULL DEFAULT ({UTC_NOW_SQL}),
+            CHECK (
+                (hello_user_id IS NULL AND hello_credential IS NULL)
+                OR (hello_user_id IS NOT NULL AND hello_credential IS NOT NULL)
+            )
+        );
         """,
     )

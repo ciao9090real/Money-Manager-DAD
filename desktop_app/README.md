@@ -17,7 +17,7 @@ The current desktop baseline is tagged `desktop-baseline-v1`. Dependencies are
 fully pinned in `requirements.lock`, and the Windows CI workflow compiles the
 source, runs the database/migration tests, and packages the executable.
 
-Schema version 14 adds savings goals and goal-tagged contribution transfers alongside daily net-worth snapshots, sync-ready monthly budgets, loan, investment,
+Schema version 15 adds local app authentication alongside savings goals and goal-tagged contribution transfers, daily net-worth snapshots, sync-ready monthly budgets, loan, investment,
 recurring-payment, and synchronization-ready ledger foundation. Existing databases are backed up and
 migrated automatically on first launch. Accounts, categories, payment methods,
 transactions, recurring rules, investments, and loans use UUIDs, exact integer cents,
@@ -81,6 +81,14 @@ C:\Users\<username>\AppData\Local\MoneyManagerDAD\money_manager.db
 
 The app also creates local `backups`, `exports`, and `logs` folders beside the database. The folder name remains `MoneyManagerDAD` so existing local data keeps working after the visible app rename. `database.key` contains only a DPAPI-protected random key; it is not a password and is usable only by the same signed-in Windows user on that computer.
 
+## App password and Windows Hello
+
+The first launch after this security update asks you to create an app password. Money Manager stores only a salted Scrypt verifier inside the encrypted database; it never stores the password itself and cannot recover a forgotten password. Keep it in a trusted password manager.
+
+Windows Hello is optional and uses the Windows WebAuthn platform credential on that PC. Depending on the Windows configuration, the system prompt can use face recognition, fingerprint, or the device PIN. The app password remains available if Windows Hello is canceled or unavailable. A backup restored on another PC keeps its app password, while Windows Hello may need to be enrolled again for the new device.
+
+Money Manager asks for authentication on launch and locks again when the main window is minimized. Use **Settings > App security** to change the password, set up/replace/remove Windows Hello, or choose **Lock now**.
+
 ## Backups, imports, and exports
 
 Open **Settings > Backup & recovery > Manage backups** to see automatic, before-restore, and secure manual backups together. The list shows when each copy was made, how it is protected, its size, and whether it has passed an integrity check. Password-protected backups can be checked on demand before they are needed.
@@ -126,6 +134,8 @@ Every connection enables foreign keys, WAL mode, normal synchronous writes, and
 a 10-second busy timeout. Migrations create a timestamped SQLite snapshot first
 and run integrity and foreign-key checks before and after the schema change.
 The active database is encrypted with SQLCipher. A fresh 256-bit key is generated locally and wrapped by Windows DPAPI, tying it to the signed-in Windows account. Existing plain databases are moved through an encrypted, integrity-checked copy before the old file is removed.
+
+The startup password/Windows Hello gate controls access to the application UI. SQLCipher and the Windows-protected database key remain the separate at-rest protection layer.
 
 Manual and automatic daily backups use SQLite's online backup API so WAL data is
 included. Local recovery copies retain SQLCipher protection. Restore validates the selected database and creates a rollback backup

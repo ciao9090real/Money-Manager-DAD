@@ -2,6 +2,7 @@ altgraph==0.17.5
 cffi==2.1.0
 colorama==0.4.6
 cryptography==49.0.0
+fido2==2.2.1
 iniconfig==2.3.0
 packaging==26.2
 pefile==2024.8.26

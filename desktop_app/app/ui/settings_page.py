@@ -23,12 +23,17 @@ from app.core.app_info import APP_VERSION
 from app.core.database_security import DB_ERROR_TYPES
 from app.core.paths import app_data_dir, backup_dir, database_path
 from app.services.backup_service import BackupService
+from app.services.auth_service import AuthService, WindowsHelloError
 from app.services.export_service import ExportService
 from app.services.import_service import ImportService
 from app.sync.pairing_qr import pairing_qr_image
 from app.sync.server import LocalSyncServer
 from app.ui.backup_password_dialog import BackupPasswordDialog
 from app.ui.backup_manager_dialog import BackupManagerDialog
+from app.ui.auth_dialogs import (
+    ChangePasswordDialog,
+    ConfirmPasswordDialog,
+)
 from app.ui.category_manager import CategoryManagerDialog
 from app.ui.components import (
     badge,
@@ -46,17 +51,61 @@ from app.ui.theme import Colors
 
 
 class SettingsPage(QWidget):
-    def __init__(self, db: sqlite3.Connection, notify=None, on_changed=None):
+    def __init__(
+        self,
+        db: sqlite3.Connection,
+        notify=None,
+        on_changed=None,
+        auth_service: AuthService | None = None,
+        on_lock_requested=None,
+    ):
         super().__init__()
         self.db = db
         self.notify = notify or (lambda _message: None)
         self.on_changed = on_changed or (lambda _tags: None)
+        self.auth_service = auth_service or AuthService(db)
+        self.on_lock_requested = on_lock_requested
         self.sync_server = LocalSyncServer()
         layout = page_layout(
             self,
             "Settings",
-            "Storage, backups, exports, and local app preferences",
+            "App security, storage, backups, exports, and local preferences",
         )
+
+        security_card, security_layout = create_card(
+            "App security",
+            subtitle="Require your app password or Windows Hello before financial pages open",
+        )
+        security_body = QHBoxLayout()
+        security_body.setSpacing(16)
+        security_body.addWidget(self._icon_tile("shield"), 0, Qt.AlignmentFlag.AlignTop)
+        security_details = QVBoxLayout()
+        security_details.setSpacing(10)
+        self.auth_status_label = QLabel()
+        self.auth_status_label.setProperty("role", "subtitle")
+        self.auth_status_label.setWordWrap(True)
+        security_details.addWidget(self.auth_status_label)
+        security_actions = QHBoxLayout()
+        security_actions.setSpacing(9)
+        self.change_password_button = secondary_button("Change password", "edit")
+        self.change_password_button.clicked.connect(self.change_app_password)
+        self.hello_setup_button = secondary_button("Set up Windows Hello", "devices")
+        self.hello_setup_button.clicked.connect(self.setup_windows_hello)
+        self.hello_remove_button = soft_button("Remove Windows Hello", "delete")
+        self.hello_remove_button.clicked.connect(self.remove_windows_hello)
+        security_actions.addWidget(self.change_password_button)
+        security_actions.addWidget(self.hello_setup_button)
+        security_actions.addWidget(self.hello_remove_button)
+        if self.on_lock_requested is not None:
+            lock_button = primary_button("Lock now", "shield")
+            lock_button.clicked.connect(self.on_lock_requested)
+            security_actions.addWidget(lock_button)
+        security_actions.addStretch()
+        security_details.addLayout(security_actions)
+        security_body.addLayout(security_details, 1)
+        security_layout.addLayout(security_body)
+        layout.addWidget(security_card)
+        self._refresh_auth_status()
 
         storage_card, storage_layout = create_card(
             "Encrypted local database",
@@ -260,6 +309,84 @@ class SettingsPage(QWidget):
     def copy_database_path(self) -> None:
         QApplication.clipboard().setText(self.database_path_text)
         self.notify("Database path copied")
+
+    def change_app_password(self) -> None:
+        dialog = ChangePasswordDialog(self.auth_service, self)
+        if dialog.exec():
+            self.notify("App password changed")
+            QMessageBox.information(
+                self,
+                "Password changed",
+                "Your new app password is active. Keep it somewhere safe; Money Manager cannot recover it.",
+            )
+
+    def setup_windows_hello(self) -> None:
+        action = (
+            "replace the Windows Hello passkey"
+            if self.auth_service.status().windows_hello_enabled
+            else "set up Windows Hello"
+        )
+        if not ConfirmPasswordDialog(self.auth_service, action, self).exec():
+            return
+        try:
+            self.auth_service.enable_windows_hello(int(self.window().winId()))
+        except WindowsHelloError as exc:
+            QMessageBox.warning(self, "Windows Hello was not changed", str(exc))
+            return
+        self._refresh_auth_status()
+        self.notify("Windows Hello enabled")
+        QMessageBox.information(
+            self,
+            "Windows Hello ready",
+            "You can now unlock Money Manager with the Windows verification prompt or your app password.",
+        )
+
+    def remove_windows_hello(self) -> None:
+        if not ConfirmPasswordDialog(
+            self.auth_service,
+            "remove Windows Hello from Money Manager",
+            self,
+        ).exec():
+            return
+        answer = QMessageBox.question(
+            self,
+            "Remove Windows Hello?",
+            "You will need the app password the next time Money Manager opens. Remove Windows Hello now?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        self.auth_service.disable_windows_hello()
+        self._refresh_auth_status()
+        self.notify("Windows Hello removed")
+
+    def _refresh_auth_status(self) -> None:
+        status = self.auth_service.status()
+        if not status.configured:
+            message = "An app password will be required when Money Manager next starts."
+        elif status.windows_hello_enabled and status.windows_hello_available:
+            message = (
+                "Password protection and Windows Hello are enabled. The app also locks when minimized."
+            )
+        elif status.windows_hello_enabled:
+            message = (
+                "Password protection is enabled. Windows Hello is saved but unavailable on this PC."
+            )
+        else:
+            message = (
+                "Password protection is enabled. Add Windows Hello for face, fingerprint, or device verification."
+            )
+        self.auth_status_label.setText(message)
+        self.change_password_button.setEnabled(status.configured)
+        self.hello_setup_button.setEnabled(
+            status.configured and status.windows_hello_available
+        )
+        self.hello_setup_button.setText(
+            "Replace Windows Hello"
+            if status.windows_hello_enabled
+            else "Set up Windows Hello"
+        )
+        self.hello_remove_button.setVisible(status.windows_hello_enabled)
 
     def create_backup(self) -> None:
         """Dashboard shortcut: manual backups should always be portable and secure."""
