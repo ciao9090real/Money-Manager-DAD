@@ -18,13 +18,12 @@ class DeviceBiometricAuthenticator implements BiometricAuthenticator {
 
   @override
   Future<bool> isAvailable() async {
-    final supported = await _localAuthentication.isDeviceSupported();
-    if (!supported || !await _localAuthentication.canCheckBiometrics) {
-      return false;
-    }
-    return (await _localAuthentication.getAvailableBiometrics()).contains(
-      BiometricType.fingerprint,
-    );
+  final supported = await _localAuthentication.isDeviceSupported();
+  if (!supported || !await _localAuthentication.canCheckBiometrics) {
+    return false;
+  }
+  final available = await _localAuthentication.getAvailableBiometrics();
+  return available.isNotEmpty;
   }
 
   @override
