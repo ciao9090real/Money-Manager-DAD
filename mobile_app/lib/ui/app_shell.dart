@@ -31,13 +31,23 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
-  Future<void> _addTransaction() async {
+  Future<void> _addTransaction({
+    String initialType = 'expense',
+    String? accountId,
+  }) async {
     await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      builder: (_) => const TransactionSheet(),
+      showDragHandle: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => TransactionSheet(
+        initialType: initialType,
+        initialAccountId: accountId,
+      ),
     );
   }
 
@@ -76,9 +86,16 @@ class _AppShellState extends State<AppShell> {
         onPair: _pair,
         onOpenBudgets: _openBudgets,
         onOpenGoals: _openGoals,
+        onAddExpense: () => _addTransaction(initialType: 'expense'),
+        onAddIncome: () => _addTransaction(initialType: 'income'),
+        onAddTransfer: () => _addTransaction(initialType: 'transfer'),
       ),
       TransactionsPage(controller: controller, onAdd: _addTransaction),
-      AccountsPage(controller: controller),
+      AccountsPage(
+        controller: controller,
+        onAddTransaction: (accountId, transactionType) =>
+            _addTransaction(initialType: transactionType, accountId: accountId),
+      ),
       UpcomingPage(controller: controller),
       MorePage(
         controller: controller,
@@ -94,7 +111,7 @@ class _AppShellState extends State<AppShell> {
         bottom: false,
         child: IndexedStack(index: index, children: pages),
       ),
-      floatingActionButton: index <= 1 && controller.accounts.isNotEmpty
+      floatingActionButton: index == 1 && controller.accounts.isNotEmpty
           ? FloatingActionButton(
               tooltip: 'Add transaction',
               onPressed: _addTransaction,

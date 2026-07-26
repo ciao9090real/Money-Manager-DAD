@@ -37,7 +37,7 @@ The database is stored by default at:
 
 On the first protected launch, create an app password and optionally register Windows Hello. Later launches can use the password or Windows' face, fingerprint, or device verification prompt. The app also locks when minimized, and Settings includes password/Hello management plus a **Lock now** action.
 
-Settings also includes a plain-language backup center plus checked CSV import/export. Secure `.mmbak` backups use a password and are portable; automatic recovery copies are encrypted for the current Windows account. CSV imports are fully validated, exact duplicates are skipped, and a recovery point is created before any rows are written.
+Settings also includes a plain-language backup center plus checked CSV import/export. Debit-card statements can be imported from CSV or Excel `.xlsx` files by choosing the card, worksheet, statement period, date/description columns, and either a signed amount column or separate debit/credit columns. The preview ignores rows outside the chosen period, reports malformed rows, and skips transactions already present. Secure `.mmbak` backups use a password and are portable; automatic recovery copies are encrypted for the current Windows account. A recovery point is created before any imported rows are written.
 
 ## Android
 

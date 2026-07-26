@@ -64,6 +64,31 @@ class AccountRecord {
   final bool isActive;
 }
 
+class PaymentMethodRecord {
+  const PaymentMethodRecord({
+    required this.id,
+    required this.name,
+    required this.accountId,
+    required this.type,
+    required this.isActive,
+  });
+
+  factory PaymentMethodRecord.fromJson(Map<String, dynamic> json) =>
+      PaymentMethodRecord(
+        id: '${json['id']}',
+        name: '${json['name'] ?? 'Payment method'}',
+        accountId: '${json['account_id'] ?? ''}',
+        type: '${json['type'] ?? 'other'}',
+        isActive: _asBool(json['is_active'], fallback: true),
+      );
+
+  final String id;
+  final String name;
+  final String accountId;
+  final String type;
+  final bool isActive;
+}
+
 class TransactionRecord {
   const TransactionRecord({
     required this.id,
@@ -73,6 +98,7 @@ class TransactionRecord {
     required this.amountCents,
     required this.description,
     this.categoryId,
+    this.paymentMethodId,
     this.transferGroupId,
     this.recurringRuleId,
     this.investmentId,
@@ -90,6 +116,7 @@ class TransactionRecord {
         amountCents: _asInt(json['amount_cents']),
         description: '${json['description'] ?? ''}',
         categoryId: json['category_id'] as String?,
+        paymentMethodId: json['payment_method_id'] as String?,
         transferGroupId: json['transfer_group_id'] as String?,
         recurringRuleId: json['recurring_rule_id'] as String?,
         investmentId: json['investment_id'] as String?,
@@ -105,6 +132,7 @@ class TransactionRecord {
   final int amountCents;
   final String description;
   final String? categoryId;
+  final String? paymentMethodId;
   final String? transferGroupId;
   final String? recurringRuleId;
   final String? investmentId;

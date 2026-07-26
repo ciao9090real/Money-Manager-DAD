@@ -14,6 +14,9 @@ class DashboardPage extends StatelessWidget {
     required this.onPair,
     required this.onOpenBudgets,
     required this.onOpenGoals,
+    this.onAddExpense,
+    this.onAddIncome,
+    this.onAddTransfer,
   });
 
   final AppController controller;
@@ -21,6 +24,9 @@ class DashboardPage extends StatelessWidget {
   final VoidCallback onPair;
   final VoidCallback onOpenBudgets;
   final VoidCallback onOpenGoals;
+  final VoidCallback? onAddExpense;
+  final VoidCallback? onAddIncome;
+  final VoidCallback? onAddTransfer;
 
   Future<void> _refresh(BuildContext context) async {
     if (!controller.isPaired) {
@@ -139,8 +145,12 @@ class DashboardPage extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: AppColors.ink,
-              borderRadius: BorderRadius.circular(8),
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFF102A23), Color(0xFF0C5144)],
+              ),
+              borderRadius: BorderRadius.circular(24),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -192,6 +202,52 @@ class DashboardPage extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _QuickAction(
+                  label: 'Expense',
+                  icon: Icons.south_west,
+                  tone: AppColors.negative,
+                  onTap: controller.accounts.isEmpty
+                      ? null
+                      : onAddExpense ?? onAddTransaction,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _QuickAction(
+                  label: 'Income',
+                  icon: Icons.north_east,
+                  tone: AppColors.positive,
+                  onTap: controller.accounts.isEmpty
+                      ? null
+                      : onAddIncome ?? onAddTransaction,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _QuickAction(
+                  label: 'Move',
+                  icon: Icons.swap_horiz,
+                  tone: AppColors.blue,
+                  onTap: controller.accounts.length < 2
+                      ? null
+                      : onAddTransfer ?? onAddTransaction,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _QuickAction(
+                  label: 'Sync',
+                  icon: Icons.sync,
+                  tone: AppColors.primary,
+                  onTap: controller.isSyncing ? null : () => _refresh(context),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 18),
           SurfaceCard(
@@ -377,6 +433,50 @@ class DashboardPage extends StatelessWidget {
       ),
     );
   }
+}
+
+class _QuickAction extends StatelessWidget {
+  const _QuickAction({
+    required this.label,
+    required this.icon,
+    required this.tone,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color tone;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: AppColors.surface,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(16),
+      side: const BorderSide(color: AppColors.border),
+    ),
+    clipBehavior: Clip.antiAlias,
+    child: InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+        child: Column(
+          children: [
+            Icon(icon, size: 21, color: onTap == null ? AppColors.muted : tone),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              maxLines: 1,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: onTap == null ? AppColors.muted : AppColors.ink,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 class _CompactDashboardEmpty extends StatelessWidget {

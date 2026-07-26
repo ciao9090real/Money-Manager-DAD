@@ -20,19 +20,37 @@ class TransactionsPage extends StatefulWidget {
 }
 
 class _TransactionsPageState extends State<TransactionsPage> {
+  final search = TextEditingController();
   String filter = 'all';
+  String period = 'all';
+
+  @override
+  void dispose() {
+    search.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final query = search.text.trim().toLowerCase();
     final entries = _entries(widget.controller).where((entry) {
-      return filter == 'all' || entry.filterType == filter;
+      if (filter != 'all' && entry.filterType != filter) return false;
+      if (!_inPeriod(entry.date, period)) return false;
+      return query.isEmpty || entry.searchText.contains(query);
     }).toList();
+    final income = entries
+        .where((entry) => entry.filterType == 'income')
+        .fold<int>(0, (sum, entry) => sum + entry.amountCents.abs());
+    final spent = entries
+        .where((entry) => entry.filterType == 'expense')
+        .fold<int>(0, (sum, entry) => sum + entry.amountCents.abs());
+
     return ListView(
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 108),
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 112),
       children: [
         ScreenHeader(
           title: 'Activity',
-          subtitle: 'Income, expenses, and transfers',
+          subtitle: 'Find, understand, and add transactions',
           action: IconButton.filled(
             tooltip: 'Add transaction',
             onPressed: widget.controller.accounts.isEmpty ? null : widget.onAdd,
@@ -40,24 +58,105 @@ class _TransactionsPageState extends State<TransactionsPage> {
           ),
         ),
         const SizedBox(height: 18),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: SegmentedButton<String>(
-            segments: const [
-              ButtonSegment(value: 'all', label: Text('All')),
-              ButtonSegment(value: 'income', label: Text('Income')),
-              ButtonSegment(value: 'expense', label: Text('Expenses')),
-              ButtonSegment(value: 'transfer', label: Text('Transfers')),
+        SearchBar(
+          controller: search,
+          hintText: 'Search description, account, or category',
+          leading: const Icon(Icons.search),
+          trailing: [
+            if (search.text.isNotEmpty)
+              IconButton(
+                tooltip: 'Clear search',
+                onPressed: () => setState(search.clear),
+                icon: const Icon(Icons.close),
+              ),
+          ],
+          onChanged: (_) => setState(() {}),
+          elevation: const WidgetStatePropertyAll(0),
+          backgroundColor: const WidgetStatePropertyAll(AppColors.surface),
+          side: const WidgetStatePropertyAll(
+            BorderSide(color: AppColors.border),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(value: 'all', label: Text('All')),
+                    ButtonSegment(value: 'expense', label: Text('Spent')),
+                    ButtonSegment(value: 'income', label: Text('Income')),
+                    ButtonSegment(value: 'transfer', label: Text('Moves')),
+                  ],
+                  selected: {filter},
+                  showSelectedIcon: false,
+                  onSelectionChanged: (selection) =>
+                      setState(() => filter = selection.first),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            PopupMenuButton<String>(
+              tooltip: 'Choose period',
+              initialValue: period,
+              onSelected: (value) => setState(() => period = value),
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'all', child: Text('All time')),
+                PopupMenuItem(value: 'month', child: Text('This month')),
+                PopupMenuItem(value: '30', child: Text('Last 30 days')),
+                PopupMenuItem(value: 'year', child: Text('This year')),
+              ],
+              child: Container(
+                height: 48,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  border: Border.all(color: AppColors.border),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.calendar_month_outlined, size: 19),
+                    const SizedBox(width: 6),
+                    Text(_periodLabel(period)),
+                    const Icon(Icons.arrow_drop_down),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        SurfaceCard(
+          child: Row(
+            children: [
+              Expanded(
+                child: _ActivityMetric(
+                  label: 'Money in',
+                  value: money(income),
+                  tone: AppColors.positive,
+                ),
+              ),
+              Container(width: 1, height: 40, color: AppColors.border),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _ActivityMetric(
+                  label: 'Money out',
+                  value: money(spent),
+                  tone: AppColors.negative,
+                ),
+              ),
             ],
-            selected: {filter},
-            showSelectedIcon: false,
-            onSelectionChanged: (selection) =>
-                setState(() => filter = selection.first),
           ),
         ),
         if (widget.controller.pendingCommands.isNotEmpty) ...[
-          const SizedBox(height: 18),
-          const SectionHeader(title: 'Phone changes'),
+          const SizedBox(height: 20),
+          SectionHeader(
+            title: 'Phone changes',
+            subtitle: '${widget.controller.pendingCount} waiting to sync',
+          ),
           const SizedBox(height: 9),
           SurfaceCard(
             padding: EdgeInsets.zero,
@@ -99,10 +198,10 @@ class _TransactionsPageState extends State<TransactionsPage> {
           child: entries.isEmpty
               ? EmptyState(
                   icon: Icons.receipt_long_outlined,
-                  title: 'Nothing to show',
-                  message: filter == 'all'
-                      ? 'Synced transactions will appear here.'
-                      : 'There are no ${filter == 'expense' ? 'expenses' : '${filter}s'} in this view.',
+                  title: 'Nothing matches',
+                  message: query.isNotEmpty
+                      ? 'Try a shorter search or a wider period.'
+                      : 'There are no transactions in this view yet.',
                   action: widget.controller.accounts.isEmpty
                       ? null
                       : OutlinedButton.icon(
@@ -114,9 +213,12 @@ class _TransactionsPageState extends State<TransactionsPage> {
               : Column(
                   children: [
                     for (var index = 0; index < entries.length; index++) ...[
-                      _ActivityRow(entry: entries[index]),
+                      _ActivityRow(
+                        entry: entries[index],
+                        onTap: () => _showDetails(context, entries[index]),
+                      ),
                       if (index != entries.length - 1)
-                        const Divider(height: 1, indent: 58),
+                        const Divider(height: 1, indent: 62),
                     ],
                   ],
                 ),
@@ -127,8 +229,14 @@ class _TransactionsPageState extends State<TransactionsPage> {
 }
 
 List<_ActivityEntry> _entries(AppController controller) {
-  final names = {
+  final accountNames = {
     for (final account in controller.accounts) account.id: account.name,
+  };
+  final categoryNames = {
+    for (final category in controller.categories) category.id: category.name,
+  };
+  final methodNames = {
+    for (final method in controller.paymentMethods) method.id: method.name,
   };
   final result = <_ActivityEntry>[];
   final seenTransfers = <String>{};
@@ -145,24 +253,33 @@ List<_ActivityEntry> _entries(AppController controller) {
         if (item.type == 'transfer_out') outgoing = item;
         if (item.type == 'transfer_in') incoming = item;
       }
-      final amount =
-          outgoing?.amountCents.abs() ?? incoming?.amountCents.abs() ?? 0;
+      final source = accountNames[outgoing?.accountId] ?? 'Account';
+      final target = accountNames[incoming?.accountId] ?? 'Account';
+      final description = transaction.description;
       result.add(
         _ActivityEntry(
-          title:
-              '${names[outgoing?.accountId] ?? 'Account'} → ${names[incoming?.accountId] ?? 'Account'}',
-          subtitle: transaction.description.isEmpty
+          title: '$source → $target',
+          subtitle: description.isEmpty
               ? friendlyDate(transaction.date)
-              : '${transaction.description} · ${friendlyDate(transaction.date)}',
-          amountCents: amount,
+              : '$description · ${friendlyDate(transaction.date)}',
+          amountCents:
+              outgoing?.amountCents.abs() ?? incoming?.amountCents.abs() ?? 0,
           filterType: 'transfer',
           neutral: true,
           icon: Icons.swap_horiz,
           tone: AppColors.blue,
+          date: transaction.date,
+          account: '$source → $target',
+          category: null,
+          paymentMethod: null,
+          notes: transaction.notes,
         ),
       );
       continue;
     }
+    final account = accountNames[transaction.accountId] ?? 'Account';
+    final category = categoryNames[transaction.categoryId];
+    final method = methodNames[transaction.paymentMethodId];
     final filterType = transaction.isIncome
         ? 'income'
         : transaction.isExpense
@@ -174,12 +291,18 @@ List<_ActivityEntry> _entries(AppController controller) {
             ? prettyType(transaction.type)
             : transaction.description,
         subtitle:
-            '${names[transaction.accountId] ?? 'Account'} · ${friendlyDate(transaction.date)}',
+            '$account · ${category ?? friendlyDate(transaction.date)}'
+            '${category == null ? '' : ' · ${friendlyDate(transaction.date)}'}',
         amountCents: transaction.amountCents,
         filterType: filterType,
         neutral: false,
         icon: transaction.isIncome ? Icons.north_east : Icons.south_west,
         tone: transaction.isIncome ? AppColors.positive : AppColors.negative,
+        date: transaction.date,
+        account: account,
+        category: category,
+        paymentMethod: method,
+        notes: transaction.notes,
       ),
     );
   }
@@ -195,6 +318,11 @@ class _ActivityEntry {
     required this.neutral,
     required this.icon,
     required this.tone,
+    required this.date,
+    required this.account,
+    required this.category,
+    required this.paymentMethod,
+    required this.notes,
   });
 
   final String title;
@@ -204,22 +332,34 @@ class _ActivityEntry {
   final bool neutral;
   final IconData icon;
   final Color tone;
+  final String date;
+  final String account;
+  final String? category;
+  final String? paymentMethod;
+  final String? notes;
+
+  String get searchText =>
+      '$title $subtitle $account ${category ?? ''} ${paymentMethod ?? ''} ${notes ?? ''}'
+          .toLowerCase();
 }
 
 class _ActivityRow extends StatelessWidget {
-  const _ActivityRow({required this.entry});
+  const _ActivityRow({required this.entry, required this.onTap});
 
   final _ActivityEntry entry;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) => ListTile(
+    onTap: onTap,
+    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
     leading: Container(
-      width: 38,
-      height: 38,
+      width: 40,
+      height: 40,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: entry.tone.withValues(alpha: .10),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Icon(entry.icon, color: entry.tone, size: 20),
     ),
@@ -230,6 +370,35 @@ class _ActivityRow extends StatelessWidget {
       overflow: TextOverflow.ellipsis,
     ),
     trailing: AmountText(entry.amountCents, neutral: entry.neutral),
+  );
+}
+
+class _ActivityMetric extends StatelessWidget {
+  const _ActivityMetric({
+    required this.label,
+    required this.value,
+    required this.tone,
+  });
+
+  final String label;
+  final String value;
+  final Color tone;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(label, style: Theme.of(context).textTheme.bodySmall),
+      const SizedBox(height: 5),
+      FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Text(
+          value,
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(color: tone),
+        ),
+      ),
+    ],
   );
 }
 
@@ -264,4 +433,142 @@ class _PendingRow extends StatelessWidget {
             ),
     );
   }
+}
+
+bool _inPeriod(String rawDate, String period) {
+  if (period == 'all') return true;
+  final value = DateTime.tryParse(rawDate);
+  if (value == null) return false;
+  final now = DateTime.now();
+  return switch (period) {
+    'month' => value.year == now.year && value.month == now.month,
+    'year' => value.year == now.year,
+    '30' => !value.isBefore(
+      DateTime(now.year, now.month, now.day).subtract(const Duration(days: 29)),
+    ),
+    _ => true,
+  };
+}
+
+String _periodLabel(String period) => switch (period) {
+  'month' => 'Month',
+  '30' => '30 days',
+  'year' => 'Year',
+  _ => 'Any time',
+};
+
+Future<void> _showDetails(BuildContext context, _ActivityEntry entry) async {
+  await showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    useSafeArea: true,
+    isScrollControlled: true,
+    builder: (context) => Padding(
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: entry.tone.withValues(alpha: .10),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(entry.icon, color: entry.tone),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      entry.title,
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    Text(
+                      prettyType(entry.filterType),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              AmountText(
+                entry.amountCents,
+                neutral: entry.neutral,
+                emphasized: true,
+              ),
+            ],
+          ),
+          const SizedBox(height: 22),
+          _DetailRow(
+            icon: Icons.calendar_today_outlined,
+            label: 'Date',
+            value: friendlyDate(entry.date),
+          ),
+          _DetailRow(
+            icon: Icons.account_balance_wallet_outlined,
+            label: 'Account',
+            value: entry.account,
+          ),
+          if (entry.category != null)
+            _DetailRow(
+              icon: Icons.sell_outlined,
+              label: 'Category',
+              value: entry.category!,
+            ),
+          if (entry.paymentMethod != null)
+            _DetailRow(
+              icon: Icons.credit_card_outlined,
+              label: 'Paid with',
+              value: entry.paymentMethod!,
+            ),
+          if (entry.notes != null && entry.notes!.trim().isNotEmpty)
+            _DetailRow(
+              icon: Icons.notes_outlined,
+              label: 'Note',
+              value: entry.notes!,
+            ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _DetailRow extends StatelessWidget {
+  const _DetailRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 9),
+    child: Row(
+      children: [
+        Icon(icon, color: AppColors.muted, size: 20),
+        const SizedBox(width: 12),
+        SizedBox(
+          width: 78,
+          child: Text(label, style: Theme.of(context).textTheme.bodySmall),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            textAlign: TextAlign.right,
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+        ),
+      ],
+    ),
+  );
 }

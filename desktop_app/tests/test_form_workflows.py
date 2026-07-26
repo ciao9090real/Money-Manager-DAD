@@ -15,7 +15,9 @@ from app.services.account_service import AccountService
 from app.services.category_service import CategoryService
 from app.services.investment_service import InvestmentService
 from app.services.loan_service import LoanService
+from app.services.payment_method_service import PaymentMethodService
 from app.services.recurring_service import RecurringService
+from app.ui.bank_statement_import_dialog import BankStatementImportDialog
 from app.ui.dashboard_page import DashboardPage
 from app.ui.date_picker import DatePicker
 from app.ui.investment_form import (
@@ -65,6 +67,44 @@ def test_transaction_form_adds_and_selects_category_inline(
         assert not form.add_category_button.isHidden()
         assert form.category.currentData() == created.id
         form.close()
+    finally:
+        db.close()
+
+
+def test_bank_statement_dialog_discovers_columns_and_builds_checked_preview(
+    qt_app, tmp_path, monkeypatch
+):
+    monkeypatch.setenv("MONEY_MANAGER_DAD_DATA_DIR", str(tmp_path))
+    db = connect()
+    try:
+        account = AccountService(db).create_account("Current", "current_account")
+        card = PaymentMethodService(db).create_payment_method(
+            "Daily debit", account.id, "debit_card"
+        )
+        statement = tmp_path / "statement.csv"
+        statement.write_text(
+            "Transaction date,Merchant,Amount\n"
+            "2026-07-04,Corner shop,-12.50\n",
+            encoding="utf-8",
+        )
+
+        dialog = BankStatementImportDialog(db, statement)
+        dialog.period_start.setDate(QDate(2026, 7, 1))
+        dialog.period_end.setDate(QDate(2026, 7, 31))
+
+        assert dialog.card.currentData() == card.id
+        assert dialog.date_column.currentText() == "Transaction date"
+        assert dialog.description_column.currentText() == "Merchant"
+        assert dialog.amount_column.currentText() == "Amount"
+        assert not dialog.import_button.isEnabled()
+
+        dialog._check_file()
+
+        assert dialog.preview is not None
+        assert dialog.preview.import_count == 1
+        assert dialog.preview.errors == ()
+        assert dialog.import_button.isEnabled()
+        dialog.close()
     finally:
         db.close()
 

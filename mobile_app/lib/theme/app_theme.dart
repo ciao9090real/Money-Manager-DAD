@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
 class AppColors {
-  static const background = Color(0xFFF3F7F5);
+  static const background = Color(0xFFF5F7F6);
   static const surface = Color(0xFFFFFFFF);
-  static const ink = Color(0xFF13231F);
-  static const muted = Color(0xFF61736D);
-  static const border = Color(0xFFD9E4E0);
-  static const primary = Color(0xFF117966);
-  static const primarySoft = Color(0xFFE4F3EF);
+  static const ink = Color(0xFF10221D);
+  static const muted = Color(0xFF64746F);
+  static const border = Color(0xFFE0E8E5);
+  static const primary = Color(0xFF087A64);
+  static const primarySoft = Color(0xFFE2F3EE);
   static const blue = Color(0xFF3569D4);
   static const blueSoft = Color(0xFFEAF0FC);
   static const positive = Color(0xFF16835E);
@@ -31,15 +31,15 @@ class AppTheme {
       textTheme: const TextTheme(
         displaySmall: TextStyle(
           color: AppColors.ink,
-          fontSize: 34,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0,
+          fontSize: 36,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -0.8,
         ),
         headlineSmall: TextStyle(
           color: AppColors.ink,
-          fontSize: 25,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0,
+          fontSize: 27,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -0.5,
         ),
         titleLarge: TextStyle(
           color: AppColors.ink,
@@ -88,7 +88,7 @@ class AppTheme {
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(18),
           side: const BorderSide(color: AppColors.border),
         ),
       ),
@@ -100,15 +100,15 @@ class AppTheme {
           vertical: 14,
         ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(color: AppColors.border),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(color: AppColors.border),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
         ),
       ),
@@ -118,7 +118,9 @@ class AppTheme {
           foregroundColor: Colors.white,
           minimumSize: const Size(48, 48),
           padding: const EdgeInsets.symmetric(horizontal: 18),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -126,18 +128,47 @@ class AppTheme {
           foregroundColor: AppColors.ink,
           minimumSize: const Size(48, 48),
           side: const BorderSide(color: AppColors.border),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+      ),
+      floatingActionButtonTheme: const FloatingActionButtonThemeData(
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
+        elevation: 2,
+        shape: CircleBorder(),
+      ),
+      segmentedButtonTheme: SegmentedButtonThemeData(
+        style: ButtonStyle(
+          visualDensity: VisualDensity.compact,
+          shape: WidgetStatePropertyAll(
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          side: const WidgetStatePropertyAll(
+            BorderSide(color: AppColors.border),
+          ),
+          backgroundColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.selected)
+                ? AppColors.primarySoft
+                : AppColors.surface,
+          ),
+          foregroundColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.selected)
+                ? AppColors.primary
+                : AppColors.muted,
+          ),
         ),
       ),
       navigationBarTheme: const NavigationBarThemeData(
         backgroundColor: AppColors.surface,
         surfaceTintColor: Colors.transparent,
         indicatorColor: AppColors.primarySoft,
-        height: 68,
+        height: 74,
         labelTextStyle: WidgetStatePropertyAll(
           TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
             letterSpacing: 0,
           ),
         ),

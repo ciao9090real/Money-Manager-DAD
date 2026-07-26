@@ -30,6 +30,7 @@ from app.sync.pairing_qr import pairing_qr_image
 from app.sync.server import LocalSyncServer
 from app.ui.backup_password_dialog import BackupPasswordDialog
 from app.ui.backup_manager_dialog import BackupManagerDialog
+from app.ui.bank_statement_import_dialog import BankStatementImportDialog
 from app.ui.auth_dialogs import (
     ChangePasswordDialog,
     ConfirmPasswordDialog,
@@ -198,13 +199,15 @@ class SettingsPage(QWidget):
 
         export_button = soft_button("Export CSV", "download")
         export_button.clicked.connect(self.export_transactions)
-        import_button = secondary_button("Import CSV", "restore")
+        import_button = soft_button("Money Manager CSV", "restore")
         import_button.clicked.connect(self.import_transactions)
+        statement_button = primary_button("Import bank statement", "download")
+        statement_button.clicked.connect(self.import_card_statement)
         export_card = self._tool_card(
-            "Import & export",
-            "Move transactions to or from a spreadsheet with a safety preview.",
+            "Statements, import & export",
+            "Import a debit-card statement from CSV or Excel, or move Money Manager data with CSV.",
             "download",
-            actions_row(import_button, export_button),
+            actions_row(statement_button, import_button, export_button),
         )
 
         categories_button = soft_button("Manage categories", "tag")
@@ -559,6 +562,48 @@ class SettingsPage(QWidget):
             self,
             "Import complete",
             f"Imported {imported} transaction{'s' if imported != 1 else ''}.\n\n"
+            f"Your before-import recovery point is here:\n{rollback}",
+        )
+
+    def import_card_statement(self) -> None:
+        source, _filter = QFileDialog.getOpenFileName(
+            self,
+            "Choose a debit-card statement",
+            str(Path.home() / "Documents"),
+            "Bank statements (*.xlsx *.csv);;Excel workbook (*.xlsx);;CSV spreadsheet (*.csv)",
+        )
+        if not source:
+            return
+        try:
+            dialog = BankStatementImportDialog(self.db, Path(source), self)
+        except (OSError, ValueError, *DB_ERROR_TYPES) as exc:
+            QMessageBox.warning(
+                self,
+                "Statement could not be opened",
+                str(exc),
+            )
+            return
+        if not dialog.exec() or dialog.preview is None:
+            return
+        rollback = self.create_local_recovery_backup()
+        if rollback is None:
+            return
+        try:
+            imported = ImportService(self.db).import_transactions(dialog.preview)
+        except (OSError, ValueError, *DB_ERROR_TYPES) as exc:
+            QMessageBox.warning(
+                self,
+                "Import failed safely",
+                f"No partial import was kept.\n\n{exc}",
+            )
+            return
+        self.on_changed({"dashboard", "accounts", "transactions"})
+        self.notify(f"Imported {imported} card transactions")
+        QMessageBox.information(
+            self,
+            "Statement import complete",
+            f"Imported {imported} transaction{'s' if imported != 1 else ''} "
+            f"for {dialog.preview.payment_method_name}.\n\n"
             f"Your before-import recovery point is here:\n{rollback}",
         )
 

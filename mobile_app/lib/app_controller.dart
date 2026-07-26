@@ -26,6 +26,7 @@ class AppController extends ChangeNotifier {
   List<AccountRecord> allAccounts = const [];
   List<AccountRecord> accounts = const [];
   List<CategoryRecord> categories = const [];
+  List<PaymentMethodRecord> paymentMethods = const [];
   List<TransactionRecord> transactions = const [];
   List<RecurringRecord> recurring = const [];
   List<StoredRecord> investments = const [];
@@ -64,6 +65,7 @@ class AppController extends ChangeNotifier {
     allAccounts = const [];
     accounts = const [];
     categories = const [];
+    paymentMethods = const [];
     transactions = const [];
     recurring = const [];
     investments = const [];
@@ -84,6 +86,7 @@ class AppController extends ChangeNotifier {
   Future<void> reload() async {
     final accountRows = await database.records('accounts');
     final categoryRows = await database.records('categories');
+    final paymentMethodRows = await database.records('payment_methods');
     final transactionRows = await database.records('transactions');
     final recurringRows = await database.records('recurring_rules');
     final investmentRows = await database.records('investments');
@@ -105,6 +108,14 @@ class AppController extends ChangeNotifier {
                 ? a.name.toLowerCase().compareTo(b.name.toLowerCase())
                 : type;
           });
+    paymentMethods =
+        paymentMethodRows
+            .map((row) => PaymentMethodRecord.fromJson(row.payload))
+            .where((method) => method.isActive)
+            .toList()
+          ..sort(
+            (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+          );
     transactions =
         transactionRows
             .map((row) => TransactionRecord.fromJson(row.payload))
@@ -1042,6 +1053,9 @@ class AppController extends ChangeNotifier {
     required String date,
     String description = '',
     String? targetAccountId,
+    String? categoryId,
+    String? paymentMethodId,
+    String? notes,
   }) async {
     final commandType = switch (type) {
       'income' => 'create_income',
@@ -1059,6 +1073,14 @@ class AppController extends ChangeNotifier {
       payload['target_account_id'] = targetAccountId;
     } else {
       payload['account_id'] = accountId;
+      if (categoryId != null) payload['category_id'] = categoryId;
+      if (paymentMethodId != null) {
+        payload['payment_method_id'] = paymentMethodId;
+      }
+    }
+    final cleanedNotes = notes?.trim();
+    if (cleanedNotes != null && cleanedNotes.isNotEmpty) {
+      payload['notes'] = cleanedNotes;
     }
     await database.queueCommand(
       PendingCommand(

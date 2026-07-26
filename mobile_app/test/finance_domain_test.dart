@@ -60,6 +60,13 @@ void main() {
         'date': '2026-07-01',
         'revision': 1,
       });
+      final paymentMethod = PaymentMethodRecord.fromJson({
+        'id': 'card-1',
+        'name': 'Daily debit',
+        'account_id': 'account-1',
+        'type': 'debit_card',
+        'is_active': 1,
+      });
       final transaction = TransactionRecord.fromJson({
         'id': 'transaction-1',
         'date': '2026-07-01',
@@ -67,6 +74,7 @@ void main() {
         'account_id': 'account-1',
         'amount_cents': 10000,
         'savings_goal_id': 'goal-1',
+        'payment_method_id': 'card-1',
       });
 
       expect(category.name, 'Groceries');
@@ -76,7 +84,10 @@ void main() {
       expect(goal.linkedAccountId, 'account-1');
       expect(loan.interestRateBps, 600);
       expect(payment.amountCents, 10000);
+      expect(paymentMethod.name, 'Daily debit');
+      expect(paymentMethod.isActive, isTrue);
       expect(transaction.savingsGoalId, 'goal-1');
+      expect(transaction.paymentMethodId, 'card-1');
     });
   });
 

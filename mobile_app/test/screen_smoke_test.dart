@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:money_manager/app_controller.dart';
 import 'package:money_manager/data/local_database.dart';
@@ -13,6 +14,7 @@ import 'package:money_manager/ui/dashboard_page.dart';
 import 'package:money_manager/ui/goals_page.dart';
 import 'package:money_manager/ui/loan_payoff_page.dart';
 import 'package:money_manager/ui/more_page.dart';
+import 'package:money_manager/ui/transaction_sheet.dart';
 import 'package:money_manager/ui/transactions_page.dart';
 import 'package:money_manager/ui/upcoming_page.dart';
 
@@ -236,9 +238,85 @@ void main() {
     expect(find.text('To account'), findsOneWidget);
     expect(find.text('Add contribution'), findsWidgets);
   });
+
+  testWidgets('transaction sheet offers desktop-level details on mobile', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final controller =
+        AppController(database: LocalDatabase(), syncClient: SyncClient())
+          ..accounts = const [
+            AccountRecord(
+              id: 'current',
+              name: 'Everyday account',
+              type: 'current_account',
+              openingBalanceCents: 100000,
+              isActive: true,
+            ),
+          ]
+          ..categories = const [
+            CategoryRecord(
+              id: 'groceries',
+              name: 'Groceries',
+              type: 'expense',
+              isActive: true,
+            ),
+          ]
+          ..paymentMethods = const [
+            PaymentMethodRecord(
+              id: 'card',
+              name: 'Daily debit',
+              accountId: 'current',
+              type: 'debit_card',
+              isActive: true,
+            ),
+          ];
+
+    await tester.pumpWidget(
+      AppScope(
+        controller: controller,
+        child: MaterialApp(
+          theme: AppTheme.light,
+          home: const Scaffold(body: TransactionSheet()),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Category'), findsOneWidget);
+    expect(find.text('Paid with'), findsOneWidget);
+    expect(find.text('Add a note'), findsOneWidget);
+    final layoutError = tester.takeException();
+    if (layoutError is FlutterError) {
+      final overflowing = tester.allRenderObjects
+          .whereType<RenderFlex>()
+          .where(_renderFlexOverflows)
+          .map((render) => render.toStringDeep())
+          .join('\n---\n');
+      fail('${layoutError.toStringDeep()}\n$overflowing');
+    }
+    expect(layoutError, isNull);
+  });
 }
 
 String _isoDate(DateTime value) =>
     '${value.year.toString().padLeft(4, '0')}-'
     '${value.month.toString().padLeft(2, '0')}-'
     '${value.day.toString().padLeft(2, '0')}';
+
+bool _renderFlexOverflows(RenderFlex flex) {
+  RenderBox? child = flex.firstChild;
+  while (child != null) {
+    final data = child.parentData! as FlexParentData;
+    final exceedsWidth =
+        flex.direction == Axis.horizontal &&
+        data.offset.dx + child.size.width > flex.size.width + .1;
+    final exceedsHeight =
+        flex.direction == Axis.vertical &&
+        data.offset.dy + child.size.height > flex.size.height + .1;
+    if (exceedsWidth || exceedsHeight) return true;
+    child = flex.childAfter(child);
+  }
+  return false;
+}
