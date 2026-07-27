@@ -127,6 +127,7 @@ class GoalsPage(QWidget):
             subtitle=deadline,
             action=badge(status_text, status_tone),
         )
+        card.setProperty("entityId", goal.id or "")
         card.setMinimumHeight(245)
 
         amounts = FittedLabel(
@@ -181,6 +182,15 @@ class GoalsPage(QWidget):
         actions_layout.addWidget(archive_button)
         layout.addWidget(actions)
         return card
+
+    def select_entity(self, goal_id: str) -> None:
+        """Scroll the requested goal into view when opened from Home."""
+
+        self.refresh()
+        for card in self._goal_cards:
+            if str(card.property("entityId")) == str(goal_id):
+                self.page_scroll.ensureWidgetVisible(card, 24, 24)
+                break
 
     def _layout_goal_cards(self) -> None:
         if not hasattr(self, "goal_grid"):

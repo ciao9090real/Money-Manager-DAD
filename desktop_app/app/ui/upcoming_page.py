@@ -299,6 +299,20 @@ class UpcomingPage(QWidget):
             self.schedule_card.setMaximumHeight(330)
         self._sync_actions()
 
+    def select_entity(self, rule_id: str) -> None:
+        """Open and focus a recurring schedule from a Home deep link."""
+
+        if self.current_filter != "all":
+            self.set_filter("all", refresh=False)
+        self.refresh()
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 0)
+            if item and str(item.data(Qt.ItemDataRole.UserRole)) == str(rule_id):
+                self.table.selectRow(row)
+                self.table.scrollToItem(item)
+                self._sync_actions()
+                break
+
     @staticmethod
     def _display_status(rule, today: date) -> tuple[str, str]:
         if rule.status == "active" and date.fromisoformat(rule.next_due_date) < today:

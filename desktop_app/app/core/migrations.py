@@ -8,7 +8,7 @@ from uuid import uuid4
 from app.core.database_security import backup_connection
 
 
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 UTC_NOW_SQL = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"
 
 
@@ -74,6 +74,9 @@ def migrate(connection: sqlite3.Connection) -> None:
         if version < 15:
             _run_migration(connection, 15, _migrate_v15)
             version = 15
+        if version < 16:
+            _run_migration(connection, 16, _migrate_v16)
+            version = 16
         assert_database_integrity(connection)
     except Exception:
         connection.rollback()
@@ -1657,5 +1660,193 @@ def _migrate_v15(connection: sqlite3.Connection) -> None:
                 OR (hello_user_id IS NOT NULL AND hello_credential IS NOT NULL)
             )
         );
+        """,
+    )
+
+
+def _migrate_v16(connection: sqlite3.Connection) -> None:
+    _execute_script(
+        connection,
+        f"""
+        CREATE TABLE import_batches (
+            id TEXT PRIMARY KEY CHECK (length(id) = 36),
+            source_name TEXT NOT NULL CHECK (length(trim(source_name)) > 0),
+            source_hash TEXT NOT NULL CHECK (length(source_hash) = 64),
+            source_type TEXT NOT NULL
+                CHECK (source_type IN ('bank_statement', 'money_manager_csv')),
+            sheet_name TEXT,
+            payment_method_id TEXT REFERENCES payment_methods(id),
+            period_start TEXT CHECK (
+                period_start IS NULL
+                OR period_start GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+            ),
+            period_end TEXT CHECK (
+                period_end IS NULL
+                OR period_end GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+            ),
+            mapping_json TEXT NOT NULL DEFAULT '{{}}',
+            status TEXT NOT NULL DEFAULT 'review'
+                CHECK (status IN ('review', 'posted', 'cancelled')),
+            created_at TEXT NOT NULL DEFAULT ({UTC_NOW_SQL}),
+            updated_at TEXT NOT NULL DEFAULT ({UTC_NOW_SQL}),
+            deleted_at TEXT,
+            revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1)
+        );
+
+        CREATE TABLE import_rows (
+            id TEXT PRIMARY KEY CHECK (length(id) = 36),
+            batch_id TEXT NOT NULL REFERENCES import_batches(id),
+            source_row_number INTEGER NOT NULL CHECK (source_row_number > 0),
+            raw_payload_json TEXT NOT NULL DEFAULT '{{}}',
+            date TEXT CHECK (
+                date IS NULL
+                OR date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+            ),
+            transaction_type TEXT
+                CHECK (transaction_type IS NULL OR transaction_type IN ('income', 'expense', 'transfer')),
+            account_id TEXT REFERENCES accounts(id),
+            target_account_id TEXT REFERENCES accounts(id),
+            payment_method_id TEXT REFERENCES payment_methods(id),
+            category_id TEXT REFERENCES categories(id),
+            amount_cents INTEGER CHECK (amount_cents IS NULL OR amount_cents > 0),
+            description TEXT NOT NULL DEFAULT '',
+            notes TEXT,
+            status TEXT NOT NULL CHECK (
+                status IN (
+                    'needs_category', 'ready', 'duplicate', 'ignored', 'posted', 'error'
+                )
+            ),
+            issue_code TEXT,
+            issue_text TEXT,
+            duplicate_transaction_id TEXT REFERENCES transactions(id),
+            posted_transaction_id TEXT REFERENCES transactions(id),
+            fingerprint TEXT CHECK (fingerprint IS NULL OR length(fingerprint) = 64),
+            created_at TEXT NOT NULL DEFAULT ({UTC_NOW_SQL}),
+            updated_at TEXT NOT NULL DEFAULT ({UTC_NOW_SQL}),
+            deleted_at TEXT,
+            revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
+            UNIQUE(batch_id, source_row_number)
+        );
+
+        CREATE INDEX idx_import_batches_status_created
+            ON import_batches(status, created_at DESC) WHERE deleted_at IS NULL;
+        CREATE INDEX idx_import_batches_source_hash
+            ON import_batches(source_hash, payment_method_id) WHERE deleted_at IS NULL;
+        CREATE INDEX idx_import_rows_batch_status
+            ON import_rows(batch_id, status, source_row_number) WHERE deleted_at IS NULL;
+        CREATE INDEX idx_import_rows_category
+            ON import_rows(category_id) WHERE deleted_at IS NULL;
+
+        CREATE TRIGGER validate_import_batches_update
+        BEFORE UPDATE ON import_batches
+        WHEN NEW.revision != OLD.revision + 1
+          OR NEW.status NOT IN ('review', 'posted', 'cancelled')
+        BEGIN
+            SELECT RAISE(ABORT, 'invalid import batch or revision');
+        END;
+
+        CREATE TRIGGER validate_import_rows_update
+        BEFORE UPDATE ON import_rows
+        WHEN NEW.revision != OLD.revision + 1
+          OR NEW.status NOT IN (
+              'needs_category', 'ready', 'duplicate', 'ignored', 'posted', 'error'
+          )
+        BEGIN
+            SELECT RAISE(ABORT, 'invalid import row or revision');
+        END;
+
+        CREATE TRIGGER capture_import_batches_insert
+        AFTER INSERT ON import_batches
+        BEGIN
+            INSERT INTO change_log (
+                entity_type, entity_id, operation, revision, device_id
+            ) VALUES (
+                'import_batches', NEW.id, 'insert', NEW.revision,
+                (SELECT value FROM sync_metadata WHERE key = 'active_device_id')
+            );
+        END;
+
+        CREATE TRIGGER capture_import_batches_update
+        AFTER UPDATE ON import_batches
+        BEGIN
+            INSERT INTO change_log (
+                entity_type, entity_id, operation, revision, device_id
+            ) VALUES (
+                'import_batches', NEW.id,
+                CASE WHEN NEW.deleted_at IS NOT NULL AND OLD.deleted_at IS NULL
+                     THEN 'delete' ELSE 'update' END,
+                NEW.revision,
+                (SELECT value FROM sync_metadata WHERE key = 'active_device_id')
+            );
+        END;
+
+        CREATE TRIGGER capture_import_rows_insert
+        AFTER INSERT ON import_rows
+        BEGIN
+            INSERT INTO change_log (
+                entity_type, entity_id, operation, revision, device_id
+            ) VALUES (
+                'import_rows', NEW.id, 'insert', NEW.revision,
+                (SELECT value FROM sync_metadata WHERE key = 'active_device_id')
+            );
+        END;
+
+        CREATE TRIGGER capture_import_rows_update
+        AFTER UPDATE ON import_rows
+        BEGIN
+            INSERT INTO change_log (
+                entity_type, entity_id, operation, revision, device_id
+            ) VALUES (
+                'import_rows', NEW.id,
+                CASE WHEN NEW.deleted_at IS NOT NULL AND OLD.deleted_at IS NULL
+                     THEN 'delete' ELSE 'update' END,
+                NEW.revision,
+                (SELECT value FROM sync_metadata WHERE key = 'active_device_id')
+            );
+        END;
+
+        CREATE TRIGGER prevent_import_batches_hard_delete
+        BEFORE DELETE ON import_batches
+        BEGIN
+            SELECT RAISE(ABORT, 'hard delete is not allowed; use a tombstone');
+        END;
+
+        CREATE TRIGGER prevent_import_rows_hard_delete
+        BEFORE DELETE ON import_rows
+        BEGIN
+            SELECT RAISE(ABORT, 'hard delete is not allowed; use a tombstone');
+        END;
+
+        CREATE TRIGGER tombstone_import_batches_delete
+        AFTER UPDATE OF deleted_at ON import_batches
+        WHEN NEW.deleted_at IS NOT NULL AND OLD.deleted_at IS NULL
+        BEGIN
+            INSERT INTO tombstones (
+                entity_type, entity_id, deleted_at, revision, device_id
+            ) VALUES (
+                'import_batches', NEW.id, NEW.deleted_at, NEW.revision,
+                (SELECT value FROM sync_metadata WHERE key = 'active_device_id')
+            )
+            ON CONFLICT(entity_type, entity_id) DO UPDATE SET
+                deleted_at = excluded.deleted_at,
+                revision = excluded.revision,
+                device_id = excluded.device_id;
+        END;
+
+        CREATE TRIGGER tombstone_import_rows_delete
+        AFTER UPDATE OF deleted_at ON import_rows
+        WHEN NEW.deleted_at IS NOT NULL AND OLD.deleted_at IS NULL
+        BEGIN
+            INSERT INTO tombstones (
+                entity_type, entity_id, deleted_at, revision, device_id
+            ) VALUES (
+                'import_rows', NEW.id, NEW.deleted_at, NEW.revision,
+                (SELECT value FROM sync_metadata WHERE key = 'active_device_id')
+            )
+            ON CONFLICT(entity_type, entity_id) DO UPDATE SET
+                deleted_at = excluded.deleted_at,
+                revision = excluded.revision,
+                device_id = excluded.device_id;
+        END;
         """,
     )

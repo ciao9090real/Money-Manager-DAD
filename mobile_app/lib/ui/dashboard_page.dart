@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../app_controller.dart';
@@ -62,6 +64,19 @@ class DashboardPage extends StatelessWidget {
     final savingsRateBasisPoints = controller.savingsRateBasisPoints();
     final emergencyCoverageHundredths = controller
         .emergencyFundCoverageHundredths();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final upcoming = controller.recurring
+        .where((rule) {
+          final due = DateTime.tryParse(rule.nextDueDate);
+          return rule.status == 'active' &&
+              due != null &&
+              !DateTime(due.year, due.month, due.day).isBefore(today);
+        })
+        .take(2)
+        .toList();
+    final monthNetCents =
+        controller.monthIncomeCents - controller.monthExpenseCents;
     return RefreshIndicator(
       onRefresh: () => _refresh(context),
       child: ListView(
@@ -82,7 +97,7 @@ class DashboardPage extends StatelessWidget {
                     ),
                     Text(
                       controller.isPaired
-                          ? 'Private finance, available offline'
+                          ? 'Today · private and available offline'
                           : 'Local finance on your phone',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
@@ -142,61 +157,65 @@ class DashboardPage extends StatelessWidget {
             ),
             const SizedBox(height: 16),
           ],
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFF102A23), Color(0xFF0C5144)],
-              ),
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          SurfaceCard(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+            child: Stack(
               children: [
-                const Text(
-                  'NET WORTH',
-                  style: TextStyle(
-                    color: Color(0xFFAFC2BC),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0,
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: CustomPaint(painter: _HeroSparklinePainter(history)),
                   ),
                 ),
-                const SizedBox(height: 8),
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    money(controller.netWorthCents),
-                    style: Theme.of(
-                      context,
-                    ).textTheme.displaySmall?.copyWith(color: Colors.white),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Row(
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: _PortfolioDetail(
-                        label: 'Available liquidity',
-                        value: money(controller.liquidityCents),
-                        negative: controller.liquidityCents < 0,
+                    const Text(
+                      'TOTAL NET WORTH',
+                      style: TextStyle(
+                        color: AppColors.muted,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 1,
                       ),
                     ),
-                    Container(
-                      width: 1,
-                      height: 38,
-                      color: const Color(0xFF3A4D47),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: _PortfolioDetail(
-                        label: 'Debt & overdraft',
-                        value: money(controller.debtCents),
-                        negative: controller.debtCents > 0,
+                    const SizedBox(height: 8),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        money(controller.netWorthCents),
+                        style: Theme.of(context).textTheme.displaySmall,
                       ),
+                    ),
+                    const SizedBox(height: 8),
+                    Pill(
+                      '${monthNetCents > 0 ? '+' : ''}${money(monthNetCents)} this month',
+                      tone: monthNetCents >= 0 ? 'positive' : 'negative',
+                    ),
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _PortfolioDetail(
+                            label: 'Ready money',
+                            value: money(controller.liquidityCents),
+                            negative: controller.liquidityCents < 0,
+                          ),
+                        ),
+                        Container(
+                          width: 1,
+                          height: 38,
+                          color: AppColors.border,
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: _PortfolioDetail(
+                            label: 'Owed',
+                            value: money(controller.debtCents),
+                            negative: controller.debtCents > 0,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -204,51 +223,63 @@ class DashboardPage extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _QuickAction(
-                  label: 'Expense',
-                  icon: Icons.south_west,
-                  tone: AppColors.negative,
-                  onTap: controller.accounts.isEmpty
-                      ? null
-                      : onAddExpense ?? onAddTransaction,
+          SurfaceCard(
+            padding: EdgeInsets.zero,
+            child: Row(
+              children: [
+                Expanded(
+                  child: _QuickAction(
+                    label: 'Expense',
+                    icon: Icons.south_west,
+                    tone: AppColors.negative,
+                    onTap: controller.accounts.isEmpty
+                        ? null
+                        : onAddExpense ?? onAddTransaction,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _QuickAction(
-                  label: 'Income',
-                  icon: Icons.north_east,
-                  tone: AppColors.positive,
-                  onTap: controller.accounts.isEmpty
-                      ? null
-                      : onAddIncome ?? onAddTransaction,
+                const _ActionDivider(),
+                Expanded(
+                  child: _QuickAction(
+                    label: 'Income',
+                    icon: Icons.north_east,
+                    tone: AppColors.positive,
+                    onTap: controller.accounts.isEmpty
+                        ? null
+                        : onAddIncome ?? onAddTransaction,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _QuickAction(
-                  label: 'Move',
-                  icon: Icons.swap_horiz,
-                  tone: AppColors.blue,
-                  onTap: controller.accounts.length < 2
-                      ? null
-                      : onAddTransfer ?? onAddTransaction,
+                const _ActionDivider(),
+                Expanded(
+                  child: _QuickAction(
+                    label: 'Move',
+                    icon: Icons.swap_horiz,
+                    tone: AppColors.blue,
+                    onTap: controller.accounts.length < 2
+                        ? null
+                        : onAddTransfer ?? onAddTransaction,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _QuickAction(
-                  label: 'Sync',
-                  icon: Icons.sync,
-                  tone: AppColors.primary,
-                  onTap: controller.isSyncing ? null : () => _refresh(context),
+                const _ActionDivider(),
+                Expanded(
+                  child: _QuickAction(
+                    label: 'Sync',
+                    icon: Icons.sync,
+                    tone: AppColors.primary,
+                    onTap: controller.isSyncing
+                        ? null
+                        : () => _refresh(context),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
+          const SizedBox(height: 18),
+          const SectionHeader(
+            title: 'Today',
+            subtitle: 'Recorded movement and what is due next',
+          ),
+          const SizedBox(height: 10),
+          _TodayBrief(upcoming: upcoming),
           const SizedBox(height: 18),
           SurfaceCard(
             child: Column(
@@ -267,44 +298,11 @@ class DashboardPage extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 18),
-          GridView.count(
-            crossAxisCount: 2,
-            mainAxisSpacing: 12,
-            crossAxisSpacing: 12,
-            childAspectRatio: 1.62,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            children: [
-              MetricCard(
-                label: 'Income this month',
-                value: money(controller.monthIncomeCents),
-                icon: Icons.trending_up,
-                tone: AppColors.positive,
-              ),
-              MetricCard(
-                label: 'Spent this month',
-                value: money(controller.monthExpenseCents),
-                icon: Icons.trending_down,
-                tone: controller.monthExpenseCents > 0
-                    ? AppColors.negative
-                    : AppColors.ink,
-              ),
-              MetricCard(
-                label: 'Savings rate',
-                value: _percentFromBasisPoints(savingsRateBasisPoints),
-                icon: Icons.savings_outlined,
-                tone: savingsRateBasisPoints < 0
-                    ? AppColors.negative
-                    : AppColors.positive,
-              ),
-              MetricCard(
-                label: 'Emergency fund',
-                value:
-                    '${(emergencyCoverageHundredths / 100).toStringAsFixed(1)} months',
-                icon: Icons.health_and_safety_outlined,
-                tone: _coverageTone(emergencyCoverageHundredths),
-              ),
-            ],
+          _HealthBoard(
+            incomeCents: controller.monthIncomeCents,
+            expenseCents: controller.monthExpenseCents,
+            savingsRateBasisPoints: savingsRateBasisPoints,
+            emergencyCoverageHundredths: emergencyCoverageHundredths,
           ),
           if (controller.pendingCount > 0 || controller.failedCount > 0) ...[
             const SizedBox(height: 14),
@@ -435,6 +433,171 @@ class DashboardPage extends StatelessWidget {
   }
 }
 
+class _HeroSparklinePainter extends CustomPainter {
+  const _HeroSparklinePainter(this.points);
+
+  final List<NetWorthPoint> points;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (points.length < 2) return;
+    final values = points.map((point) => point.netWorthCents).toList();
+    final minimum = values.reduce(math.min);
+    final maximum = values.reduce(math.max);
+    final span = math.max(1, maximum - minimum);
+    final top = size.height * .44;
+    final bottom = size.height;
+    final path = Path();
+    for (var index = 0; index < values.length; index++) {
+      final x = index * size.width / (values.length - 1);
+      final ratio = (values[index] - minimum) / span;
+      final y = bottom - ratio * (bottom - top);
+      if (index == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+
+    final area = Path.from(path)
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+    canvas.drawPath(
+      area,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            AppColors.primary.withValues(alpha: .13),
+            AppColors.primary.withValues(alpha: 0),
+          ],
+        ).createShader(Offset.zero & size),
+    );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = AppColors.primary.withValues(alpha: .42)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _HeroSparklinePainter oldDelegate) =>
+      oldDelegate.points != points;
+}
+
+class _TodayBrief extends StatelessWidget {
+  const _TodayBrief({required this.upcoming});
+
+  final List<RecurringRecord> upcoming;
+
+  @override
+  Widget build(BuildContext context) => SurfaceCard(
+    padding: EdgeInsets.zero,
+    child: Column(
+      children: [
+        if (upcoming.isEmpty)
+          const _TodayRow(
+            icon: Icons.event_available_outlined,
+            tone: AppColors.primary,
+            title: 'Nothing scheduled next',
+            subtitle: 'Recurring items from the desktop appear here',
+            trailing: Icon(
+              Icons.check_circle_outline,
+              size: 20,
+              color: AppColors.primary,
+            ),
+          )
+        else
+          for (var index = 0; index < upcoming.length; index++) ...[
+            _TodayRow(
+              icon: upcoming[index].transactionType == 'income'
+                  ? Icons.north_east
+                  : Icons.south_west,
+              tone: upcoming[index].transactionType == 'income'
+                  ? AppColors.positive
+                  : AppColors.negative,
+              title: upcoming[index].name,
+              subtitle: 'Due ${friendlyDate(upcoming[index].nextDueDate)}',
+              trailing: upcoming[index].amountCents == null
+                  ? const Pill('Variable', tone: 'neutral')
+                  : AmountText(
+                      upcoming[index].transactionType == 'income'
+                          ? upcoming[index].amountCents!
+                          : -upcoming[index].amountCents!,
+                    ),
+            ),
+            if (index != upcoming.length - 1)
+              const Divider(height: 1, indent: 58, endIndent: 14),
+          ],
+      ],
+    ),
+  );
+}
+
+class _TodayRow extends StatelessWidget {
+  const _TodayRow({
+    required this.icon,
+    required this.tone,
+    required this.title,
+    required this.subtitle,
+    required this.trailing,
+  });
+
+  final IconData icon;
+  final Color tone;
+  final String title;
+  final String subtitle;
+  final Widget trailing;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
+    child: Row(
+      children: [
+        Container(
+          width: 34,
+          height: 34,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: tone.withValues(alpha: .10),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: tone, size: 19),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 10),
+        trailing,
+      ],
+    ),
+  );
+}
+
 class _QuickAction extends StatelessWidget {
   const _QuickAction({
     required this.label,
@@ -450,16 +613,12 @@ class _QuickAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Material(
-    color: AppColors.surface,
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(16),
-      side: const BorderSide(color: AppColors.border),
-    ),
-    clipBehavior: Clip.antiAlias,
+    color: Colors.transparent,
     child: InkWell(
       onTap: onTap,
+      borderRadius: BorderRadius.circular(13),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
         child: Column(
           children: [
             Icon(icon, size: 21, color: onTap == null ? AppColors.muted : tone),
@@ -475,6 +634,120 @@ class _QuickAction extends StatelessWidget {
           ],
         ),
       ),
+    ),
+  );
+}
+
+class _ActionDivider extends StatelessWidget {
+  const _ActionDivider();
+
+  @override
+  Widget build(BuildContext context) =>
+      const SizedBox(height: 34, child: VerticalDivider(width: 1));
+}
+
+class _HealthBoard extends StatelessWidget {
+  const _HealthBoard({
+    required this.incomeCents,
+    required this.expenseCents,
+    required this.savingsRateBasisPoints,
+    required this.emergencyCoverageHundredths,
+  });
+
+  final int incomeCents;
+  final int expenseCents;
+  final int savingsRateBasisPoints;
+  final int emergencyCoverageHundredths;
+
+  @override
+  Widget build(BuildContext context) => SurfaceCard(
+    padding: EdgeInsets.zero,
+    child: Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _HealthMetric(
+                label: 'Income this month',
+                value: money(incomeCents),
+                tone: AppColors.positive,
+              ),
+            ),
+            const SizedBox(height: 72, child: VerticalDivider(width: 1)),
+            Expanded(
+              child: _HealthMetric(
+                label: 'Spent this month',
+                value: money(expenseCents),
+                tone: expenseCents > 0 ? AppColors.negative : AppColors.ink,
+              ),
+            ),
+          ],
+        ),
+        const Divider(height: 1),
+        Row(
+          children: [
+            Expanded(
+              child: _HealthMetric(
+                label: 'Savings rate',
+                value: _percentFromBasisPoints(savingsRateBasisPoints),
+                tone: savingsRateBasisPoints < 0
+                    ? AppColors.negative
+                    : AppColors.positive,
+              ),
+            ),
+            const SizedBox(height: 72, child: VerticalDivider(width: 1)),
+            Expanded(
+              child: _HealthMetric(
+                label: 'Emergency fund',
+                value:
+                    '${(emergencyCoverageHundredths / 100).toStringAsFixed(1)} months',
+                tone: _coverageTone(emergencyCoverageHundredths),
+              ),
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+}
+
+class _HealthMetric extends StatelessWidget {
+  const _HealthMetric({
+    required this.label,
+    required this.value,
+    required this.tone,
+  });
+
+  final String label;
+  final String value;
+  final Color tone;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(14, 14, 12, 15),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 7),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(
+            value,
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+              color: tone,
+              fontFamily: 'SpaceGrotesk',
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
     ),
   );
 }
@@ -633,7 +906,7 @@ class _PortfolioDetail extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: const TextStyle(
-          color: Color(0xFFAFC2BC),
+          color: AppColors.muted,
           fontSize: 11,
           letterSpacing: 0,
         ),
@@ -645,9 +918,10 @@ class _PortfolioDetail extends StatelessWidget {
         child: Text(
           value,
           style: TextStyle(
-            color: negative ? const Color(0xFFFF8C86) : Colors.white,
+            fontFamily: 'SpaceGrotesk',
+            color: negative ? AppColors.negative : AppColors.ink,
             fontSize: 16,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w600,
             letterSpacing: 0,
           ),
         ),

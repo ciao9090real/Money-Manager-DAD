@@ -11,6 +11,7 @@ class MorePage extends StatelessWidget {
     required this.onPair,
     required this.onOpenBudgets,
     required this.onOpenGoals,
+    required this.onOpenInsights,
     required this.onOpenLoan,
   });
 
@@ -18,6 +19,7 @@ class MorePage extends StatelessWidget {
   final VoidCallback onPair;
   final VoidCallback onOpenBudgets;
   final VoidCallback onOpenGoals;
+  final VoidCallback onOpenInsights;
   final ValueChanged<String> onOpenLoan;
 
   @override
@@ -26,8 +28,20 @@ class MorePage extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 108),
       children: [
         const ScreenHeader(
-          title: 'Planning, portfolio & sync',
-          subtitle: 'Your plans, long-term finances, and phone connection',
+          title: 'Plan, understand & connect',
+          subtitle: 'Your reports, long-term finances, and phone connection',
+        ),
+        const SizedBox(height: 22),
+        const SectionHeader(title: 'Understand'),
+        const SizedBox(height: 9),
+        SurfaceCard(
+          padding: EdgeInsets.zero,
+          child: _PlanningRow(
+            icon: Icons.auto_graph,
+            title: 'Insights',
+            subtitle: 'Cash flow, category pressure, and useful clues',
+            onTap: onOpenInsights,
+          ),
         ),
         const SizedBox(height: 22),
         const SectionHeader(title: 'Planning'),
@@ -152,7 +166,7 @@ class MorePage extends StatelessWidget {
                     ),
                     const SizedBox(height: 5),
                     Text(
-                      'The phone cache is encrypted with SQLCipher, the app locks whenever it leaves the screen, and screenshots are blocked. Backups and spreadsheet imports are managed on the desktop, which remains the source of truth.',
+                      'The phone cache is encrypted with SQLCipher, the app locks whenever it leaves the screen, and screenshots are blocked. Files are mapped on desktop; their import inbox can be reviewed safely here.',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],

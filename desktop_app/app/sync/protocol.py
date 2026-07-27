@@ -6,7 +6,7 @@ PROTOCOL_VERSION = 1
 # Additive changes to the portable entity set do not change the HTTP command
 # envelope, so they keep protocol v1.  The phone acknowledges this independent
 # version only after applying a snapshot to its local cache.
-ENTITY_SET_VERSION = 1
+ENTITY_SET_VERSION = 2
 
 # The phone keeps its own SQLite database. These are the portable financial
 # records it can mirror; desktop-only preferences and attachments stay local.
@@ -22,6 +22,8 @@ SYNC_ENTITIES = (
     "budgets",
     "net_worth_snapshots",
     "savings_goals",
+    "import_batches",
+    "import_rows",
     "transactions",
 )
 
@@ -37,4 +39,8 @@ COMMAND_TYPES = {
     "create_transfer",
     "record_recurring",
     "add_goal_contribution",
+    "categorize_import_rows",
+    "ignore_import_rows",
+    "restore_import_rows",
+    "post_import_batch",
 }

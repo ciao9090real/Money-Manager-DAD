@@ -8,7 +8,6 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QMessageBox,
     QVBoxLayout,
 )
@@ -22,15 +21,18 @@ from app.services.auth_service import (
 )
 from app.ui.components import dialog_shell, primary_button, secondary_button
 from app.ui.icons import icon
+from app.ui.password_field import PasswordField
 from app.ui.theme import Colors
 
 
-def _password_field(placeholder: str) -> QLineEdit:
-    field = QLineEdit()
-    field.setEchoMode(QLineEdit.EchoMode.Password)
-    field.setMaxLength(PASSWORD_MAX_LENGTH)
-    field.setPlaceholderText(placeholder)
-    return field
+def _password_field(
+    placeholder: str, *, mascot: bool = False
+) -> PasswordField:
+    return PasswordField(
+        placeholder,
+        mascot=mascot,
+        max_length=PASSWORD_MAX_LENGTH,
+    )
 
 
 def _error_label() -> QLabel:
@@ -50,11 +52,13 @@ class PasswordSetupDialog(QDialog):
 
         form = QFormLayout()
         self.password = _password_field(
-            f"At least {PASSWORD_MIN_LENGTH} characters"
+            f"At least {PASSWORD_MIN_LENGTH} characters",
+            mascot=True,
         )
         self.confirmation = _password_field("Type the password again")
         form.addRow("App password", self.password)
         form.addRow("Confirm password", self.confirmation)
+        self.show_password = self.password.toggle_button
 
         status = auth.status()
         self.use_hello = QCheckBox("Also set up Windows Hello")
@@ -156,8 +160,11 @@ class UnlockDialog(QDialog):
         surface_layout.setContentsMargins(18, 17, 18, 17)
         surface_layout.setSpacing(10)
         password_label = QLabel("App password")
-        self.password = _password_field("Enter your app password")
+        self.password = _password_field(
+            "Enter your app password", mascot=True
+        )
         self.password.returnPressed.connect(self.try_password)
+        self.show_password = self.password.toggle_button
         self.error = _error_label()
         surface_layout.addWidget(password_label)
         surface_layout.addWidget(self.password)
@@ -259,7 +266,9 @@ class ChangePasswordDialog(QDialog):
         self.auth = auth
         self.setWindowTitle("Change app password")
         form = QFormLayout()
-        self.current_password = _password_field("Current app password")
+        self.current_password = _password_field(
+            "Current app password", mascot=True
+        )
         self.new_password = _password_field(
             f"At least {PASSWORD_MIN_LENGTH} characters"
         )
@@ -267,6 +276,7 @@ class ChangePasswordDialog(QDialog):
         form.addRow("Current password", self.current_password)
         form.addRow("New password", self.new_password)
         form.addRow("Confirm password", self.confirmation)
+        self.show_password = self.current_password.toggle_button
         self.error = _error_label()
         form.addRow("", self.error)
         dialog_shell(
@@ -307,8 +317,11 @@ class ConfirmPasswordDialog(QDialog):
         self.auth = auth
         self.setWindowTitle("Confirm app password")
         form = QFormLayout()
-        self.password = _password_field("Enter your app password")
+        self.password = _password_field(
+            "Enter your app password", mascot=True
+        )
         form.addRow("App password", self.password)
+        self.show_password = self.password.toggle_button
         self.error = _error_label()
         form.addRow("", self.error)
         dialog_shell(

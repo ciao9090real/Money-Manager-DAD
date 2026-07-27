@@ -241,6 +241,22 @@ class BudgetsPage(QWidget):
             self.budget_card.setMaximumHeight(310)
         self._sync_actions()
 
+    def select_entity(self, category_id: str) -> None:
+        """Focus the budget for a category opened from Home."""
+
+        self.refresh()
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 0)
+            budget_id = (
+                str(item.data(Qt.ItemDataRole.UserRole)) if item else None
+            )
+            budget = self._budgets_by_id.get(budget_id) if budget_id else None
+            if budget and budget.category_id == category_id:
+                self.table.selectRow(row)
+                self.table.scrollToItem(item)
+                self._sync_actions()
+                break
+
     def _populate_row(
         self,
         row: int,

@@ -1,12 +1,19 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+fido2_hiddenimports = [
+    'fido2.client',
+    'fido2.client.windows',
+    'fido2.server',
+    'fido2.webauthn',
+]
+
 
 a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[],
-    hiddenimports=[],
+    datas=[('app/assets/fonts', 'app/assets/fonts')],
+    hiddenimports=fido2_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

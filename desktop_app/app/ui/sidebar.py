@@ -9,22 +9,30 @@ from app.ui.icons import LineIcon, icon
 class SidebarNavItem(QFrame):
     clicked = Signal()
 
-    def __init__(self, key: str, label: str, icon: str, parent: QWidget | None = None):
+    def __init__(
+        self,
+        key: str,
+        label: str,
+        icon: str,
+        description: str = "",
+        parent: QWidget | None = None,
+    ):
         super().__init__(parent)
         self.key = key
         self.label = label
         self.icon = icon
+        self.description = description
         self.setProperty("role", "navItem")
         self.setProperty("selected", "false")
         self.setProperty("collapsed", "false")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setToolTip(label)
-        self.setFixedHeight(46)
+        self.setFixedHeight(72 if description else 48)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
 
         self.layout = QHBoxLayout(self)
-        self.layout.setContentsMargins(12, 0, 12, 0)
+        self.layout.setContentsMargins(12, 8, 12, 8)
         self.layout.setSpacing(10)
 
         self.icon_widget = LineIcon(icon, "#91a59f", 19)
@@ -35,11 +43,21 @@ class SidebarNavItem(QFrame):
         icon_layout.addWidget(self.icon_widget)
         self.icon_container.setFixedWidth(28)
 
+        self.text_block = QWidget()
+        text_layout = QVBoxLayout(self.text_block)
+        text_layout.setContentsMargins(0, 0, 0, 0)
+        text_layout.setSpacing(3)
         self.text_label = QLabel(label)
         self.text_label.setProperty("role", "navLabel")
+        self.description_label = QLabel(description)
+        self.description_label.setProperty("role", "navDescription")
+        self.description_label.setWordWrap(True)
+        text_layout.addWidget(self.text_label)
+        if description:
+            text_layout.addWidget(self.description_label)
 
         self.layout.addWidget(self.icon_container)
-        self.layout.addWidget(self.text_label, 1)
+        self.layout.addWidget(self.text_block, 1)
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
@@ -47,9 +65,15 @@ class SidebarNavItem(QFrame):
         super().mousePressEvent(event)
 
     def set_collapsed(self, collapsed: bool) -> None:
-        self.text_label.setVisible(not collapsed)
+        self.text_block.setVisible(not collapsed)
         self.setProperty("collapsed", "true" if collapsed else "false")
-        self.layout.setContentsMargins(0 if collapsed else 12, 0, 0 if collapsed else 12, 0)
+        self.setFixedHeight(48 if collapsed else 72 if self.description else 48)
+        self.layout.setContentsMargins(
+            0 if collapsed else 12,
+            0 if collapsed else 8,
+            0 if collapsed else 12,
+            0 if collapsed else 8,
+        )
         self.layout.setSpacing(0 if collapsed else 10)
         self.layout.setAlignment(Qt.AlignmentFlag.AlignCenter if collapsed else Qt.AlignmentFlag.AlignLeft)
         self.icon_container.setFixedWidth(44 if collapsed else 28)
@@ -63,7 +87,12 @@ class SidebarNavItem(QFrame):
     def _refresh_style(self) -> None:
         self.style().unpolish(self)
         self.style().polish(self)
-        for child in (self.icon_container, self.text_label):
+        for child in (
+            self.icon_container,
+            self.text_block,
+            self.text_label,
+            self.description_label,
+        ):
             child.style().unpolish(child)
             child.style().polish(child)
 
@@ -72,10 +101,14 @@ class Sidebar(QFrame):
     page_selected = Signal(int)
     state_changed = Signal(bool, bool)
 
-    EXPANDED_WIDTH = 236
+    EXPANDED_WIDTH = 286
     COLLAPSED_WIDTH = 72
 
-    def __init__(self, pages: list[tuple[str, str]], parent: QWidget | None = None):
+    def __init__(
+        self,
+        pages: list[tuple[str, str] | tuple[str, str, str]],
+        parent: QWidget | None = None,
+    ):
         super().__init__(parent)
         self.setObjectName("Sidebar")
         self.pages = pages
@@ -150,11 +183,13 @@ class Sidebar(QFrame):
         self.root_layout.addWidget(self.header)
 
     def _build_nav(self) -> None:
-        for index, (label, icon) in enumerate(self.pages):
+        for index, page in enumerate(self.pages):
+            label, icon, *metadata = page
+            description = metadata[0] if metadata else ""
             if label == "Settings":
                 self.root_layout.addStretch()
             key = label.lower().replace(" ", "_")
-            button = SidebarNavItem(key, label, icon)
+            button = SidebarNavItem(key, label, icon, description)
             button.clicked.connect(lambda row=index: self.page_selected.emit(row))
             self.nav_buttons.append(button)
             self.root_layout.addWidget(button)

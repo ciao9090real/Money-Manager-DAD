@@ -11,6 +11,7 @@ from app.services.backup_service import BackupService
 from app.services.auth_service import AuthService
 from app.services.net_worth_service import NetWorthService
 from app.ui.auth_dialogs import PasswordSetupDialog, UnlockDialog
+from app.ui.fonts import load_app_fonts
 from app.ui.main_window import MainWindow
 from app.ui.styles import app_stylesheet
 
@@ -19,6 +20,7 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setApplicationVersion(APP_VERSION)
+    load_app_fonts()
     app.setStyleSheet(app_stylesheet())
     db = connect()
     net_worth = None

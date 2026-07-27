@@ -13,12 +13,15 @@ from app.core.database import connect
 from app.services.account_service import AccountService
 from app.services.budget_service import BudgetService
 from app.services.investment_service import InvestmentService
+from app.services.import_inbox_service import ImportInboxService
+from app.services.import_service import ImportService, StatementMapping
 from app.services.loan_service import LoanService
 from app.services.payment_method_service import PaymentMethodService
 from app.services.recurring_service import RecurringService
 from app.services.transaction_service import TransactionService
 from app.services.category_service import CategoryService
 from app.services.goal_service import GoalService
+from app.services.auth_service import AuthService
 from app.ui.account_form import AccountForm
 from app.ui.backup_password_dialog import BackupPasswordDialog
 from app.ui.budget_form import BudgetForm
@@ -28,6 +31,7 @@ from app.ui.loan_form import LoanForm, LoanPaymentDialog
 from app.ui.goal_form import GoalContributionDialog, GoalForm
 from app.ui.recurring_form import RecurringRuleForm
 from app.ui.transaction_form import TransactionForm
+from app.ui.auth_dialogs import PasswordSetupDialog
 
 
 def main() -> None:
@@ -73,7 +77,7 @@ def main() -> None:
                 app.processEvents()
                 window.grab().save(str(output / f"ui-{name}.png"))
             window.resize(1440, 900)
-            window._select_page(0)
+            window._select_page(window.page_keys.index("dashboard"))
             dashboard_scroll = window.dashboard.page_scroll.verticalScrollBar()
             dashboard_scroll.setValue(dashboard_scroll.maximum())
             app.processEvents()
@@ -155,6 +159,19 @@ def main() -> None:
             app.processEvents()
             backup_password.grab().save(str(output / "ui-backup-password.png"))
             backup_password.close()
+            password_setup = PasswordSetupDialog(AuthService(db))
+            password_setup.password.setText("playful password")
+            password_setup.confirmation.setText("playful password")
+            password_setup.show()
+            app.processEvents()
+            password_setup.grab().save(str(output / "ui-password-setup.png"))
+            password_setup.password.toggle_button.setChecked(True)
+            QTest.qWait(320)
+            app.processEvents()
+            password_setup.grab().save(
+                str(output / "ui-password-setup-peek.png")
+            )
+            password_setup.close()
             loan_service = LoanService(db)
             loan_form = LoanForm(
                 [
@@ -225,6 +242,32 @@ def seed(db) -> None:
     )
     transactions.add_expense(
         wallet.id, "18.50", "2026-07-09", "Coffee and lunch", "Dining"
+    )
+    database_file = Path(
+        db.execute("PRAGMA database_list").fetchone()["file"]
+    )
+    statement = database_file.with_name("july-card-statement.csv")
+    statement.write_text(
+        "Booking date;Details;Amount\n"
+        "13/07/2026;Weekly groceries;-86,40\n"
+        "15/07/2026;Train tickets;-48,90\n"
+        "16/07/2026;Card refund;22,00\n"
+        "not-a-date;Unreadable bank row;-9,00\n",
+        encoding="utf-8",
+    )
+    import_service = ImportService(db)
+    ImportInboxService(db).stage_preview(
+        import_service.preview_bank_statement(
+            import_service.read_spreadsheet(statement),
+            StatementMapping(
+                payment_method_id=card.id,
+                period_start="2026-07-01",
+                period_end="2026-07-31",
+                date_column=0,
+                description_column=1,
+                amount_column=2,
+            ),
+        )
     )
     expense_categories = {
         category.name: category.id

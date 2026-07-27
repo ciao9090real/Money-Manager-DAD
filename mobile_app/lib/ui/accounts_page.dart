@@ -55,20 +55,14 @@ class AccountsPage extends StatelessWidget {
         ),
         const SizedBox(height: 18),
         Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF102A23), Color(0xFF0C5144)],
-            ),
-            borderRadius: BorderRadius.circular(22),
-          ),
+          padding: const EdgeInsets.fromLTRB(2, 8, 2, 14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
                 'TOTAL ACROSS ACCOUNTS',
                 style: TextStyle(
-                  color: Color(0xFFB6C8C2),
+                  color: AppColors.primary,
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
                 ),
@@ -79,15 +73,13 @@ class AccountsPage extends StatelessWidget {
                 alignment: Alignment.centerLeft,
                 child: Text(
                   money(total),
-                  style: Theme.of(
-                    context,
-                  ).textTheme.displaySmall?.copyWith(color: Colors.white),
+                  style: Theme.of(context).textTheme.displaySmall,
                 ),
               ),
               const SizedBox(height: 6),
               Text(
                 '${controller.accounts.length} active account${controller.accounts.length == 1 ? '' : 's'}',
-                style: const TextStyle(color: Color(0xFFB6C8C2)),
+                style: Theme.of(context).textTheme.bodySmall,
               ),
             ],
           ),
@@ -190,68 +182,58 @@ class AccountDetailPage extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(18, 8, 18, 32),
         children: [
           Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: AppColors.ink,
-              borderRadius: BorderRadius.circular(22),
-            ),
+            padding: const EdgeInsets.fromLTRB(2, 8, 2, 16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    Icon(
-                      _iconFor(account.type),
-                      color: const Color(0xFFB6C8C2),
-                    ),
+                    Icon(_iconFor(account.type), color: AppColors.primary),
                     const SizedBox(width: 8),
                     Text(
                       prettyType(account.type),
-                      style: const TextStyle(color: Color(0xFFB6C8C2)),
+                      style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],
                 ),
                 const SizedBox(height: 16),
                 Text(
                   'Available balance',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFFB6C8C2),
-                  ),
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
                 const SizedBox(height: 4),
                 FittedBox(
                   fit: BoxFit.scaleDown,
                   child: Text(
                     money(controller.balanceFor(account.id)),
-                    style: Theme.of(
-                      context,
-                    ).textTheme.displaySmall?.copyWith(color: Colors.white),
+                    style: Theme.of(context).textTheme.displaySmall,
                   ),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: MetricCard(
-                  label: 'In this month',
-                  value: money(monthIncome),
-                  icon: Icons.north_east,
-                  tone: AppColors.positive,
+          SurfaceCard(
+            padding: EdgeInsets.zero,
+            child: Row(
+              children: [
+                Expanded(
+                  child: _AccountMonthMetric(
+                    label: 'In this month',
+                    value: money(monthIncome),
+                    tone: AppColors.positive,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: MetricCard(
-                  label: 'Out this month',
-                  value: money(monthSpent),
-                  icon: Icons.south_west,
-                  tone: AppColors.negative,
+                const SizedBox(height: 72, child: VerticalDivider(width: 1)),
+                Expanded(
+                  child: _AccountMonthMetric(
+                    label: 'Out this month',
+                    value: money(monthSpent),
+                    tone: AppColors.negative,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           if (onAddTransaction != null) ...[
             const SizedBox(height: 12),
@@ -334,6 +316,42 @@ class AccountDetailPage extends StatelessWidget {
       ),
     );
   }
+}
+
+class _AccountMonthMetric extends StatelessWidget {
+  const _AccountMonthMetric({
+    required this.label,
+    required this.value,
+    required this.tone,
+  });
+
+  final String label;
+  final String value;
+  final Color tone;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(14, 14, 12, 15),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: Theme.of(context).textTheme.bodySmall),
+        const SizedBox(height: 7),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(
+            value,
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+              color: tone,
+              fontFamily: 'SpaceGrotesk',
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 class _AccountRow extends StatelessWidget {

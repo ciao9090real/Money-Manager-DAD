@@ -4,7 +4,7 @@ import sqlite3
 from datetime import date
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import QTimer, Qt, QUrl
 from PySide6.QtGui import QDesktopServices, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -26,6 +26,7 @@ from app.services.backup_service import BackupService
 from app.services.auth_service import AuthService, WindowsHelloError
 from app.services.export_service import ExportService
 from app.services.import_service import ImportService
+from app.services.import_inbox_service import ImportInboxService
 from app.sync.pairing_qr import pairing_qr_image
 from app.sync.server import LocalSyncServer
 from app.ui.backup_password_dialog import BackupPasswordDialog
@@ -72,6 +73,10 @@ class SettingsPage(QWidget):
             "Settings",
             "App security, storage, backups, exports, and local preferences",
         )
+        self.primary_grid = QGridLayout()
+        self.primary_grid.setContentsMargins(0, 0, 0, 0)
+        self.primary_grid.setHorizontalSpacing(24)
+        self.primary_grid.setVerticalSpacing(24)
 
         security_card, security_layout = create_card(
             "App security",
@@ -105,7 +110,7 @@ class SettingsPage(QWidget):
         security_details.addLayout(security_actions)
         security_body.addLayout(security_details, 1)
         security_layout.addLayout(security_body)
-        layout.addWidget(security_card)
+        self.security_card = security_card
         self._refresh_auth_status()
 
         storage_card, storage_layout = create_card(
@@ -134,7 +139,8 @@ class SettingsPage(QWidget):
         storage_details.addLayout(actions)
         storage_body.addLayout(storage_details, 1)
         storage_layout.addLayout(storage_body)
-        layout.addWidget(storage_card)
+        self.storage_card = storage_card
+        layout.addLayout(self.primary_grid)
 
         sync_card, sync_layout = create_card(
             "Android phone sync",
@@ -156,7 +162,8 @@ class SettingsPage(QWidget):
 
         self.sync_qr = QLabel("Start phone sync to create a QR code")
         self.sync_qr.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.sync_qr.setMinimumSize(280, 280)
+        self.sync_qr.setMinimumSize(0, 140)
+        self.sync_qr.setMaximumHeight(280)
         qr_row = QHBoxLayout()
         qr_row.addStretch()
         qr_row.addWidget(self.sync_qr)
@@ -259,7 +266,10 @@ class SettingsPage(QWidget):
         privacy_layout.addLayout(privacy_body)
         layout.addWidget(privacy_card)
         layout.addStretch()
+        self._layout_primary()
         self._layout_tools()
+        QTimer.singleShot(0, self._layout_primary)
+        QTimer.singleShot(0, self._layout_tools)
 
     def _icon_tile(self, icon_name: str) -> QFrame:
         tile = QFrame()
@@ -290,12 +300,34 @@ class SettingsPage(QWidget):
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
+        self._layout_primary()
         self._layout_tools()
+
+    def _layout_primary(self) -> None:
+        if not hasattr(self, "primary_grid"):
+            return
+        viewport_width = self.page_scroll.viewport().width()
+        available_width = max(1, min(self.width(), viewport_width) - 68)
+        columns = 2 if available_width >= 920 else 1
+        if getattr(self, "_primary_columns", None) == columns:
+            return
+        self._primary_columns = columns
+        clear_layout(self.primary_grid)
+        for column in range(2):
+            self.primary_grid.setColumnStretch(
+                column, 1 if column < columns else 0
+            )
+        for index, card in enumerate((self.security_card, self.storage_card)):
+            self.primary_grid.addWidget(
+                card, index // columns, index % columns
+            )
 
     def _layout_tools(self) -> None:
         if not hasattr(self, "tools_grid"):
             return
-        columns = 2 if self.width() >= 760 else 1
+        viewport_width = self.page_scroll.viewport().width()
+        available_width = max(1, min(self.width(), viewport_width) - 68)
+        columns = 2 if available_width >= 760 else 1
         if getattr(self, "_tool_columns", None) == columns:
             return
         self._tool_columns = columns
@@ -331,12 +363,19 @@ class SettingsPage(QWidget):
         )
         if not ConfirmPasswordDialog(self.auth_service, action, self).exec():
             return
+        self.hello_setup_button.setEnabled(False)
+        self.hello_setup_button.setText("Waiting for Windows Hello…")
+        QApplication.processEvents()
+        owner = self.window()
+        owner.raise_()
+        owner.activateWindow()
         try:
-            self.auth_service.enable_windows_hello(int(self.window().winId()))
+            self.auth_service.enable_windows_hello(int(owner.winId()))
         except WindowsHelloError as exc:
             QMessageBox.warning(self, "Windows Hello was not changed", str(exc))
             return
-        self._refresh_auth_status()
+        finally:
+            self._refresh_auth_status()
         self.notify("Windows Hello enabled")
         QMessageBox.information(
             self,
@@ -495,7 +534,7 @@ class SettingsPage(QWidget):
         except OSError as exc:
             QMessageBox.warning(self, "Export failed", str(exc))
 
-    def import_transactions(self) -> None:
+    def import_transactions(self) -> str | None:
         source, _filter = QFileDialog.getOpenFileName(
             self,
             "Import transactions from CSV",
@@ -503,69 +542,51 @@ class SettingsPage(QWidget):
             "CSV spreadsheet (*.csv);;All files (*)",
         )
         if not source:
-            return
-        service = ImportService(self.db)
+            return None
         try:
-            preview = service.preview_transactions_csv(Path(source))
+            preview = ImportService(self.db).preview_transactions_csv(Path(source))
         except (OSError, ValueError, *DB_ERROR_TYPES) as exc:
             QMessageBox.warning(self, "CSV could not be checked", str(exc))
-            return
-        if preview.errors:
-            shown = "\n".join(preview.errors[:12])
-            remaining = len(preview.errors) - 12
-            if remaining > 0:
-                shown += f"\n…and {remaining} more problem{'s' if remaining != 1 else ''}"
-            QMessageBox.warning(
-                self,
-                "Fix the CSV before importing",
-                "Nothing was imported. These rows need attention:\n\n" + shown,
-            )
-            return
-        if preview.import_count == 0:
+            return None
+        if not preview.rows and not preview.issues:
             QMessageBox.information(
                 self,
-                "Nothing new to import",
-                f"All {preview.duplicate_count} transaction rows are already in Money Manager.",
+                "Nothing to review",
+                "The CSV contains no transaction rows.",
             )
-            return
-        duplicate_note = (
-            f"\n\n{preview.duplicate_count} exact duplicate"
-            f"{'s' if preview.duplicate_count != 1 else ''} will be skipped."
-            if preview.duplicate_count
-            else ""
-        )
+            return None
         answer = QMessageBox.question(
             self,
-            "Import checked transactions?",
-            f"Money Manager found {preview.import_count} new transaction"
-            f"{'s' if preview.import_count != 1 else ''} ready to import."
-            f"{duplicate_note}\n\nA recovery point will be made first.",
+            "Send transactions to the inbox?",
+            f"Send {len(preview.rows)} parsed row"
+            f"{'s' if len(preview.rows) != 1 else ''} and "
+            f"{len(preview.issues)} issue"
+            f"{'s' if len(preview.issues) != 1 else ''} to the import inbox?\n\n"
+            "Nothing will be posted to your ledger yet.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
         )
         if answer != QMessageBox.StandardButton.Yes:
-            return
-        rollback = self.create_local_recovery_backup()
-        if rollback is None:
-            return
+            return None
         try:
-            imported = service.import_transactions(preview)
+            batch = ImportInboxService(self.db).stage_preview(preview)
         except (OSError, ValueError, *DB_ERROR_TYPES) as exc:
             QMessageBox.warning(
                 self,
-                "Import failed safely",
-                f"No partial import was kept.\n\n{exc}",
+                "Could not create import inbox",
+                f"No partial batch was kept.\n\n{exc}",
             )
-            return
-        self.on_changed({"dashboard", "accounts", "transactions"})
-        self.notify(f"Imported {imported} transactions")
+            return None
+        self.on_changed({"imports"})
+        self.notify("Transactions sent to the import inbox")
         QMessageBox.information(
             self,
-            "Import complete",
-            f"Imported {imported} transaction{'s' if imported != 1 else ''}.\n\n"
-            f"Your before-import recovery point is here:\n{rollback}",
+            "Import inbox ready",
+            "The rows are waiting for review. Categorize or ignore unresolved "
+            "items, then post the ready rows.",
         )
+        return batch.id
 
-    def import_card_statement(self) -> None:
+    def import_card_statement(self) -> str | None:
         source, _filter = QFileDialog.getOpenFileName(
             self,
             "Choose a debit-card statement",
@@ -573,7 +594,7 @@ class SettingsPage(QWidget):
             "Bank statements (*.xlsx *.csv);;Excel workbook (*.xlsx);;CSV spreadsheet (*.csv)",
         )
         if not source:
-            return
+            return None
         try:
             dialog = BankStatementImportDialog(self.db, Path(source), self)
         except (OSError, ValueError, *DB_ERROR_TYPES) as exc:
@@ -582,30 +603,27 @@ class SettingsPage(QWidget):
                 "Statement could not be opened",
                 str(exc),
             )
-            return
+            return None
         if not dialog.exec() or dialog.preview is None:
-            return
-        rollback = self.create_local_recovery_backup()
-        if rollback is None:
-            return
+            return None
         try:
-            imported = ImportService(self.db).import_transactions(dialog.preview)
+            batch = ImportInboxService(self.db).stage_preview(dialog.preview)
         except (OSError, ValueError, *DB_ERROR_TYPES) as exc:
             QMessageBox.warning(
                 self,
-                "Import failed safely",
-                f"No partial import was kept.\n\n{exc}",
+                "Could not create import inbox",
+                f"No partial batch was kept.\n\n{exc}",
             )
-            return
-        self.on_changed({"dashboard", "accounts", "transactions"})
-        self.notify(f"Imported {imported} card transactions")
+            return None
+        self.on_changed({"imports"})
+        self.notify("Statement sent to the import inbox")
         QMessageBox.information(
             self,
-            "Statement import complete",
-            f"Imported {imported} transaction{'s' if imported != 1 else ''} "
-            f"for {dialog.preview.payment_method_name}.\n\n"
-            f"Your before-import recovery point is here:\n{rollback}",
+            "Statement inbox ready",
+            f"The statement for {dialog.preview.payment_method_name} is waiting "
+            "for review. Nothing has been posted to the ledger.",
         )
+        return batch.id
 
     def manage_categories(self) -> None:
         CategoryManagerDialog(self.db, self.on_changed, self.notify).exec()

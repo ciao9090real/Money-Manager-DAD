@@ -36,10 +36,18 @@ class TransactionImportRow:
 
 
 @dataclass(frozen=True)
+class ImportIssue:
+    row_number: int
+    message: str
+    raw_payload: tuple[tuple[str, str], ...] = ()
+
+
+@dataclass(frozen=True)
 class ImportPreview:
     source: Path
     rows: tuple[TransactionImportRow, ...]
     errors: tuple[str, ...]
+    issues: tuple[ImportIssue, ...] = ()
 
     @property
     def duplicate_count(self) -> int:
@@ -80,6 +88,9 @@ class StatementImportPreview(ImportPreview):
     period_end: str = ""
     outside_period_count: int = 0
     blank_row_count: int = 0
+    payment_method_id: str = ""
+    sheet_name: str = ""
+    mapping: StatementMapping | None = None
 
 
 class ImportService:
@@ -151,6 +162,7 @@ class ImportService:
 
         parsed: list[TransactionImportRow] = []
         errors: list[str] = []
+        issues: list[ImportIssue] = []
         outside_period = 0
         blank_rows = 0
         for offset, values in enumerate(
@@ -195,6 +207,27 @@ class ImportService:
                 )
             except ValueError as exc:
                 errors.append(f"Row {offset}: {exc}")
+                relevant_columns = {
+                    "date": mapping.date_column,
+                    "description": mapping.description_column,
+                    "amount": mapping.amount_column,
+                    "debit": mapping.debit_column,
+                    "credit": mapping.credit_column,
+                }
+                issues.append(
+                    ImportIssue(
+                        offset,
+                        str(exc),
+                        tuple(
+                            (
+                                label,
+                                _spreadsheet_text(_cell(values, column)),
+                            )
+                            for label, column in relevant_columns.items()
+                            if column is not None
+                        ),
+                    )
+                )
 
         if not parsed and not errors:
             errors.append(
@@ -204,11 +237,15 @@ class ImportService:
             source=table.source,
             rows=tuple(parsed),
             errors=tuple(errors),
+            issues=tuple(issues),
             payment_method_name=method.name,
             period_start=start,
             period_end=end,
             outside_period_count=outside_period,
             blank_row_count=blank_rows,
+            payment_method_id=method.id,
+            sheet_name=table.sheet_name,
+            mapping=mapping,
         )
 
     def preview_transactions_csv(self, source: Path) -> ImportPreview:
@@ -226,6 +263,7 @@ class ImportService:
 
         parsed: list[TransactionImportRow] = []
         errors: list[str] = []
+        issues: list[ImportIssue] = []
         try:
             with source.open("r", newline="", encoding="utf-8-sig") as handle:
                 reader = csv.DictReader(handle)
@@ -251,6 +289,32 @@ class ImportService:
                         )
                     except ValueError as exc:
                         errors.append(f"Row {row_number}: {exc}")
+                        safe_columns = (
+                            "date",
+                            "type",
+                            "account",
+                            "target_account",
+                            "amount",
+                            "description",
+                            "category",
+                            "notes",
+                        )
+                        issues.append(
+                            ImportIssue(
+                                row_number,
+                                str(exc),
+                                tuple(
+                                    (
+                                        name,
+                                        _csv_text(
+                                            raw.get(columns.get(name, ""), "")
+                                        ),
+                                    )
+                                    for name in safe_columns
+                                    if name in columns
+                                ),
+                            )
+                        )
         except UnicodeDecodeError as exc:
             raise ValueError("CSV must be saved as UTF-8 text") from exc
         except csv.Error as exc:
@@ -258,7 +322,12 @@ class ImportService:
 
         if not parsed and not errors:
             errors.append("The CSV has headings but no transaction rows")
-        return ImportPreview(source, tuple(parsed), tuple(errors))
+        return ImportPreview(
+            source,
+            tuple(parsed),
+            tuple(errors),
+            tuple(issues),
+        )
 
     def import_transactions(self, preview: ImportPreview) -> int:
         if preview.errors:

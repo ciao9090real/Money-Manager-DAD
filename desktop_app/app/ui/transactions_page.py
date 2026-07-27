@@ -118,6 +118,7 @@ class TransactionsPage(QWidget):
         card, card_layout = create_card(
             "Activity",
             subtitle="Income, expenses, transfers, and balance adjustments",
+            role="workspace",
         )
         self.activity_card = card
         filters = []
@@ -136,8 +137,8 @@ class TransactionsPage(QWidget):
         )
         self.controls = controls
         controls_layout = QVBoxLayout(controls)
-        controls_layout.setContentsMargins(8, 7, 8, 7)
-        controls_layout.setSpacing(5)
+        controls_layout.setContentsMargins(0, 8, 0, 12)
+        controls_layout.setSpacing(8)
         search_row = QHBoxLayout()
         search_row.setSpacing(7)
         search_row.addWidget(self.search)

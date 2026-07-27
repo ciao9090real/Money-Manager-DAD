@@ -4,21 +4,43 @@ from datetime import date
 from decimal import Decimal
 
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QMouseEvent, QPainter, QPainterPath, QPen
+from PySide6.QtGui import (
+    QColor,
+    QFont,
+    QLinearGradient,
+    QMouseEvent,
+    QPainter,
+    QPainterPath,
+    QPen,
+)
 from PySide6.QtWidgets import QSizePolicy, QToolTip, QWidget
 
 from app.ui.theme import Colors
 from app.utils.money import format_money, to_decimal
 
 
-def _short_money(value: float) -> str:
+def _short_money(value: float | Decimal) -> str:
     absolute = abs(value)
     sign = "-" if value < 0 else ""
-    if absolute >= 1_000_000:
-        return f"{sign}€{absolute / 1_000_000:.1f}m"
-    if absolute >= 1_000:
-        return f"{sign}€{absolute / 1_000:.1f}k"
+    for threshold, suffix in (
+        (1_000_000_000, "b"),
+        (1_000_000, "m"),
+        (1_000, "k"),
+    ):
+        if absolute >= threshold:
+            scaled = float(absolute) / threshold
+            precision = 1 if scaled < 10 else 0
+            number = f"{scaled:.{precision}f}"
+            if "." in number:
+                number = number.rstrip("0").rstrip(".")
+            return f"{sign}€{number}{suffix}"
     return f"{sign}€{absolute:.0f}"
+
+
+def _grid_pen() -> QPen:
+    color = QColor(Colors.TEXT)
+    color.setAlpha(10)
+    return QPen(color, 1)
 
 
 def _display_date(value: str) -> str:
@@ -73,7 +95,7 @@ class LineChart(QWidget):
         if high <= low:
             high = low + 1
 
-        grid_pen = QPen(QColor(Colors.BORDER_SOFT), 1)
+        grid_pen = _grid_pen()
         label_color = QColor(Colors.TEXT_MUTED)
         small_font = QFont(self.font())
         small_font.setPointSize(8)
@@ -108,8 +130,13 @@ class LineChart(QWidget):
         area_path.lineTo(positions[-1].x(), plot.bottom())
         area_path.lineTo(positions[0].x(), plot.bottom())
         area_path.closeSubpath()
-        fill = QColor(Colors.PRIMARY)
-        fill.setAlpha(24)
+        fill_top = QColor(Colors.PRIMARY)
+        fill_top.setAlpha(28)
+        fill_bottom = QColor(Colors.PRIMARY)
+        fill_bottom.setAlpha(0)
+        fill = QLinearGradient(0, plot.top(), 0, plot.bottom())
+        fill.setColorAt(0, fill_top)
+        fill.setColorAt(1, fill_bottom)
         painter.fillPath(area_path, fill)
 
         painter.setPen(QPen(QColor(Colors.PRIMARY), 2.4))
@@ -207,7 +234,7 @@ class PerformanceChart(QWidget):
         for index in range(4):
             ratio = index / 3
             y = plot.top() + ratio * plot.height()
-            painter.setPen(QPen(QColor(Colors.BORDER_SOFT), 1))
+            painter.setPen(_grid_pen())
             painter.drawLine(QPointF(plot.left(), y), QPointF(plot.right(), y))
             painter.setPen(QColor(Colors.TEXT_MUTED))
             painter.drawText(
@@ -430,17 +457,21 @@ class CashFlowChart(QWidget):
         )
         painter.setPen(QColor(Colors.TEXT_SECONDARY))
         painter.setBrush(QColor(Colors.POSITIVE))
-        painter.drawRect(QRectF(plot.left(), 2, 8, 8))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawRoundedRect(QRectF(plot.left(), 2, 8, 8), 3, 3)
+        painter.setPen(QColor(Colors.TEXT_SECONDARY))
         painter.drawText(QRectF(plot.left() + 14, 0, 60, 14), "Income")
         painter.setBrush(QColor(Colors.NEGATIVE))
-        painter.drawRect(QRectF(plot.left() + 82, 2, 8, 8))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawRoundedRect(QRectF(plot.left() + 82, 2, 8, 8), 3, 3)
+        painter.setPen(QColor(Colors.TEXT_SECONDARY))
         painter.drawText(QRectF(plot.left() + 96, 0, 70, 14), "Expenses")
 
         painter.setFont(QFont(self.font().family(), 8))
         for index in range(4):
             ratio = index / 3
             y = plot.top() + ratio * plot.height()
-            painter.setPen(QPen(QColor(Colors.BORDER_SOFT), 1))
+            painter.setPen(_grid_pen())
             painter.drawLine(QPointF(plot.left(), y), QPointF(plot.right(), y))
             painter.setPen(QColor(Colors.TEXT_MUTED))
             painter.drawText(
@@ -467,7 +498,8 @@ class CashFlowChart(QWidget):
                 if self._hovered_bar == (month_key, kind):
                     fill = fill.lighter(112)
                 painter.setBrush(fill)
-                painter.drawRoundedRect(rect, 3, 3)
+                radius = min(6.0, max(3.0, bar_width / 3))
+                painter.drawRoundedRect(rect, radius, radius)
                 if numeric_value > 0:
                     self._bar_regions.append(
                         (rect.adjusted(-2, -3, 2, 3), month_key, kind, month_label, value)
@@ -613,7 +645,7 @@ class NetWorthChart(QWidget):
         small_font.setPointSize(8)
         painter.setFont(small_font)
         label_color = QColor(Colors.TEXT_MUTED)
-        grid_pen = QPen(QColor(Colors.BORDER_SOFT), 1)
+        grid_pen = _grid_pen()
         for index in range(5):
             ratio = Decimal(index) / Decimal("4")
             y = plot.top() + float(ratio) * plot.height()
@@ -647,6 +679,24 @@ class NetWorthChart(QWidget):
                 y = plot.bottom() - float(value_ratio) * plot.height()
                 result.append(QPointF(x, y))
             return result
+
+        net_positions = positions([point[3] for point in self._points])
+        if len(net_positions) > 1:
+            net_line = QPainterPath(net_positions[0])
+            for point in net_positions[1:]:
+                net_line.lineTo(point)
+            net_area = QPainterPath(net_line)
+            net_area.lineTo(net_positions[-1].x(), plot.bottom())
+            net_area.lineTo(net_positions[0].x(), plot.bottom())
+            net_area.closeSubpath()
+            fill_top = QColor(Colors.PRIMARY)
+            fill_top.setAlpha(20)
+            fill_bottom = QColor(Colors.PRIMARY)
+            fill_bottom.setAlpha(0)
+            gradient = QLinearGradient(0, plot.top(), 0, plot.bottom())
+            gradient.setColorAt(0, fill_top)
+            gradient.setColorAt(1, fill_bottom)
+            painter.fillPath(net_area, gradient)
 
         def draw_series(column: int, color: str, width: float) -> None:
             values = [point[column] for point in self._points]
@@ -717,13 +767,7 @@ class NetWorthChart(QWidget):
 
     @staticmethod
     def _short_money(value: Decimal) -> str:
-        absolute = abs(value)
-        sign = "-" if value < 0 else ""
-        if absolute >= Decimal("1000000"):
-            return f"{sign}\u20ac{absolute / Decimal('1000000'):.1f}m"
-        if absolute >= Decimal("1000"):
-            return f"{sign}\u20ac{absolute / Decimal('1000'):.1f}k"
-        return f"{sign}\u20ac{absolute:.0f}"
+        return _short_money(value)
 
     @staticmethod
     def _period_label(value: str, include_day: bool) -> str:

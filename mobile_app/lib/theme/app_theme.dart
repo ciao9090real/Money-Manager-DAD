@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
 
 class AppColors {
-  static const background = Color(0xFFF5F7F6);
+  static const background = Color(0xFFF6F4EF);
   static const surface = Color(0xFFFFFFFF);
-  static const ink = Color(0xFF10221D);
-  static const muted = Color(0xFF64746F);
-  static const border = Color(0xFFE0E8E5);
-  static const primary = Color(0xFF087A64);
-  static const primarySoft = Color(0xFFE2F3EE);
-  static const blue = Color(0xFF3569D4);
-  static const blueSoft = Color(0xFFEAF0FC);
-  static const positive = Color(0xFF16835E);
-  static const negative = Color(0xFFD54B4B);
-  static const warning = Color(0xFF9B6717);
+  static const ink = Color(0xFF182023);
+  static const muted = Color(0xFF667073);
+  static const border = Color(0xFFE9E7E1);
+  static const primary = Color(0xFF365D72);
+  static const primarySoft = Color(0xFFEDF2F3);
+  static const blue = Color(0xFF55758A);
+  static const blueSoft = Color(0xFFEEF2F3);
+  static const positive = Color(0xFF2F7D62);
+  static const negative = Color(0xFFBF4F31);
+  static const warning = Color(0xFF9C6D32);
 }
 
 class AppTheme {
@@ -25,32 +25,33 @@ class AppTheme {
     );
     return ThemeData(
       useMaterial3: true,
+      fontFamily: 'Inter',
       colorScheme: scheme,
       scaffoldBackgroundColor: AppColors.background,
-      fontFamily: 'sans-serif',
       textTheme: const TextTheme(
         displaySmall: TextStyle(
+          fontFamily: 'SpaceGrotesk',
           color: AppColors.ink,
           fontSize: 36,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w700,
           letterSpacing: -0.8,
         ),
         headlineSmall: TextStyle(
           color: AppColors.ink,
           fontSize: 27,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w700,
           letterSpacing: -0.5,
         ),
         titleLarge: TextStyle(
           color: AppColors.ink,
           fontSize: 20,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w600,
           letterSpacing: 0,
         ),
         titleMedium: TextStyle(
           color: AppColors.ink,
           fontSize: 16,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w600,
           letterSpacing: 0,
         ),
         bodyLarge: TextStyle(
@@ -85,11 +86,12 @@ class AppTheme {
       cardTheme: CardThemeData(
         color: AppColors.surface,
         surfaceTintColor: Colors.transparent,
-        elevation: 0,
+        elevation: 1.5,
+        shadowColor: const Color(0x18000000),
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-          side: const BorderSide(color: AppColors.border),
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide.none,
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
@@ -100,15 +102,15 @@ class AppTheme {
           vertical: 14,
         ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: AppColors.border),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: AppColors.border),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
         ),
       ),
@@ -119,7 +121,7 @@ class AppTheme {
           minimumSize: const Size(48, 48),
           padding: const EdgeInsets.symmetric(horizontal: 18),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(12),
           ),
         ),
       ),
@@ -129,7 +131,7 @@ class AppTheme {
           minimumSize: const Size(48, 48),
           side: const BorderSide(color: AppColors.border),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(12),
           ),
         ),
       ),
@@ -160,11 +162,21 @@ class AppTheme {
           ),
         ),
       ),
+      chipTheme: ChipThemeData(
+        backgroundColor: AppColors.primarySoft,
+        side: BorderSide.none,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+        labelStyle: const TextStyle(
+          color: AppColors.ink,
+          fontWeight: FontWeight.w600,
+        ),
+        iconTheme: const IconThemeData(color: AppColors.primary),
+      ),
       navigationBarTheme: const NavigationBarThemeData(
         backgroundColor: AppColors.surface,
         surfaceTintColor: Colors.transparent,
         indicatorColor: AppColors.primarySoft,
-        height: 74,
+        height: 70,
         labelTextStyle: WidgetStatePropertyAll(
           TextStyle(
             fontSize: 12,

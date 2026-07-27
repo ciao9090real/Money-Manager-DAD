@@ -10,10 +10,12 @@ class TransactionsPage extends StatefulWidget {
     super.key,
     required this.controller,
     required this.onAdd,
+    this.onOpenImports,
   });
 
   final AppController controller;
   final VoidCallback onAdd;
+  final VoidCallback? onOpenImports;
 
   @override
   State<TransactionsPage> createState() => _TransactionsPageState();
@@ -57,6 +59,14 @@ class _TransactionsPageState extends State<TransactionsPage> {
             icon: const Icon(Icons.add),
           ),
         ),
+        if (widget.controller.openImportBatches.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          _ImportInboxNudge(
+            count: widget.controller.importAttentionCount,
+            batches: widget.controller.openImportBatches.length,
+            onTap: widget.onOpenImports,
+          ),
+        ],
         const SizedBox(height: 18),
         SearchBar(
           controller: search,
@@ -226,6 +236,70 @@ class _TransactionsPageState extends State<TransactionsPage> {
       ],
     );
   }
+}
+
+class _ImportInboxNudge extends StatelessWidget {
+  const _ImportInboxNudge({
+    required this.count,
+    required this.batches,
+    required this.onTap,
+  });
+
+  final int count;
+  final int batches;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: AppColors.primary,
+    borderRadius: BorderRadius.circular(18),
+    child: InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(15),
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: .14),
+                borderRadius: BorderRadius.circular(13),
+              ),
+              child: const Icon(
+                Icons.move_to_inbox_outlined,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '$count imported ${count == 1 ? 'row is' : 'rows are'} peeking',
+                    style: Theme.of(
+                      context,
+                    ).textTheme.titleMedium?.copyWith(color: Colors.white),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '$batches ${batches == 1 ? 'file' : 'files'} waiting for review',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Colors.white.withValues(alpha: .75),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.arrow_forward, color: Colors.white),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 List<_ActivityEntry> _entries(AppController controller) {

@@ -4,7 +4,7 @@ from app.ui.theme import Colors, Spacing
 def app_stylesheet() -> str:
     return f"""
     QWidget {{
-        font-family: "Segoe UI Variable", "Segoe UI";
+        font-family: "Inter Variable", "Segoe UI Variable", "Segoe UI";
         font-size: 13px;
         color: {Colors.TEXT};
     }}
@@ -36,7 +36,7 @@ def app_stylesheet() -> str:
 
     QPushButton#LogoButton {{
         background: {Colors.PRIMARY};
-        border: 1px solid #318671;
+        border: 1px solid {Colors.PRIMARY};
         border-radius: 8px;
         padding: 0;
         min-height: 0;
@@ -47,7 +47,7 @@ def app_stylesheet() -> str:
 
     QPushButton#LogoButton:hover {{
         background: {Colors.PRIMARY_DARK};
-        border-color: #55a48f;
+        border-color: #7290a0;
     }}
 
     #SidebarStatus {{
@@ -57,13 +57,13 @@ def app_stylesheet() -> str:
     }}
 
     #StatusDot {{
-        background: #55d6a9;
+        background: #76b89d;
         border-radius: 4px;
     }}
 
     QPushButton {{
         border: 1px solid {Colors.BORDER};
-        border-radius: 7px;
+        border-radius: 9px;
         padding: 9px 14px;
         background: {Colors.CARD};
         color: {Colors.TEXT};
@@ -72,12 +72,12 @@ def app_stylesheet() -> str:
     }}
 
     QPushButton:hover {{
-        border-color: #b9c9c3;
-        background: #f7faf8;
+        border-color: #c7cdca;
+        background: #f7f8f6;
     }}
 
     QPushButton:pressed {{
-        background: #edf3f0;
+        background: #eef0ee;
     }}
 
     QPushButton:disabled {{
@@ -101,7 +101,7 @@ def app_stylesheet() -> str:
 
     QPushButton[variant="soft"] {{
         background: {Colors.PRIMARY_SOFT};
-        border-color: #c9e3da;
+        border-color: #d5e1e7;
         color: {Colors.PRIMARY_DARK};
     }}
 
@@ -112,7 +112,18 @@ def app_stylesheet() -> str:
     }}
 
     QPushButton[variant="ghost"]:hover {{
-        background: #edf3f0;
+        background: #f0f2f0;
+        color: {Colors.TEXT};
+    }}
+
+    QPushButton[variant="quiet"] {{
+        background: transparent;
+        border-color: transparent;
+        color: {Colors.TEXT_SECONDARY};
+    }}
+
+    QPushButton[variant="quiet"]:hover {{
+        background: #f0f2f0;
         color: {Colors.TEXT};
     }}
 
@@ -131,7 +142,7 @@ def app_stylesheet() -> str:
         background: rgba(255, 255, 255, 0.13);
         border: 1px solid rgba(255, 255, 255, 0.22);
         color: white;
-        border-radius: 9px;
+        border-radius: 10px;
         padding: 7px 11px;
         min-height: 18px;
     }}
@@ -144,7 +155,7 @@ def app_stylesheet() -> str:
     QPushButton[variant="nav"] {{
         background: transparent;
         border: none;
-        color: #a9b3c2;
+        color: #aeb4b1;
         text-align: left;
         padding: 11px 12px;
         border-radius: 8px;
@@ -164,23 +175,67 @@ def app_stylesheet() -> str:
 
     QFrame[role="navItem"][selected="true"] {{
         background: {Colors.SIDEBAR_SELECTED};
-        border-left: 3px solid #67d4b2;
+        border-left: 3px solid #8faebd;
     }}
 
     QFrame[role="navItem"][selected="true"][collapsed="true"] {{
         border-left: none;
-        border: 1px solid rgba(103, 212, 178, 0.45);
+        border: 1px solid rgba(143, 174, 189, 0.55);
     }}
 
     QLabel[role="navLabel"] {{
-        color: #a7b9b3;
-        font-size: 13px;
-        font-weight: 600;
+        color: #abb1ae;
+        font-size: 14px;
+        font-weight: 650;
+    }}
+
+    QLabel[role="navDescription"] {{
+        color: #737f80;
+        font-size: 10px;
+        font-weight: 450;
     }}
 
     QFrame[role="navItem"]:hover QLabel[role="navLabel"],
     QFrame[role="navItem"][selected="true"] QLabel[role="navLabel"] {{
         color: white;
+    }}
+
+    QFrame[role="navItem"][selected="true"] QLabel[role="navDescription"] {{
+        color: #9ba8a9;
+    }}
+
+    #WorkspaceBar {{
+        background: rgba(246, 244, 239, 0.96);
+        border: none;
+        border-bottom: 1px solid {Colors.BORDER};
+    }}
+
+    QLabel[role="workspaceLabel"] {{
+        color: {Colors.TEXT_MUTED};
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 1px;
+    }}
+
+    QPushButton[variant="workspaceTab"] {{
+        background: transparent;
+        border: none;
+        border-radius: 7px;
+        color: {Colors.TEXT_SECONDARY};
+        font-size: 12px;
+        font-weight: 600;
+        min-height: 20px;
+        padding: 7px 11px;
+    }}
+
+    QPushButton[variant="workspaceTab"]:hover {{
+        background: rgba(54, 93, 114, 0.06);
+        color: {Colors.TEXT};
+    }}
+
+    QPushButton[variant="workspaceTab"][selected="true"] {{
+        background: {Colors.CARD};
+        color: {Colors.PRIMARY_DARK};
     }}
 
     QPushButton[variant="sidebarIcon"] {{
@@ -208,31 +263,23 @@ def app_stylesheet() -> str:
     }}
 
     QPushButton[variant="chip"]:hover {{
-        background: #edf3f0;
+        background: #f0f2f0;
     }}
 
     QPushButton[variant="chip"][selected="true"] {{
         background: {Colors.PRIMARY_SOFT};
-        border-color: #c9e3da;
+        border-color: #d5e1e7;
         color: {Colors.PRIMARY_DARK};
     }}
 
     QFrame[role="card"], QFrame[role="metricCard"], QFrame[role="forecastCard"] {{
         background: {Colors.CARD};
-        border: 1px solid {Colors.BORDER};
+        border: none;
         border-radius: {Spacing.RADIUS}px;
     }}
 
     QFrame[role="metricCard"] {{
-        border-top: 3px solid #d9e4e0;
-    }}
-
-    QFrame[role="metricCard"][tone="positive"] {{
-        border-top-color: {Colors.POSITIVE};
-    }}
-
-    QFrame[role="metricCard"][tone="negative"] {{
-        border-top-color: {Colors.NEGATIVE};
+        border: none;
     }}
 
     QWidget[role="forecastMetric"] {{
@@ -258,32 +305,111 @@ def app_stylesheet() -> str:
     }}
 
     QFrame[role="heroCard"] {{
-        background: #1b493d;
-        border: 1px solid #285e50;
-        border-radius: {Spacing.RADIUS}px;
+        background: {Colors.CARD};
+        border: none;
+        border-radius: 20px;
+    }}
+
+    QFrame[role="monthPulse"] {{
+        background: {Colors.CARD};
+        border: none;
+        border-radius: 16px;
+    }}
+
+    QWidget[role="pulseRow"] {{
+        border-bottom: 1px solid {Colors.BORDER_SOFT};
+    }}
+
+    QLabel[role="pulseValue"] {{
+        color: {Colors.TEXT};
+        font-size: 17px;
+        font-weight: 700;
+    }}
+
+    QFrame[role="workflowRail"] {{
+        background: #f3f4f2;
+        border: 1px solid {Colors.BORDER};
+        border-radius: 11px;
+    }}
+
+    QLabel[role="workflowStep"] {{
+        color: {Colors.TEXT_SECONDARY};
+        font-size: 12px;
+        font-weight: 700;
+        padding: 8px 10px;
+    }}
+
+    QLabel[role="workflowStep"][active="true"] {{
+        color: {Colors.PRIMARY_DARK};
+        background: {Colors.PRIMARY_SOFT};
+        border-radius: 8px;
+    }}
+
+    QLabel[role="statementSource"] {{
+        color: {Colors.TEXT_SECONDARY};
+        background: #f5f6f4;
+        border: 1px solid {Colors.BORDER};
+        border-radius: 8px;
+        padding: 7px 10px;
+        font-size: 11px;
+    }}
+
+    QFrame[role="importPreviewCard"] {{
+        background: {Colors.CARD};
+        border: none;
+        border-radius: 14px;
+    }}
+
+    QFrame[role="importSummary"] {{
+        background: #f5f6f4;
+        border: none;
+        border-radius: 10px;
     }}
 
     QFrame[role="toolbar"] {{
-        background: {Colors.HEADER};
+        background: transparent;
         border: none;
-        border-radius: 7px;
+        border-radius: 0;
     }}
 
     QFrame[role="quickActions"] {{
-        background: transparent;
+        background: {Colors.CARD};
         border: none;
+        border-radius: 14px;
     }}
 
     QFrame[role="scopeBar"] {{
-        background: #edf3f0;
-        border: 1px solid #d8e4df;
+        background: {Colors.CARD};
+        border: none;
         border-radius: {Spacing.RADIUS}px;
     }}
 
     QFrame[role="accountDetailCard"] {{
-        background: #f8fbf9;
-        border: 1px solid #d5e3de;
+        background: {Colors.CARD};
+        border: none;
         border-radius: {Spacing.RADIUS}px;
+    }}
+
+    QFrame[role="workspace"] {{
+        background: {Colors.CARD};
+        border: none;
+        border-radius: {Spacing.RADIUS}px;
+    }}
+
+    QFrame[role="metricBoard"] {{
+        background: {Colors.CARD};
+        border: none;
+        border-radius: 16px;
+    }}
+
+    QFrame[role="metricCell"] {{
+        background: transparent;
+        border: none;
+        border-radius: 0;
+    }}
+
+    QFrame[role="metricCell"][divider="true"] {{
+        border-right: 1px solid {Colors.BORDER};
     }}
 
     QLabel[role="detailTitle"] {{
@@ -292,10 +418,22 @@ def app_stylesheet() -> str:
         font-weight: 700;
     }}
 
+    QLabel[role="tablePrimary"] {{
+        color: {Colors.TEXT};
+        font-size: 11px;
+        font-weight: 600;
+    }}
+
+    QLabel[role="tableSecondary"] {{
+        color: {Colors.TEXT_MUTED};
+        font-size: 10px;
+    }}
+
     QLabel[role="detailBalance"] {{
+        font-family: "Space Grotesk", "Inter Variable";
         color: {Colors.TEXT};
         font-size: 28px;
-        font-weight: 700;
+        font-weight: 600;
     }}
 
     QFrame[role="iconTile"] {{
@@ -311,8 +449,8 @@ def app_stylesheet() -> str:
     }}
 
     QLabel[role="pageTitle"] {{
-        font-size: 28px;
-        font-weight: 700;
+        font-size: 30px;
+        font-weight: 600;
         color: {Colors.TEXT};
     }}
 
@@ -322,8 +460,8 @@ def app_stylesheet() -> str:
     }}
 
     QLabel[role="sectionTitle"] {{
-        font-size: 15px;
-        font-weight: 700;
+        font-size: 16px;
+        font-weight: 600;
         color: {Colors.TEXT};
     }}
 
@@ -334,31 +472,61 @@ def app_stylesheet() -> str:
 
     QLabel[role="metricLabel"] {{
         color: {Colors.TEXT_SECONDARY};
-        font-size: 12px;
-        font-weight: 700;
+        font-size: 11px;
+        font-weight: 500;
     }}
 
     QLabel[role="metricValue"] {{
-        font-size: 25px;
-        font-weight: 700;
+        font-family: "Space Grotesk", "Inter Variable";
+        font-size: 24px;
+        font-weight: 600;
         color: {Colors.TEXT};
     }}
 
     QLabel[role="heroLabel"] {{
-        color: rgba(222, 246, 238, 0.72);
+        color: {Colors.TEXT_MUTED};
         font-size: 11px;
-        font-weight: 700;
+        font-weight: 600;
+        letter-spacing: 1px;
     }}
 
     QLabel[role="heroValue"] {{
-        color: white;
-        font-size: 38px;
-        font-weight: 700;
+        font-family: "Space Grotesk", "Inter Variable";
+        color: {Colors.TEXT};
+        font-size: 50px;
+        font-weight: 600;
+    }}
+
+    QLabel[role="heroSnapshotValue"] {{
+        font-family: "Space Grotesk", "Inter Variable";
+        color: {Colors.TEXT};
+        font-size: 21px;
+        font-weight: 600;
+    }}
+
+    QLabel[role="heroSnapshotLabel"] {{
+        color: {Colors.TEXT_SECONDARY};
+        font-size: 11px;
     }}
 
     QLabel[role="heroHelper"] {{
-        color: rgba(222, 246, 238, 0.74);
+        color: {Colors.TEXT_SECONDARY};
         font-size: 12px;
+    }}
+
+    QLabel[role="heroChange"] {{
+        background: {Colors.POSITIVE_BADGE_BG};
+        border: none;
+        border-radius: 12px;
+        color: {Colors.POSITIVE};
+        font-size: 12px;
+        font-weight: 600;
+        padding: 5px 10px;
+    }}
+
+    QLabel[role="heroChange"][tone="negative"] {{
+        background: {Colors.NEGATIVE_BADGE_BG};
+        color: {Colors.NEGATIVE};
     }}
 
     QLabel[role="icon"] {{
@@ -382,12 +550,18 @@ def app_stylesheet() -> str:
 
     QLabel[role="emptyTitle"] {{
         color: {Colors.TEXT};
-        font-weight: 700;
+        font-weight: 600;
         font-size: 16px;
     }}
 
+    QFrame[role="emptyIcon"] {{
+        background: {Colors.HEADER};
+        border: none;
+        border-radius: 11px;
+    }}
+
     QLabel[role="badge"] {{
-        border-radius: 8px;
+        border-radius: 12px;
         padding: 3px 9px;
         font-size: 11px;
         font-weight: 600;
@@ -427,19 +601,19 @@ def app_stylesheet() -> str:
 
     QLineEdit, QComboBox, QDateEdit, QSpinBox, QDoubleSpinBox {{
         background: white;
-        border: 1px solid #cbd7d2;
-        border-radius: 7px;
-        padding: 9px 11px;
+        border: 1px solid #d5d9d6;
+        border-radius: 8px;
+        padding: 10px 11px;
         min-height: 24px;
         selection-background-color: {Colors.PRIMARY};
     }}
 
     QLineEdit:hover, QComboBox:hover, QDateEdit:hover,
-    QSpinBox:hover, QDoubleSpinBox:hover {{ border-color: #91aaa1; }}
+    QSpinBox:hover, QDoubleSpinBox:hover {{ border-color: #aeb9bd; }}
     QLineEdit:focus, QComboBox:focus, QDateEdit:focus,
     QSpinBox:focus, QDoubleSpinBox:focus {{
-        border: 2px solid #58a78f;
-        padding: 8px 10px;
+        border: 2px solid {Colors.PRIMARY};
+        padding: 9px 10px;
     }}
 
     QComboBox::drop-down, QDateEdit::drop-down {{
@@ -529,7 +703,7 @@ def app_stylesheet() -> str:
     }}
 
     QHeaderView::section {{
-        background: {Colors.HEADER};
+        background: {Colors.CARD};
         color: {Colors.TEXT_SECONDARY};
         border: none;
         border-bottom: 1px solid {Colors.BORDER};
@@ -565,6 +739,54 @@ def app_stylesheet() -> str:
         border-radius: 8px;
     }}
 
+    QFrame[role="passwordField"] {{
+        background: white;
+        border: 1px solid rgba(24, 32, 35, 0.08);
+        border-radius: 14px;
+    }}
+
+    QFrame[role="passwordField"]:hover {{
+        border-color: rgba(54, 93, 114, 0.35);
+    }}
+
+    QFrame[role="passwordField"][focused="true"] {{
+        border: 2px solid {Colors.PRIMARY};
+    }}
+
+    QLineEdit[role="passwordInput"] {{
+        background: transparent;
+        border: none;
+        border-radius: 0;
+        padding: 0;
+        min-height: 40px;
+        font-size: 16px;
+        font-weight: 650;
+        letter-spacing: 0.3px;
+        selection-background-color: {Colors.PRIMARY};
+    }}
+
+    QLineEdit[role="passwordInput"]:hover,
+    QLineEdit[role="passwordInput"]:focus {{
+        border: none;
+        padding: 0;
+    }}
+
+    QToolButton[role="passwordToggle"] {{
+        background: transparent;
+        border: none;
+        border-radius: 8px;
+        padding: 5px;
+    }}
+
+    QToolButton[role="passwordToggle"]:hover {{
+        background: {Colors.PRIMARY_SOFT};
+    }}
+
+    QToolButton[role="passwordToggle"]:focus {{
+        border: 2px solid {Colors.TEXT};
+        padding: 3px;
+    }}
+
     QFrame[role="toast"] {{
         background: #14221e;
         border: 1px solid #2d463e;
@@ -581,6 +803,207 @@ def app_stylesheet() -> str:
         color: white;
         font-size: 12px;
         font-weight: 600;
+    }}
+
+    QLabel[role="homeEyebrow"] {{
+        color: {Colors.TEXT_MUTED};
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 1.1px;
+    }}
+
+    QLabel[role="homeSectionTitle"] {{
+        color: {Colors.TEXT};
+        font-size: 20px;
+        font-weight: 650;
+    }}
+
+    QFrame[role="decisionBand"] {{
+        background: {Colors.PRIMARY_DARK};
+        border: none;
+        border-radius: 18px;
+    }}
+
+    QFrame[role="decisionBand"][tone="urgent"] {{
+        background: #2f505f;
+    }}
+
+    QFrame[role="decisionIcon"] {{
+        background: rgba(255, 255, 255, 0.14);
+        border: none;
+        border-radius: 12px;
+    }}
+
+    QLabel[role="decisionEyebrow"] {{
+        color: rgba(255, 255, 255, 0.66);
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.8px;
+    }}
+
+    QLabel[role="decisionTitle"] {{
+        color: white;
+        font-size: 18px;
+        font-weight: 650;
+    }}
+
+    QLabel[role="decisionDetail"] {{
+        color: rgba(255, 255, 255, 0.70);
+        font-size: 11px;
+    }}
+
+    QPushButton[variant="decision"] {{
+        background: white;
+        border: none;
+        border-radius: 10px;
+        color: {Colors.PRIMARY_DARK};
+        padding: 10px 17px;
+    }}
+
+    QPushButton[variant="decision"]:hover {{
+        background: #f3f4f2;
+    }}
+
+    QFrame[role="homeRow"] {{
+        background: transparent;
+        border: none;
+        border-bottom: 1px solid {Colors.BORDER};
+    }}
+
+    QLabel[role="homeRowTitle"] {{
+        color: {Colors.TEXT};
+        font-size: 13px;
+        font-weight: 600;
+    }}
+
+    QLabel[role="homeRowDetail"], QLabel[role="homeDate"] {{
+        color: {Colors.TEXT_SECONDARY};
+        font-size: 11px;
+    }}
+
+    QLabel[role="homeAmount"] {{
+        color: {Colors.TEXT};
+        font-family: "Space Grotesk", "Inter Variable";
+        font-size: 13px;
+        font-weight: 600;
+    }}
+
+    QLabel[role="homeAmount"][tone="positive"] {{
+        color: {Colors.POSITIVE};
+    }}
+
+    QLabel[role="homeAmount"][tone="negative"] {{
+        color: {Colors.NEGATIVE};
+    }}
+
+    QFrame[role="attentionDot"] {{
+        background: {Colors.WARNING};
+        border: none;
+        border-radius: 4px;
+        margin-top: 4px;
+    }}
+
+    QFrame[role="attentionDot"][tone="urgent"] {{
+        background: {Colors.NEGATIVE};
+    }}
+
+    QPushButton[variant="text"] {{
+        background: transparent;
+        border: none;
+        color: {Colors.PRIMARY_DARK};
+        font-size: 11px;
+        padding: 5px 3px;
+    }}
+
+    QPushButton[variant="text"]:hover {{
+        background: transparent;
+        color: {Colors.PRIMARY};
+        text-decoration: underline;
+    }}
+
+    QPushButton[variant="rowLink"] {{
+        background: transparent;
+        border: none;
+        color: {Colors.TEXT};
+        font-size: 13px;
+        font-weight: 600;
+        padding: 4px 0;
+        text-align: left;
+    }}
+
+    QPushButton[variant="rowLink"]:hover {{
+        background: transparent;
+        color: {Colors.PRIMARY_DARK};
+    }}
+
+    QFrame[role="safeSpendCard"], QFrame[role="forecastHero"],
+    QFrame[role="positionHero"] {{
+        background: {Colors.CARD};
+        border: none;
+        border-radius: 18px;
+    }}
+
+    QFrame[role="forecastHero"][tone="positive"] {{
+        border-left: 4px solid {Colors.POSITIVE};
+    }}
+
+    QFrame[role="forecastHero"][tone="negative"] {{
+        border-left: 4px solid {Colors.NEGATIVE};
+    }}
+
+    QFrame[role="forecastHero"][tone="neutral"] {{
+        border-left: 4px solid {Colors.BORDER};
+    }}
+
+    QLabel[role="safeSpendTitle"] {{
+        color: {Colors.TEXT};
+        font-family: "Space Grotesk", "Inter Variable";
+        font-size: 27px;
+        font-weight: 600;
+    }}
+
+    QLabel[role="safeSupportValue"], QLabel[role="positionFact"] {{
+        color: {Colors.TEXT};
+        font-family: "Space Grotesk", "Inter Variable";
+        font-size: 20px;
+        font-weight: 600;
+    }}
+
+    QLabel[role="positionFact"][tone="negative"] {{
+        color: {Colors.NEGATIVE};
+    }}
+
+    QLabel[role="positionValue"] {{
+        color: {Colors.TEXT};
+        font-family: "Space Grotesk", "Inter Variable";
+        font-size: 48px;
+        font-weight: 600;
+    }}
+
+    QLabel[role="forecastHeroTitle"] {{
+        color: {Colors.TEXT};
+        font-size: 21px;
+        font-weight: 650;
+    }}
+
+    QLabel[role="forecastHeroValue"] {{
+        color: {Colors.TEXT};
+        font-family: "Space Grotesk", "Inter Variable";
+        font-size: 36px;
+        font-weight: 600;
+    }}
+
+    QFrame[role="softDivider"] {{
+        color: {Colors.BORDER};
+        background: {Colors.BORDER};
+        border: none;
+        max-height: 1px;
+    }}
+
+    QFrame[role="honestNotice"] {{
+        background: rgba(54, 93, 114, 0.05);
+        border: 1px solid rgba(54, 93, 114, 0.10);
+        border-radius: 12px;
     }}
 
     QScrollBar:vertical {{ background: transparent; width: 10px; margin: 3px; }}

@@ -7,6 +7,11 @@ Money Manager is a local-first personal finance system with a Windows desktop ap
 - Sync is opt-in, direct over local Wi-Fi, authenticated, and protected with pinned local HTTPS.
 - There is no cloud database, web deployment, or online account.
 
+The Android companion also calculates cash-flow and spending insights locally
+from its encrypted cache. Upcoming schedules become in-app reminders according
+to the lead time chosen on desktop; sensitive names and amounts never appear in
+an operating-system notification or on the lock screen.
+
 ```text
 Money-Manager-DAD/
   desktop_app/   PySide6 Windows application, tests, and packaging

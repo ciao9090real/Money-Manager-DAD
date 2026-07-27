@@ -10,11 +10,14 @@ from uuid import uuid4
 import pytest
 
 from app.core.database import connect, unit_of_work
+from app.core.paths import backup_dir
 from app.services.account_service import AccountService
 from app.services.budget_service import BudgetService
 from app.services.category_service import CategoryService
 from app.services.goal_service import GoalService
 from app.services.investment_service import InvestmentService
+from app.services.import_inbox_service import ImportInboxService
+from app.services.import_service import ImportService
 from app.services.net_worth_service import NetWorthService
 from app.services.sync_service import SyncService
 from app.services.transaction_service import TransactionService
@@ -241,6 +244,70 @@ def test_mobile_command_is_idempotent_across_retries(db):
         "SELECT COUNT(*) FROM transactions WHERE description = 'Mobile income'"
     ).fetchone()[0] == 1
     assert AccountService(db).account_balance(account.id) == Decimal("25.99")
+
+
+def test_mobile_can_review_and_atomically_post_an_import(
+    db, tmp_path
+):
+    AccountService(db).create_account("Everyday", "current_account")
+    category = CategoryService(db).create_category("Coffee", "expense")
+    source = tmp_path / "phone-review.csv"
+    source.write_text(
+        "date,type,account,amount,description\n"
+        "2026-07-21,expense,Everyday,4.50,Espresso\n",
+        encoding="utf-8",
+    )
+    inbox = ImportInboxService(db)
+    batch = inbox.stage_preview(
+        ImportService(db).preview_transactions_csv(source)
+    )
+    row = inbox.list_rows(batch.id)[0]
+    sync, device_id = paired_sync(db)
+
+    categorized = sync.exchange(
+        device_id,
+        0,
+        [
+            {
+                "id": str(uuid4()),
+                "type": "categorize_import_rows",
+                "payload": {
+                    "row_ids": [row.id],
+                    "category_id": category.id,
+                },
+            }
+        ],
+        entity_set_version=0,
+    )
+
+    assert categorized["commands"][0]["status"] == "accepted"
+    assert inbox.list_rows(batch.id)[0].status == "ready"
+    entities = {change["entity"] for change in categorized["changes"]}
+    assert {"import_batches", "import_rows"}.issubset(entities)
+
+    posted = sync.exchange(
+        device_id,
+        categorized["cursor"],
+        [
+            {
+                "id": str(uuid4()),
+                "type": "post_import_batch",
+                "payload": {
+                    "batch_id": batch.id,
+                    "include_uncategorized": False,
+                },
+            }
+        ],
+        entity_set_version=ENTITY_SET_VERSION,
+    )
+
+    assert posted["commands"][0]["status"] == "accepted"
+    assert posted["commands"][0]["result"]["posted"] == 1
+    assert inbox.list_batches()[0].batch.status == "posted"
+    transaction = TransactionService(db).list_transactions()[0]
+    assert transaction.description == "Espresso"
+    assert transaction.category_id == category.id
+    assert list(backup_dir().glob("money_manager_backup_*.db"))
 
 
 def test_mobile_transfer_keeps_net_worth_and_rejects_same_account(db):

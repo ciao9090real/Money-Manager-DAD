@@ -365,6 +365,21 @@ class LoansPage(QWidget):
             self.loan_card.setMaximumHeight(310)
         self._sync_actions()
 
+    def select_entity(self, loan_id: str) -> None:
+        """Focus a loan and its payoff controls from a workspace deep link."""
+
+        if self.current_filter not in {"all", "borrowed"}:
+            self.set_filter("all", refresh=False)
+        self.refresh()
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 0)
+            if item and str(item.data(Qt.ItemDataRole.UserRole)) == str(loan_id):
+                self.table.selectRow(row)
+                self.table.scrollToItem(item)
+                self._sync_actions()
+                self.page_scroll.ensureWidgetVisible(self.payoff_card, 24, 24)
+                break
+
     def add_loan(self) -> None:
         accounts = self._funding_accounts()
         if not accounts:

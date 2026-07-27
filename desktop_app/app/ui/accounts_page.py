@@ -55,8 +55,12 @@ class AccountsPage(QWidget):
         header = self.tree.header()
         header.setStretchLastSection(False)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for column in (1, 2, 3):
-            header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
+        self.tree.setColumnWidth(1, 142)
+        self.tree.setColumnWidth(2, 138)
+        self.tree.setColumnWidth(3, 92)
         add_button = primary_button("Add account", "plus")
         add_payment_button = soft_button("Add payment method", "plus")
         add_payment_button.setMaximumWidth(190)
@@ -100,6 +104,7 @@ class AccountsPage(QWidget):
         card, card_layout = create_card(
             "Account map",
             subtitle="Banks, accounts, wallets, and linked payment methods",
+            role="workspace",
         )
         self.structure_card = card
         card_layout.addWidget(
@@ -166,7 +171,7 @@ class AccountsPage(QWidget):
 
         self.account_grid = QGridLayout()
         self.account_grid.setContentsMargins(0, 0, 0, 0)
-        self.account_grid.setSpacing(16)
+        self.account_grid.setSpacing(24)
         layout.addLayout(self.account_grid)
         layout.addStretch()
         self._layout_accounts()
@@ -267,6 +272,27 @@ class AccountsPage(QWidget):
                 self.on_changed({"accounts", "dashboard", "transactions", "upcoming"})
             except ValueError as exc:
                 QMessageBox.warning(self, "Could not save account", str(exc))
+
+    def select_entity(self, account_id: str) -> None:
+        """Focus an account opened from a Home warning."""
+
+        self.refresh()
+
+        def find_item(parent):
+            for index in range(parent.childCount()):
+                child = parent.child(index)
+                if str(child.data(0, 256) or "") == str(account_id):
+                    return child
+                found = find_item(child)
+                if found is not None:
+                    return found
+            return None
+
+        item = find_item(self.tree.invisibleRootItem())
+        if item is not None:
+            self.tree.setCurrentItem(item)
+            self.tree.scrollToItem(item)
+            self._sync_actions()
 
     def add_payment_method(self) -> None:
         accounts = self.service.list_accounts(include_inactive=False)

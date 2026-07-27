@@ -126,7 +126,7 @@ class _NetWorthPainter extends CustomPainter {
     }
 
     final gridPaint = Paint()
-      ..color = AppColors.border.withValues(alpha: .75)
+      ..color = AppColors.ink.withValues(alpha: .04)
       ..strokeWidth = 1;
     for (var index = 0; index < 4; index++) {
       final y = topPadding + chartHeight * index / 3;
@@ -135,6 +135,7 @@ class _NetWorthPainter extends CustomPainter {
 
     _drawSeries(
       canvas,
+      size,
       xFor,
       yFor,
       (point) => point.liabilitiesCents,
@@ -143,6 +144,7 @@ class _NetWorthPainter extends CustomPainter {
     );
     _drawSeries(
       canvas,
+      size,
       xFor,
       yFor,
       (point) => point.assetsCents,
@@ -151,23 +153,27 @@ class _NetWorthPainter extends CustomPainter {
     );
     _drawSeries(
       canvas,
+      size,
       xFor,
       yFor,
       (point) => point.netWorthCents,
       AppColors.primary,
       2.8,
       markLast: true,
+      fillArea: true,
     );
   }
 
   void _drawSeries(
     Canvas canvas,
+    Size size,
     double Function(int index) xFor,
     double Function(int cents) yFor,
     int Function(NetWorthPoint point) valueFor,
     Color color,
     double width, {
     bool markLast = false,
+    bool fillArea = false,
   }) {
     final path = Path();
     for (var index = 0; index < points.length; index++) {
@@ -177,6 +183,21 @@ class _NetWorthPainter extends CustomPainter {
       } else {
         path.lineTo(offset.dx, offset.dy);
       }
+    }
+    if (fillArea && points.length > 1) {
+      final area = Path.from(path)
+        ..lineTo(size.width, size.height)
+        ..lineTo(0, size.height)
+        ..close();
+      canvas.drawPath(
+        area,
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [color.withValues(alpha: .14), color.withValues(alpha: 0)],
+          ).createShader(Offset.zero & size),
+      );
     }
     final paint = Paint()
       ..color = color

@@ -182,8 +182,11 @@ class InvestmentsPage(QWidget):
         style_table(self.table)
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for column in range(1, 6):
-            header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(1, 126)
+        for column in range(2, 6):
+            header.setSectionResizeMode(column, QHeaderView.ResizeMode.Fixed)
+            self.table.setColumnWidth(column, 122)
         self.table.itemSelectionChanged.connect(self._sync_actions)
         self.table.itemDoubleClicked.connect(lambda _item: self.update_value())
 

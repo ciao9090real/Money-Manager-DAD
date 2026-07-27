@@ -10,7 +10,9 @@ from uuid import UUID
 from app.core.app_info import APP_VERSION
 from app.core.database import unit_of_work
 from app.repositories.sync_repository import SyncRepository
+from app.services.backup_service import BackupService
 from app.services.goal_service import GoalService
+from app.services.import_inbox_service import ImportInboxService
 from app.services.recurring_service import RecurringService
 from app.services.transaction_service import TransactionService
 from app.sync.protocol import (
@@ -131,18 +133,55 @@ class SyncService:
                 }
             return self._receipt_payload(existing)
 
+        preflight_error = None
+        if command_type == "post_import_batch":
+            try:
+                batch_id = self._uuid(
+                    str(payload.get("batch_id", "")),
+                    "Import batch id",
+                )
+                include_uncategorized = payload.get(
+                    "include_uncategorized", False
+                )
+                if not isinstance(include_uncategorized, bool):
+                    raise ValueError(
+                        "Include uncategorized must be true or false"
+                    )
+                ImportInboxService(self.db).postable_count(
+                    batch_id,
+                    include_uncategorized=include_uncategorized,
+                )
+                try:
+                    BackupService(self.db).create_backup()
+                except (
+                    OSError,
+                    RuntimeError,
+                    sqlite3.DatabaseError,
+                ) as exc:
+                    raise ValueError(
+                        "The desktop could not create a recovery point, so "
+                        f"no import rows were posted: {exc}"
+                    ) from exc
+            except ValueError as exc:
+                preflight_error = str(exc)
+
         local_device_id = self.sync.local_device_id()
         with unit_of_work(self.db):
             self.sync.set_active_device(device_id)
             try:
-                try:
-                    result = self._dispatch(command_type, payload)
-                    status = "accepted"
-                    error = None
-                except ValueError as exc:
+                if preflight_error:
                     result = None
                     status = "rejected"
-                    error = str(exc)
+                    error = preflight_error
+                else:
+                    try:
+                        result = self._dispatch(command_type, payload)
+                        status = "accepted"
+                        error = None
+                    except ValueError as exc:
+                        result = None
+                        status = "rejected"
+                        error = str(exc)
                 self.sync.save_command_receipt(
                     command_id,
                     device_id,
@@ -213,6 +252,44 @@ class SyncService:
                 self._optional_text(payload.get("notes")),
             )
             return {"entity_ids": [outgoing.id, incoming.id]}
+        if command_type == "categorize_import_rows":
+            row_ids = self._uuid_list(
+                payload.get("row_ids"), "Import row ids"
+            )
+            category_id = self._uuid(
+                str(payload.get("category_id", "")), "Category id"
+            )
+            changed = ImportInboxService(self.db).set_category(
+                row_ids, category_id
+            )
+            return {"entity_ids": row_ids, "changed": changed}
+        if command_type in {"ignore_import_rows", "restore_import_rows"}:
+            row_ids = self._uuid_list(
+                payload.get("row_ids"), "Import row ids"
+            )
+            inbox = ImportInboxService(self.db)
+            changed = (
+                inbox.ignore_rows(row_ids)
+                if command_type == "ignore_import_rows"
+                else inbox.restore_rows(row_ids)
+            )
+            return {"entity_ids": row_ids, "changed": changed}
+        if command_type == "post_import_batch":
+            batch_id = self._uuid(
+                str(payload.get("batch_id", "")), "Import batch id"
+            )
+            include_uncategorized = payload.get(
+                "include_uncategorized", False
+            )
+            if not isinstance(include_uncategorized, bool):
+                raise ValueError(
+                    "Include uncategorized must be true or false"
+                )
+            posted = ImportInboxService(self.db).post_ready(
+                batch_id,
+                include_uncategorized=include_uncategorized,
+            )
+            return {"entity_ids": [batch_id], "posted": posted}
         raise ValueError("Sync command type is not supported")
 
     def _changes(self, cursor: int, limit: int) -> tuple[list[dict], int, bool, bool]:
@@ -308,6 +385,12 @@ class SyncService:
             return str(UUID(value))
         except (ValueError, AttributeError) as exc:
             raise ValueError(f"{label} must be a UUID") from exc
+
+    @classmethod
+    def _uuid_list(cls, value: object, label: str) -> list[str]:
+        if not isinstance(value, list) or not value:
+            raise ValueError(f"{label} must contain at least one row")
+        return [cls._uuid(str(item), label) for item in value]
 
     @staticmethod
     def _optional_text(value: object) -> str | None:

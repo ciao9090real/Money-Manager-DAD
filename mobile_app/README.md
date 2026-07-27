@@ -37,6 +37,18 @@ C:\Users\leona\development\flutter\bin\flutter.bat run
 
 The phone can browse accounts, balances, transactions, investments, loans, recurring schedules, monthly budgets, and savings goals. Its dashboard also shows net-worth history, savings rate, emergency-fund coverage, budget pressure, and goal progress. Home has quick actions for expenses, income, and transfers. Activity can be searched and filtered by type and period, and each account opens into a balance, monthly cash-flow, payment-method, and recent-activity view. Each borrowed loan includes an offline payoff planner with an extra-payment comparison and monthly amortization schedule.
 
+**More > Insights** turns the encrypted offline records into selectable one-,
+three-, six-, and twelve-month reports. It compares recorded income and
+spending, charts monthly cash flow, ranks expense categories, and explains a
+few deterministic clues without uploading data or pretending to predict the
+future.
+
+**Upcoming** includes a reminder center driven by each recurring schedule's
+saved reminder window. Overdue, due-today, and due-soon items are counted in
+the navigation badge and can be recorded from the reminder. Reminders stay
+inside the biometric-locked app; Money Manager does not expose financial names
+or amounts in Android notifications or on the lock screen.
+
 Budget and goal setup remains on the desktop, which is the source of truth. The phone can queue categorized income and expenses (including payment method and notes), transfers, recurring-payment records, and manual savings-goal contributions offline. The desktop validates and applies those commands exactly once on the next sync.
 
 When a release adds newly synchronized record types, the phone requests one fresh snapshot and stores the new data-set version atomically with its cursor. Existing offline records and pending commands remain safe if a sync is interrupted.

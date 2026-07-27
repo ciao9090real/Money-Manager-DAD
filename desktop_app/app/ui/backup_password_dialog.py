@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 from PySide6.QtWidgets import (
-    QCheckBox,
     QDialog,
     QFormLayout,
-    QLineEdit,
     QMessageBox,
 )
 
 from app.services.backup_service import BackupService
 from app.ui.components import dialog_shell
+from app.ui.password_field import PasswordField
 
 
 class BackupPasswordDialog(QDialog):
@@ -20,20 +19,16 @@ class BackupPasswordDialog(QDialog):
             "Encrypted backup" if confirm_password else "Unlock backup"
         )
 
-        self.password_input = QLineEdit()
-        self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.password_input.setPlaceholderText("Backup password")
-        self.confirm_input = QLineEdit()
-        self.confirm_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.confirm_input.setPlaceholderText("Repeat password")
-        self.show_password = QCheckBox("Show password")
-        self.show_password.toggled.connect(self._set_password_visible)
+        self.password_input = PasswordField(
+            "Backup password", mascot=True
+        )
+        self.confirm_input = PasswordField("Repeat password")
+        self.show_password = self.password_input.toggle_button
 
         form = QFormLayout()
         form.addRow("Password", self.password_input)
         if confirm_password:
             form.addRow("Confirm", self.confirm_input)
-        form.addRow("", self.show_password)
 
         if confirm_password:
             title = "Protect this backup"
@@ -80,8 +75,3 @@ class BackupPasswordDialog(QDialog):
 
     def password(self) -> str:
         return self.password_input.text()
-
-    def _set_password_visible(self, visible: bool) -> None:
-        mode = QLineEdit.EchoMode.Normal if visible else QLineEdit.EchoMode.Password
-        self.password_input.setEchoMode(mode)
-        self.confirm_input.setEchoMode(mode)

@@ -331,6 +331,197 @@ void main() {
     );
   });
 
+  test('spending report compares periods and groups exact category cents', () {
+    final controller = _controller()
+      ..categories = const [
+        CategoryRecord(
+          id: 'food',
+          name: 'Groceries',
+          type: 'expense',
+          isActive: true,
+        ),
+        CategoryRecord(
+          id: 'home',
+          name: 'Housing',
+          type: 'expense',
+          isActive: true,
+        ),
+      ]
+      ..transactions = const [
+        TransactionRecord(
+          id: 'previous',
+          date: '2026-04-14',
+          type: 'expense',
+          accountId: 'account-1',
+          amountCents: -10000,
+          description: 'Previous period',
+          categoryId: 'home',
+        ),
+        TransactionRecord(
+          id: 'may-income',
+          date: '2026-05-01',
+          type: 'income',
+          accountId: 'account-1',
+          amountCents: 10000,
+          description: 'May income',
+        ),
+        TransactionRecord(
+          id: 'may-food',
+          date: '2026-05-12',
+          type: 'expense',
+          accountId: 'account-1',
+          amountCents: -3000,
+          description: 'May food',
+          categoryId: 'food',
+        ),
+        TransactionRecord(
+          id: 'june-income',
+          date: '2026-06-01',
+          type: 'income',
+          accountId: 'account-1',
+          amountCents: 10000,
+          description: 'June income',
+        ),
+        TransactionRecord(
+          id: 'june-home',
+          date: '2026-06-03',
+          type: 'expense',
+          accountId: 'account-1',
+          amountCents: -5000,
+          description: 'June housing',
+          categoryId: 'home',
+        ),
+        TransactionRecord(
+          id: 'july-income',
+          date: '2026-07-01',
+          type: 'income',
+          accountId: 'account-1',
+          amountCents: 12000,
+          description: 'July income',
+        ),
+        TransactionRecord(
+          id: 'july-food',
+          date: '2026-07-03',
+          type: 'expense',
+          accountId: 'account-1',
+          amountCents: -2000,
+          description: 'July food',
+          categoryId: 'food',
+        ),
+        TransactionRecord(
+          id: 'july-other',
+          date: '2026-07-04',
+          type: 'expense',
+          accountId: 'account-1',
+          amountCents: -1000,
+          description: 'Uncategorized',
+        ),
+        TransactionRecord(
+          id: 'ignored-transfer',
+          date: '2026-07-05',
+          type: 'transfer_out',
+          accountId: 'account-1',
+          amountCents: -90000,
+          description: 'Transfer',
+        ),
+      ];
+
+    final report = controller.spendingReport(
+      months: 3,
+      referenceDate: DateTime(2026, 7, 27),
+    );
+
+    expect(report.startDate, '2026-05-01');
+    expect(report.endDate, '2026-07-31');
+    expect(report.incomeCents, 32000);
+    expect(report.expenseCents, 11000);
+    expect(report.netCents, 21000);
+    expect(report.previousExpenseCents, 10000);
+    expect(report.expenseChangeBasisPoints, 1000);
+    expect(report.cashFlow.map((period) => period.expenseCents), [
+      3000,
+      5000,
+      3000,
+    ]);
+    expect(report.categories.map((category) => category.name), [
+      'Groceries',
+      'Housing',
+      'Uncategorized',
+    ]);
+    expect(report.categories.first.amountCents, 5000);
+    expect(report.categories.first.shareBasisPoints, 4545);
+  });
+
+  test('reminders respect each recurring rule window and sort by urgency', () {
+    final controller = _controller()
+      ..recurring = const [
+        RecurringRecord(
+          id: 'later',
+          name: 'Later bill',
+          kind: 'bill',
+          transactionType: 'expense',
+          accountId: 'account-1',
+          frequency: 'monthly',
+          nextDueDate: '2026-08-05',
+          status: 'active',
+          reminderDays: 3,
+        ),
+        RecurringRecord(
+          id: 'soon',
+          name: 'Internet',
+          kind: 'bill',
+          transactionType: 'expense',
+          accountId: 'account-1',
+          frequency: 'monthly',
+          nextDueDate: '2026-07-30',
+          status: 'active',
+          reminderDays: 5,
+        ),
+        RecurringRecord(
+          id: 'today',
+          name: 'Salary',
+          kind: 'other',
+          transactionType: 'income',
+          accountId: 'account-1',
+          frequency: 'monthly',
+          nextDueDate: '2026-07-27',
+          status: 'active',
+          reminderDays: 0,
+        ),
+        RecurringRecord(
+          id: 'overdue',
+          name: 'Rent',
+          kind: 'bill',
+          transactionType: 'expense',
+          accountId: 'account-1',
+          frequency: 'monthly',
+          nextDueDate: '2026-07-20',
+          status: 'active',
+          reminderDays: 3,
+        ),
+        RecurringRecord(
+          id: 'paused',
+          name: 'Paused',
+          kind: 'bill',
+          transactionType: 'expense',
+          accountId: 'account-1',
+          frequency: 'monthly',
+          nextDueDate: '2026-07-10',
+          status: 'paused',
+          reminderDays: 30,
+        ),
+      ];
+
+    final reminders = controller.reminders(
+      referenceDate: DateTime(2026, 7, 27),
+    );
+
+    expect(reminders.map((item) => item.rule.id), ['overdue', 'today', 'soon']);
+    expect(reminders.first.isOverdue, isTrue);
+    expect(reminders[1].isToday, isTrue);
+    expect(reminders.last.daysUntil, 3);
+  });
+
   test('net worth history prefers snapshots and backfills missing cutoffs', () {
     final controller = _controller();
     const account = AccountRecord(
@@ -617,6 +808,64 @@ void main() {
       'date': '2026-07-20',
       'notes': 'First step',
     });
+  });
+
+  test('import inbox records load and queue review commands', () async {
+    final database = _FakeDatabase()
+      ..rows['categories'] = [
+        _stored('categories', 'coffee', {
+          'id': 'coffee',
+          'name': 'Coffee',
+          'type': 'expense',
+          'is_active': 1,
+        }),
+      ]
+      ..rows['import_batches'] = [
+        _stored('import_batches', 'batch-1', {
+          'id': 'batch-1',
+          'source_name': 'card.csv',
+          'source_type': 'bank_statement',
+          'status': 'review',
+          'created_at': '2026-07-27T10:00:00Z',
+          'revision': 1,
+        }),
+      ]
+      ..rows['import_rows'] = [
+        _stored('import_rows', 'row-1', {
+          'id': 'row-1',
+          'batch_id': 'batch-1',
+          'source_row_number': 2,
+          'date': '2026-07-20',
+          'transaction_type': 'expense',
+          'amount_cents': 450,
+          'description': 'Espresso',
+          'status': 'needs_category',
+          'revision': 1,
+        }),
+      ];
+    final controller = AppController(
+      database: database,
+      syncClient: SyncClient(),
+    );
+    await controller.reload();
+
+    expect(controller.openImportBatches, hasLength(1));
+    expect(controller.importAttentionCount, 1);
+    expect(controller.rowsForImport('batch-1').single.description, 'Espresso');
+
+    await controller.categorizeImportRows(['row-1'], 'coffee');
+    await controller.postImportBatch('batch-1');
+
+    expect(database.queued, hasLength(2));
+    expect(database.queued.first.type, 'categorize_import_rows');
+    expect(database.queued.first.payload, {
+      'row_ids': ['row-1'],
+      'category_id': 'coffee',
+    });
+    expect(database.queued.last.type, 'post_import_batch');
+    expect(database.queued.last.payload['batch_id'], 'batch-1');
+    expect(controller.importRowHasPendingChange('row-1'), isTrue);
+    expect(controller.importBatchHasPendingPost('batch-1'), isTrue);
   });
 
   test('sync acknowledges the locally applied entity set version', () async {

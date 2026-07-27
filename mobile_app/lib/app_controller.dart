@@ -34,6 +34,8 @@ class AppController extends ChangeNotifier {
   List<BudgetRecord> budgets = const [];
   List<NetWorthSnapshotRecord> netWorthSnapshots = const [];
   List<SavingsGoalRecord> savingsGoals = const [];
+  List<ImportBatchRecord> importBatches = const [];
+  List<ImportRowRecord> importRows = const [];
   List<LoanRecord> loanRecords = const [];
   List<LoanPaymentRecord> loanPayments = const [];
   List<PendingCommand> pendingCommands = const [];
@@ -73,6 +75,8 @@ class AppController extends ChangeNotifier {
     budgets = const [];
     netWorthSnapshots = const [];
     savingsGoals = const [];
+    importBatches = const [];
+    importRows = const [];
     loanRecords = const [];
     loanPayments = const [];
     pendingCommands = const [];
@@ -95,6 +99,8 @@ class AppController extends ChangeNotifier {
     final budgetRows = await database.records('budgets');
     final netWorthRows = await database.records('net_worth_snapshots');
     final savingsGoalRows = await database.records('savings_goals');
+    final importBatchRows = await database.records('import_batches');
+    final importInboxRows = await database.records('import_rows');
     allAccounts = accountRows
         .map((row) => AccountRecord.fromJson(row.payload))
         .toList(growable: false);
@@ -160,6 +166,24 @@ class AppController extends ChangeNotifier {
             .map((row) => SavingsGoalRecord.fromJson(row.payload))
             .toList()
           ..sort(_compareGoals);
+    importBatches =
+        importBatchRows
+            .map((row) => ImportBatchRecord.fromJson(row.payload))
+            .toList()
+          ..sort((a, b) {
+            final status = (a.isOpen ? 0 : 1).compareTo(b.isOpen ? 0 : 1);
+            return status == 0 ? b.createdAt.compareTo(a.createdAt) : status;
+          });
+    importRows =
+        importInboxRows
+            .map((row) => ImportRowRecord.fromJson(row.payload))
+            .toList()
+          ..sort((a, b) {
+            final batch = a.batchId.compareTo(b.batchId);
+            return batch == 0
+                ? a.sourceRowNumber.compareTo(b.sourceRowNumber)
+                : batch;
+          });
     pendingCommands = await database.pendingCommands();
     lastSyncAt = await database.state('last_sync_at');
     notifyListeners();
@@ -232,6 +256,38 @@ class AppController extends ChangeNotifier {
 
   String categoryName(String categoryId) =>
       categoryFor(categoryId)?.name ?? 'Unknown category';
+
+  List<ImportBatchRecord> get openImportBatches =>
+      importBatches.where((batch) => batch.isOpen).toList(growable: false);
+
+  List<ImportRowRecord> rowsForImport(String batchId) =>
+      importRows.where((row) => row.batchId == batchId).toList(growable: false);
+
+  int get importAttentionCount => openImportBatches.fold<int>(
+    0,
+    (sum, batch) =>
+        sum + rowsForImport(batch.id).where((row) => !row.isResolved).length,
+  );
+
+  bool importRowHasPendingChange(String rowId) =>
+      pendingCommands.any((command) {
+        if (!command.type.endsWith('_import_rows')) return false;
+        final ids = command.payload['row_ids'];
+        return ids is List && ids.map((item) => '$item').contains(rowId);
+      });
+
+  bool importBatchHasPendingPost(String batchId) => pendingCommands.any(
+    (command) =>
+        command.type == 'post_import_batch' &&
+        command.payload['batch_id'] == batchId,
+  );
+
+  bool recurringHasPendingRecord(String ruleId) => pendingCommands.any(
+    (command) =>
+        command.status == 'pending' &&
+        command.type == 'record_recurring' &&
+        command.payload['rule_id'] == ruleId,
+  );
 
   SavingsGoalRecord? savingsGoalFor(String goalId) {
     for (final goal in savingsGoals) {
@@ -444,6 +500,145 @@ class AppController extends ChangeNotifier {
       referenceDate: referenceDate,
     ),
   );
+
+  SpendingReport spendingReport({int months = 6, DateTime? referenceDate}) {
+    if (months < 1) {
+      throw ArgumentError.value(months, 'months', 'Must be at least 1');
+    }
+    final reference = _dateOnly(referenceDate ?? DateTime.now());
+    final currentMonth = _monthStart(reference);
+    final start = _shiftMonth(currentMonth, -(months - 1));
+    final end = _shiftMonth(currentMonth, 1);
+    final previousStart = _shiftMonth(start, -months);
+    final startIso = _isoDate(start);
+    final endIso = _isoDate(end);
+    final previousStartIso = _isoDate(previousStart);
+
+    final periods = <String, (int, int)>{
+      for (var offset = 0; offset < months; offset++)
+        _isoDate(_shiftMonth(start, offset)).substring(0, 7): (0, 0),
+    };
+    final categoryAmounts = <String?, int>{};
+    final categoryCounts = <String?, int>{};
+    var income = 0;
+    var expenses = 0;
+    var previousExpenses = 0;
+
+    for (final transaction in transactions) {
+      if (transaction.date.compareTo(previousStartIso) < 0 ||
+          transaction.date.compareTo(endIso) >= 0) {
+        continue;
+      }
+      if (!transaction.isIncome && !transaction.isExpense) continue;
+
+      final inCurrentPeriod = transaction.date.compareTo(startIso) >= 0;
+      if (!inCurrentPeriod) {
+        if (transaction.isExpense) {
+          previousExpenses += transaction.amountCents.abs();
+        }
+        continue;
+      }
+
+      final month = transaction.date.length >= 7
+          ? transaction.date.substring(0, 7)
+          : '';
+      final currentTotals = periods[month];
+      if (transaction.isIncome) {
+        final amount = transaction.amountCents.abs();
+        income += amount;
+        if (currentTotals != null) {
+          periods[month] = (currentTotals.$1 + amount, currentTotals.$2);
+        }
+      } else {
+        final amount = transaction.amountCents.abs();
+        expenses += amount;
+        if (currentTotals != null) {
+          periods[month] = (currentTotals.$1, currentTotals.$2 + amount);
+        }
+        categoryAmounts.update(
+          transaction.categoryId,
+          (value) => value + amount,
+          ifAbsent: () => amount,
+        );
+        categoryCounts.update(
+          transaction.categoryId,
+          (value) => value + 1,
+          ifAbsent: () => 1,
+        );
+      }
+    }
+
+    final categories =
+        categoryAmounts.entries.map((entry) {
+          final category = entry.key == null ? null : categoryFor(entry.key!);
+          return CategorySpending(
+            categoryId: entry.key,
+            name: entry.key == null
+                ? 'Uncategorized'
+                : category?.name ?? 'Archived category',
+            amountCents: entry.value,
+            transactionCount: categoryCounts[entry.key] ?? 0,
+            shareBasisPoints: expenses <= 0
+                ? 0
+                : _roundHalfUpRatio(entry.value * 10000, expenses),
+          );
+        }).toList()..sort((a, b) {
+          final amount = b.amountCents.compareTo(a.amountCents);
+          return amount == 0
+              ? a.name.toLowerCase().compareTo(b.name.toLowerCase())
+              : amount;
+        });
+
+    int? change;
+    if (previousExpenses > 0) {
+      final difference = expenses - previousExpenses;
+      change = difference >= 0
+          ? _roundHalfUpRatio(difference * 10000, previousExpenses)
+          : -_roundHalfUpRatio(-difference * 10000, previousExpenses);
+    }
+
+    return SpendingReport(
+      months: months,
+      startDate: startIso,
+      endDate: _isoDate(end.subtract(const Duration(days: 1))),
+      incomeCents: income,
+      expenseCents: expenses,
+      previousExpenseCents: previousExpenses,
+      expenseChangeBasisPoints: change,
+      cashFlow: [
+        for (final entry in periods.entries)
+          CashFlowPeriod(
+            month: entry.key,
+            incomeCents: entry.value.$1,
+            expenseCents: entry.value.$2,
+          ),
+      ],
+      categories: List.unmodifiable(categories),
+    );
+  }
+
+  List<ReminderItem> reminders({DateTime? referenceDate}) {
+    final reference = _dateOnly(referenceDate ?? DateTime.now());
+    final items = <ReminderItem>[];
+    for (final rule in recurring) {
+      if (rule.status != 'active') continue;
+      final due = DateTime.tryParse(rule.nextDueDate);
+      if (due == null) continue;
+      final daysUntil = _dateOnly(due).difference(reference).inDays;
+      if (daysUntil <= rule.reminderDays) {
+        items.add(ReminderItem(rule: rule, daysUntil: daysUntil));
+      }
+    }
+    items.sort((a, b) {
+      final due = a.daysUntil.compareTo(b.daysUntil);
+      return due == 0
+          ? a.rule.name.toLowerCase().compareTo(b.rule.name.toLowerCase())
+          : due;
+    });
+    return List.unmodifiable(items);
+  }
+
+  int get reminderAttentionCount => reminders().length;
 
   NetWorthPoint currentNetWorthPoint({DateTime? referenceDate}) {
     var assets = 0;
@@ -1161,6 +1356,60 @@ class AppController extends ChangeNotifier {
           if (cleanedNotes != null && cleanedNotes.isNotEmpty)
             'notes': cleanedNotes,
         },
+        status: 'pending',
+      ),
+    );
+    await reload();
+    await _tryBackgroundSync();
+  }
+
+  Future<void> categorizeImportRows(
+    List<String> rowIds,
+    String categoryId,
+  ) async {
+    if (rowIds.isEmpty) throw ArgumentError('Choose at least one import row');
+    final category = categoryFor(categoryId);
+    if (category == null || !category.isActive) {
+      throw ArgumentError('Choose an active category');
+    }
+    await _queueImportCommand('categorize_import_rows', {
+      'row_ids': rowIds,
+      'category_id': categoryId,
+    });
+  }
+
+  Future<void> ignoreImportRows(List<String> rowIds) async {
+    if (rowIds.isEmpty) throw ArgumentError('Choose at least one import row');
+    await _queueImportCommand('ignore_import_rows', {'row_ids': rowIds});
+  }
+
+  Future<void> restoreImportRows(List<String> rowIds) async {
+    if (rowIds.isEmpty) throw ArgumentError('Choose at least one import row');
+    await _queueImportCommand('restore_import_rows', {'row_ids': rowIds});
+  }
+
+  Future<void> postImportBatch(
+    String batchId, {
+    bool includeUncategorized = false,
+  }) async {
+    if (!openImportBatches.any((batch) => batch.id == batchId)) {
+      throw ArgumentError('Import batch is not open');
+    }
+    await _queueImportCommand('post_import_batch', {
+      'batch_id': batchId,
+      'include_uncategorized': includeUncategorized,
+    });
+  }
+
+  Future<void> _queueImportCommand(
+    String type,
+    Map<String, dynamic> payload,
+  ) async {
+    await database.queueCommand(
+      PendingCommand(
+        id: const Uuid().v4(),
+        type: type,
+        payload: payload,
         status: 'pending',
       ),
     );

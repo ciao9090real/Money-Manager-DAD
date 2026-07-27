@@ -19,6 +19,11 @@ PASSWORD_VERIFIER_SIZE = 32
 DEFAULT_SCRYPT_N = 2**15
 RP_ID = "money-manager.local"
 ORIGIN = f"https://{RP_ID}"
+WINDOWS_CANCEL_CODES = {
+    1223,  # ERROR_CANCELLED
+    0x800704C7,  # HRESULT_FROM_WIN32(ERROR_CANCELLED)
+    0x80090036,  # NTE_USER_CANCELLED
+}
 
 
 class AuthenticationError(RuntimeError):
@@ -71,9 +76,10 @@ class WindowsHelloProvider:
                 PublicKeyCredentialRpEntity(id=RP_ID, name="Money Manager"),
                 verify_origin=lambda origin: origin == ORIGIN,
             )
-            client = WindowsClient(
-                DefaultClientDataCollector(ORIGIN),
-                handle=window_handle,
+            client = self._client(
+                WindowsClient,
+                DefaultClientDataCollector,
+                window_handle,
             )
             options, state = server.register_begin(
                 PublicKeyCredentialUserEntity(
@@ -96,9 +102,7 @@ class WindowsHelloProvider:
         except WindowsHelloError:
             raise
         except Exception as exc:
-            raise WindowsHelloError(
-                "Windows Hello setup was canceled or could not be completed."
-            ) from exc
+            raise self._friendly_error("setup", exc) from exc
 
     def verify(self, credential: bytes, window_handle: int) -> bool:
         if not self.is_available():
@@ -120,9 +124,10 @@ class WindowsHelloProvider:
                 PublicKeyCredentialRpEntity(id=RP_ID, name="Money Manager"),
                 verify_origin=lambda origin: origin == ORIGIN,
             )
-            client = WindowsClient(
-                DefaultClientDataCollector(ORIGIN),
-                handle=window_handle,
+            client = self._client(
+                WindowsClient,
+                DefaultClientDataCollector,
+                window_handle,
             )
             options, state = server.authenticate_begin(
                 [stored_credential],
@@ -132,10 +137,67 @@ class WindowsHelloProvider:
             response = selection.get_response(0)
             server.authenticate_complete(state, [stored_credential], response)
             return True
+        except WindowsHelloError:
+            raise
         except Exception as exc:
-            raise WindowsHelloError(
-                "Windows Hello did not verify you. Try again or use your app password."
-            ) from exc
+            raise self._friendly_error("verification", exc) from exc
+
+    @staticmethod
+    def _client(windows_client, collector, window_handle: int):
+        handle = int(window_handle or 0)
+        return windows_client(
+            collector(ORIGIN),
+            handle=handle if handle > 0 else None,
+        )
+
+    @staticmethod
+    def _friendly_error(action: str, error: Exception) -> WindowsHelloError:
+        from fido2.client import ClientError
+
+        current: BaseException | None = error
+        windows_code: int | None = None
+        while current is not None:
+            for attribute in ("winerror", "hresult", "errno"):
+                value = getattr(current, attribute, None)
+                if isinstance(value, int):
+                    normalized = value & 0xFFFFFFFF
+                    if normalized:
+                        windows_code = normalized
+            current = (
+                getattr(current, "cause", None)
+                or getattr(current, "__cause__", None)
+            )
+        if windows_code in WINDOWS_CANCEL_CODES:
+            return WindowsHelloError("Windows Hello was canceled. Nothing changed.")
+        if isinstance(error, ClientError):
+            if error.code == ClientError.ERR.DEVICE_INELIGIBLE:
+                return WindowsHelloError(
+                    "Windows Hello could not find a usable face, fingerprint, "
+                    "or PIN credential. Check Windows sign-in options and try again."
+                )
+            if error.code == ClientError.ERR.CONFIGURATION_UNSUPPORTED:
+                return WindowsHelloError(
+                    "This Windows Hello configuration cannot create an app "
+                    "credential. Add a Windows Hello PIN first, then try again."
+                )
+            if error.code == ClientError.ERR.TIMEOUT:
+                return WindowsHelloError(
+                    "Windows Hello timed out. Nothing changed; try again when ready."
+                )
+        detail = (
+            f" (Windows error 0x{windows_code:08X})"
+            if windows_code is not None
+            else ""
+        )
+        if action == "setup":
+            return WindowsHelloError(
+                "Windows Hello could not finish setup. Your app password still "
+                f"works and no existing Hello credential was replaced.{detail}"
+            )
+        return WindowsHelloError(
+            "Windows Hello could not verify you. Try again or use your app "
+            f"password.{detail}"
+        )
 
 
 @dataclass(frozen=True)
@@ -208,9 +270,14 @@ class AuthService:
             )
 
     def enable_windows_hello(self, window_handle: int) -> None:
-        if not self.is_configured():
+        row = self._row()
+        if row is None:
             raise AuthenticationError("Create an app password before Windows Hello.")
-        user_id = secrets.token_bytes(32)
+        user_id = (
+            bytes(row["hello_user_id"])
+            if row["hello_user_id"]
+            else secrets.token_bytes(32)
+        )
         credential = self.hello_provider.enroll(user_id, window_handle)
         if not credential:
             raise WindowsHelloError(

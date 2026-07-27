@@ -205,6 +205,36 @@ def _draw_icon(painter: QPainter, name: str, rect: QRectF, color: str) -> None:
     elif name == "close":
         painter.drawLine(QPointF(x + w * 0.18, y + h * 0.18), QPointF(x + w * 0.82, y + h * 0.82))
         painter.drawLine(QPointF(x + w * 0.82, y + h * 0.18), QPointF(x + w * 0.18, y + h * 0.82))
+    elif name in {"eye", "eye_off"}:
+        eye = QPainterPath()
+        eye.moveTo(x + w * 0.04, y + h * 0.50)
+        eye.cubicTo(
+            x + w * 0.24,
+            y + h * 0.14,
+            x + w * 0.76,
+            y + h * 0.14,
+            x + w * 0.96,
+            y + h * 0.50,
+        )
+        eye.cubicTo(
+            x + w * 0.76,
+            y + h * 0.86,
+            x + w * 0.24,
+            y + h * 0.86,
+            x + w * 0.04,
+            y + h * 0.50,
+        )
+        painter.drawPath(eye)
+        painter.drawEllipse(
+            QPointF(x + w * 0.50, y + h * 0.50),
+            w * 0.13,
+            h * 0.13,
+        )
+        if name == "eye_off":
+            painter.drawLine(
+                QPointF(x + w * 0.08, y + h * 0.08),
+                QPointF(x + w * 0.92, y + h * 0.92),
+            )
     else:
         painter.drawEllipse(rect)
 

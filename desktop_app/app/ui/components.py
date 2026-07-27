@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QDialog,
     QFormLayout,
+    QGraphicsDropShadowEffect,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
@@ -32,8 +33,24 @@ from app.ui.icons import icon
 from app.utils.money import format_money, to_decimal
 
 
+def apply_soft_shadow(
+    widget: QWidget,
+    *,
+    blur_radius: float = 28,
+    y_offset: float = 5,
+    alpha: int = 18,
+) -> None:
+    """Give a surface restrained elevation without a hard outer border."""
+
+    shadow = QGraphicsDropShadowEffect(widget)
+    shadow.setBlurRadius(blur_radius)
+    shadow.setOffset(0, y_offset)
+    shadow.setColor(QColor(20, 27, 28, alpha))
+    widget.setGraphicsEffect(shadow)
+
+
 class FittedLabel(QLabel):
-    """A bold label that keeps long values visible inside compact cards."""
+    """A semibold label that keeps long values visible inside compact cards."""
 
     def __init__(self, text: str, maximum_size: int, minimum_size: int, parent=None):
         super().__init__(text, parent)
@@ -58,13 +75,13 @@ class FittedLabel(QLabel):
         while point_size > self.minimum_size:
             font = QFont(self.font())
             font.setPixelSize(point_size)
-            font.setWeight(QFont.Weight.Bold)
+            font.setWeight(QFont.Weight.DemiBold)
             if QFontMetrics(font).horizontalAdvance(self.text()) <= available:
                 break
             point_size -= 1
         font = QFont(self.font())
         font.setPixelSize(point_size)
-        font.setWeight(QFont.Weight.Bold)
+        font.setWeight(QFont.Weight.DemiBold)
         self.setFont(font)
 
 
@@ -297,9 +314,13 @@ def create_card(
     subtitle: str | None = None,
     action: QWidget | None = None,
     role: str = "card",
+    *,
+    elevated: bool = True,
 ) -> tuple[QFrame, QVBoxLayout]:
     card = QFrame()
     card.setProperty("role", role)
+    if elevated:
+        apply_soft_shadow(card)
     card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
     if max_height:
         card.setMaximumHeight(max_height)
@@ -340,8 +361,9 @@ def metric_card(
     helper: str | None = None,
     tone: str | None = None,
     compact: bool = False,
+    elevated: bool = True,
 ) -> tuple[QFrame, QLabel]:
-    card, layout = create_card(role="metricCard")
+    card, layout = create_card(role="metricCard", elevated=elevated)
     card.setProperty("tone", tone or "neutral")
     card.setMinimumWidth(0)
     card.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
@@ -471,6 +493,15 @@ def empty_state(title: str, subtitle: str | None = None, action: QWidget | None 
     layout.setContentsMargins(18, 22, 18, 22)
     layout.setSpacing(8)
     layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    icon_tile = QFrame()
+    icon_tile.setProperty("role", "emptyIcon")
+    icon_tile.setFixedSize(38, 38)
+    icon_label = QLabel()
+    icon_label.setPixmap(icon("transactions", Colors.TEXT_MUTED, 17).pixmap(17, 17))
+    icon_layout = QHBoxLayout(icon_tile)
+    icon_layout.setContentsMargins(0, 0, 0, 0)
+    icon_layout.addWidget(icon_label, 0, Qt.AlignmentFlag.AlignCenter)
+    layout.addWidget(icon_tile, 0, Qt.AlignmentFlag.AlignCenter)
     title_label = QLabel(title)
     title_label.setProperty("role", "emptyTitle")
     title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -601,8 +632,7 @@ def fit_item_view_height(view, row_count: int, minimum_rows: int = 1, maximum_ro
 
 
 def clear_layout(layout: QGridLayout) -> None:
+    """Remove layout items for responsive reflow without hiding their widgets."""
+
     while layout.count():
-        item = layout.takeAt(0)
-        widget = item.widget()
-        if widget:
-            widget.setParent(None)
+        layout.takeAt(0)

@@ -129,6 +129,20 @@ class _TransactionSheetState extends State<TransactionSheet> {
     final selectedAccount = accounts
         .where((account) => account.id == accountId)
         .firstOrNull;
+    final recentTemplates = <TransactionRecord>[];
+    if (type != 'transfer') {
+      final seen = <String>{};
+      for (final transaction in controller.transactions) {
+        final descriptionKey = transaction.description.trim().toLowerCase();
+        if (transaction.type != type ||
+            descriptionKey.isEmpty ||
+            !seen.add(descriptionKey)) {
+          continue;
+        }
+        recentTemplates.add(transaction);
+        if (recentTemplates.length == 3) break;
+      }
+    }
 
     return SafeArea(
       child: Padding(
@@ -179,6 +193,44 @@ class _TransactionSheetState extends State<TransactionSheet> {
                   onSelectionChanged: (value) => _selectType(value.first),
                 ),
                 const SizedBox(height: 18),
+                if (recentTemplates.isNotEmpty) ...[
+                  Text(
+                    'Repeat a recent ${type == 'income' ? 'income' : 'expense'}',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: recentTemplates
+                        .map(
+                          (template) => ActionChip(
+                            avatar: const Icon(Icons.history, size: 17),
+                            label: Text(
+                              template.description,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            onPressed: () => setState(() {
+                              amount.text = _editableAmount(
+                                template.amountCents.abs(),
+                              );
+                              description.text = template.description;
+                              if (accounts.any(
+                                (account) => account.id == template.accountId,
+                              )) {
+                                accountId = template.accountId;
+                              }
+                              categoryId = template.categoryId;
+                              paymentMethodId = template.paymentMethodId;
+                            }),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                  const SizedBox(height: 14),
+                ],
                 TextFormField(
                   controller: amount,
                   autofocus: true,
@@ -399,4 +451,12 @@ int _parseCents(String raw) {
       ? 0
       : int.parse(parts.last.padRight(2, '0').substring(0, 2));
   return whole * 100 + decimals;
+}
+
+String _editableAmount(int cents) {
+  final whole = cents ~/ 100;
+  final remainder = cents % 100;
+  return remainder == 0
+      ? '$whole'
+      : '$whole.${remainder.toString().padLeft(2, '0')}';
 }

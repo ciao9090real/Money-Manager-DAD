@@ -12,6 +12,8 @@ import 'package:money_manager/ui/app_shell.dart';
 import 'package:money_manager/ui/budgets_page.dart';
 import 'package:money_manager/ui/dashboard_page.dart';
 import 'package:money_manager/ui/goals_page.dart';
+import 'package:money_manager/ui/import_inbox_page.dart';
+import 'package:money_manager/ui/insights_page.dart';
 import 'package:money_manager/ui/loan_payoff_page.dart';
 import 'package:money_manager/ui/more_page.dart';
 import 'package:money_manager/ui/transaction_sheet.dart';
@@ -66,7 +68,7 @@ void main() {
               parentId: 'account-1',
             ),
           ]
-          ..recurring = const [
+          ..recurring = [
             RecurringRecord(
               id: 'rule-1',
               name: 'Salary',
@@ -74,9 +76,10 @@ void main() {
               transactionType: 'income',
               accountId: 'account-1',
               frequency: 'monthly',
-              nextDueDate: '2026-07-31',
+              nextDueDate: currentDate,
               status: 'active',
               amountCents: 250000,
+              reminderDays: 30,
             ),
           ]
           ..categories = const [
@@ -142,6 +145,31 @@ void main() {
               status: 'active',
               revision: 1,
             ),
+          ]
+          ..importBatches = const [
+            ImportBatchRecord(
+              id: 'batch-1',
+              sourceName: 'july-card.csv',
+              sourceType: 'bank_statement',
+              status: 'review',
+              createdAt: '2026-07-27T10:00:00Z',
+              revision: 1,
+              periodStart: '2026-07-01',
+              periodEnd: '2026-07-31',
+            ),
+          ]
+          ..importRows = const [
+            ImportRowRecord(
+              id: 'row-1',
+              batchId: 'batch-1',
+              sourceRowNumber: 2,
+              date: '2026-07-21',
+              transactionType: 'expense',
+              amountCents: 450,
+              description: 'Espresso',
+              status: 'needs_category',
+              revision: 1,
+            ),
           ];
 
     final pages = <({Widget page, bool ownsScaffold})>[
@@ -167,6 +195,7 @@ void main() {
           onPair: () {},
           onOpenBudgets: () {},
           onOpenGoals: () {},
+          onOpenInsights: () {},
           onOpenLoan: (_) {},
         ),
         ownsScaffold: false,
@@ -175,6 +204,12 @@ void main() {
       (page: GoalsPage(controller: controller), ownsScaffold: true),
       (
         page: LoanPayoffPage(controller: controller, loanId: 'loan-1'),
+        ownsScaffold: true,
+      ),
+      (page: ImportInboxPage(controller: controller), ownsScaffold: true),
+      (page: InsightsPage(controller: controller), ownsScaffold: true),
+      (
+        page: ImportBatchPage(controller: controller, batchId: 'batch-1'),
         ownsScaffold: true,
       ),
     ];
@@ -193,6 +228,68 @@ void main() {
         reason: '${entry.page.runtimeType} overflowed',
       );
     }
+  });
+
+  testWidgets('more opens the local insights report', (tester) async {
+    final controller = AppController(
+      database: LocalDatabase(),
+      syncClient: SyncClient(),
+    );
+    await tester.pumpWidget(
+      AppScope(
+        controller: controller,
+        child: MaterialApp(theme: AppTheme.light, home: const AppShell()),
+      ),
+    );
+
+    await tester.tap(find.text('More'));
+    await tester.pump();
+    await tester.tap(find.text('Insights'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Your money, translated'), findsOneWidget);
+    expect(find.text('THE SHORT VERSION'), findsOneWidget);
+  });
+
+  testWidgets('upcoming surfaces due reminders and queued state', (
+    tester,
+  ) async {
+    final controller =
+        AppController(database: LocalDatabase(), syncClient: SyncClient())
+          ..recurring = [
+            RecurringRecord(
+              id: 'rent',
+              name: 'Rent',
+              kind: 'bill',
+              transactionType: 'expense',
+              accountId: 'current',
+              frequency: 'monthly',
+              nextDueDate: _isoDate(DateTime.now()),
+              status: 'active',
+              amountCents: 85000,
+              reminderDays: 3,
+            ),
+          ]
+          ..pendingCommands = const [
+            PendingCommand(
+              id: 'pending-rent',
+              type: 'record_recurring',
+              payload: {'rule_id': 'rent'},
+              status: 'pending',
+            ),
+          ];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light,
+        home: Scaffold(body: UpcomingPage(controller: controller)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('One thing is knocking'), findsOneWidget);
+    expect(find.text('Due today'), findsOneWidget);
+    expect(find.byIcon(Icons.schedule), findsOneWidget);
   });
 
   testWidgets('manual savings goal opens a contribution sheet', (tester) async {

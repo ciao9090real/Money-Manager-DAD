@@ -16,6 +16,116 @@ class StoredRecord {
   bool get isDeleted => payload['deleted_at'] != null;
 }
 
+class ImportBatchRecord {
+  const ImportBatchRecord({
+    required this.id,
+    required this.sourceName,
+    required this.sourceType,
+    required this.status,
+    required this.createdAt,
+    required this.revision,
+    this.sheetName,
+    this.paymentMethodId,
+    this.periodStart,
+    this.periodEnd,
+  });
+
+  factory ImportBatchRecord.fromJson(Map<String, dynamic> json) =>
+      ImportBatchRecord(
+        id: '${json['id']}',
+        sourceName: '${json['source_name'] ?? 'Imported file'}',
+        sourceType: '${json['source_type'] ?? 'money_manager_csv'}',
+        sheetName: _asOptionalString(json['sheet_name']),
+        paymentMethodId: _asOptionalString(json['payment_method_id']),
+        periodStart: _asOptionalString(json['period_start']),
+        periodEnd: _asOptionalString(json['period_end']),
+        status: '${json['status'] ?? 'review'}',
+        createdAt: '${json['created_at'] ?? ''}',
+        revision: _asInt(json['revision'], fallback: 1),
+      );
+
+  final String id;
+  final String sourceName;
+  final String sourceType;
+  final String? sheetName;
+  final String? paymentMethodId;
+  final String? periodStart;
+  final String? periodEnd;
+  final String status;
+  final String createdAt;
+  final int revision;
+
+  bool get isOpen => status == 'review';
+  bool get isStatement => sourceType == 'bank_statement';
+}
+
+class ImportRowRecord {
+  const ImportRowRecord({
+    required this.id,
+    required this.batchId,
+    required this.sourceRowNumber,
+    required this.description,
+    required this.status,
+    required this.revision,
+    this.date,
+    this.transactionType,
+    this.accountId,
+    this.targetAccountId,
+    this.paymentMethodId,
+    this.categoryId,
+    this.amountCents,
+    this.issueCode,
+    this.issueText,
+    this.postedTransactionId,
+  });
+
+  factory ImportRowRecord.fromJson(Map<String, dynamic> json) =>
+      ImportRowRecord(
+        id: '${json['id']}',
+        batchId: '${json['batch_id']}',
+        sourceRowNumber: _asInt(json['source_row_number']),
+        date: _asOptionalString(json['date']),
+        transactionType: _asOptionalString(json['transaction_type']),
+        accountId: _asOptionalString(json['account_id']),
+        targetAccountId: _asOptionalString(json['target_account_id']),
+        paymentMethodId: _asOptionalString(json['payment_method_id']),
+        categoryId: _asOptionalString(json['category_id']),
+        amountCents: json['amount_cents'] == null
+            ? null
+            : _asInt(json['amount_cents']),
+        description: '${json['description'] ?? ''}',
+        status: '${json['status'] ?? 'error'}',
+        issueCode: _asOptionalString(json['issue_code']),
+        issueText: _asOptionalString(json['issue_text']),
+        postedTransactionId: _asOptionalString(json['posted_transaction_id']),
+        revision: _asInt(json['revision'], fallback: 1),
+      );
+
+  final String id;
+  final String batchId;
+  final int sourceRowNumber;
+  final String? date;
+  final String? transactionType;
+  final String? accountId;
+  final String? targetAccountId;
+  final String? paymentMethodId;
+  final String? categoryId;
+  final int? amountCents;
+  final String description;
+  final String status;
+  final String? issueCode;
+  final String? issueText;
+  final String? postedTransactionId;
+  final int revision;
+
+  bool get canCategorize =>
+      transactionType == 'income' || transactionType == 'expense';
+  bool get isReady => status == 'ready';
+  bool get needsCategory => status == 'needs_category';
+  bool get isResolved =>
+      status == 'posted' || status == 'duplicate' || status == 'ignored';
+}
+
 class CategoryRecord {
   const CategoryRecord({
     required this.id,
@@ -467,6 +577,70 @@ class SavingsHealth {
   double get emergencyFundCoverage => emergencyFundCoverageHundredths / 100;
 }
 
+class CashFlowPeriod {
+  const CashFlowPeriod({
+    required this.month,
+    required this.incomeCents,
+    required this.expenseCents,
+  });
+
+  final String month;
+  final int incomeCents;
+  final int expenseCents;
+
+  int get netCents => incomeCents - expenseCents;
+}
+
+class CategorySpending {
+  const CategorySpending({
+    required this.categoryId,
+    required this.name,
+    required this.amountCents,
+    required this.transactionCount,
+    required this.shareBasisPoints,
+  });
+
+  final String? categoryId;
+  final String name;
+  final int amountCents;
+  final int transactionCount;
+
+  /// Ten-thousandths of total expense: 2,500 means 25.00%.
+  final int shareBasisPoints;
+
+  double get sharePercent => shareBasisPoints / 100;
+}
+
+class SpendingReport {
+  const SpendingReport({
+    required this.months,
+    required this.startDate,
+    required this.endDate,
+    required this.incomeCents,
+    required this.expenseCents,
+    required this.previousExpenseCents,
+    required this.expenseChangeBasisPoints,
+    required this.cashFlow,
+    required this.categories,
+  });
+
+  final int months;
+  final String startDate;
+  final String endDate;
+  final int incomeCents;
+  final int expenseCents;
+  final int previousExpenseCents;
+  final int? expenseChangeBasisPoints;
+  final List<CashFlowPeriod> cashFlow;
+  final List<CategorySpending> categories;
+
+  int get netCents => incomeCents - expenseCents;
+  int get averageMonthlyExpenseCents =>
+      months <= 0 ? 0 : (expenseCents / months).round();
+  CategorySpending? get topCategory =>
+      categories.isEmpty ? null : categories.first;
+}
+
 class RecurringRecord {
   const RecurringRecord({
     required this.id,
@@ -478,6 +652,7 @@ class RecurringRecord {
     required this.nextDueDate,
     required this.status,
     this.amountCents,
+    this.reminderDays = 3,
   });
 
   factory RecurringRecord.fromJson(Map<String, dynamic> json) =>
@@ -493,6 +668,7 @@ class RecurringRecord {
         amountCents: json['amount_cents'] == null
             ? null
             : _asInt(json['amount_cents']),
+        reminderDays: _asInt(json['reminder_days'], fallback: 3),
       );
 
   final String id;
@@ -504,6 +680,18 @@ class RecurringRecord {
   final String nextDueDate;
   final String status;
   final int? amountCents;
+  final int reminderDays;
+}
+
+class ReminderItem {
+  const ReminderItem({required this.rule, required this.daysUntil});
+
+  final RecurringRecord rule;
+  final int daysUntil;
+
+  bool get isOverdue => daysUntil < 0;
+  bool get isToday => daysUntil == 0;
+  bool get isIncome => rule.transactionType == 'income';
 }
 
 class PendingCommand {

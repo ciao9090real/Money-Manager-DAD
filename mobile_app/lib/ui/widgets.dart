@@ -93,7 +93,7 @@ class SurfaceCard extends StatelessWidget {
   const SurfaceCard({
     super.key,
     required this.child,
-    this.padding = const EdgeInsets.all(16),
+    this.padding = const EdgeInsets.all(18),
   });
 
   final Widget child;
@@ -148,9 +148,11 @@ class MetricCard extends StatelessWidget {
               alignment: Alignment.centerLeft,
               child: Text(
                 value,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(color: tone),
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  color: tone,
+                  fontFamily: 'SpaceGrotesk',
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ],
@@ -205,14 +207,14 @@ class Pill extends StatelessWidget {
       'negative' => (const Color(0xFFFBEAEA), AppColors.negative),
       'info' => (AppColors.blueSoft, AppColors.blue),
       'warning' => (const Color(0xFFF8F0DF), AppColors.warning),
-      _ => (const Color(0xFFEEF2F0), AppColors.muted),
+      _ => (const Color(0xFFF1F2F0), AppColors.muted),
     };
     return Container(
       constraints: const BoxConstraints(minHeight: 25),
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
         color: background,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
         label,
@@ -255,8 +257,9 @@ class AmountText extends StatelessWidget {
       textAlign: TextAlign.right,
       maxLines: 1,
       style: TextStyle(
+        fontFamily: 'SpaceGrotesk',
         color: color,
-        fontWeight: emphasized ? FontWeight.w700 : FontWeight.w600,
+        fontWeight: FontWeight.w600,
         fontSize: emphasized ? 17 : 14,
         letterSpacing: 0,
       ),
@@ -290,7 +293,7 @@ class EmptyState extends StatelessWidget {
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: AppColors.primarySoft,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(icon, color: AppColors.primary, size: 23),
           ),

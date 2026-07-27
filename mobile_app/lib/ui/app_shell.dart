@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../main.dart';
+import '../theme/app_theme.dart';
 import 'accounts_page.dart';
 import 'budgets_page.dart';
 import 'dashboard_page.dart';
 import 'goals_page.dart';
+import 'import_inbox_page.dart';
+import 'insights_page.dart';
 import 'loan_payoff_page.dart';
 import 'more_page.dart';
 import 'pairing_page.dart';
@@ -67,6 +70,22 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
+  Future<void> _openImports() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ImportInboxPage(controller: AppScope.of(context)),
+      ),
+    );
+  }
+
+  Future<void> _openInsights() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => InsightsPage(controller: AppScope.of(context)),
+      ),
+    );
+  }
+
   Future<void> _openLoan(String loanId) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
@@ -90,7 +109,11 @@ class _AppShellState extends State<AppShell> {
         onAddIncome: () => _addTransaction(initialType: 'income'),
         onAddTransfer: () => _addTransaction(initialType: 'transfer'),
       ),
-      TransactionsPage(controller: controller, onAdd: _addTransaction),
+      TransactionsPage(
+        controller: controller,
+        onAdd: _addTransaction,
+        onOpenImports: _openImports,
+      ),
       AccountsPage(
         controller: controller,
         onAddTransaction: (accountId, transactionType) =>
@@ -102,6 +125,7 @@ class _AppShellState extends State<AppShell> {
         onPair: _pair,
         onOpenBudgets: _openBudgets,
         onOpenGoals: _openGoals,
+        onOpenInsights: _openInsights,
         onOpenLoan: _openLoan,
       ),
     ];
@@ -121,28 +145,34 @@ class _AppShellState extends State<AppShell> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
         onDestinationSelected: (value) => setState(() => index = value),
-        destinations: const [
-          NavigationDestination(
+        destinations: [
+          const NavigationDestination(
             icon: Icon(Icons.space_dashboard_outlined),
             selectedIcon: Icon(Icons.space_dashboard),
             label: 'Home',
           ),
-          NavigationDestination(
+          const NavigationDestination(
             icon: Icon(Icons.swap_horiz_outlined),
             selectedIcon: Icon(Icons.swap_horiz),
             label: 'Activity',
           ),
-          NavigationDestination(
+          const NavigationDestination(
             icon: Icon(Icons.account_balance_wallet_outlined),
             selectedIcon: Icon(Icons.account_balance_wallet),
             label: 'Accounts',
           ),
           NavigationDestination(
-            icon: Icon(Icons.event_repeat_outlined),
-            selectedIcon: Icon(Icons.event_repeat),
+            icon: _ReminderBadge(
+              count: controller.reminderAttentionCount,
+              child: const Icon(Icons.event_repeat_outlined),
+            ),
+            selectedIcon: _ReminderBadge(
+              count: controller.reminderAttentionCount,
+              child: const Icon(Icons.event_repeat),
+            ),
             label: 'Upcoming',
           ),
-          NavigationDestination(
+          const NavigationDestination(
             icon: Icon(Icons.more_horiz),
             selectedIcon: Icon(Icons.more),
             label: 'More',
@@ -151,4 +181,20 @@ class _AppShellState extends State<AppShell> {
       ),
     );
   }
+}
+
+class _ReminderBadge extends StatelessWidget {
+  const _ReminderBadge({required this.count, required this.child});
+
+  final int count;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Badge(
+    isLabelVisible: count > 0,
+    label: Text(count > 9 ? '9+' : '$count'),
+    backgroundColor: AppColors.warning,
+    textColor: Colors.white,
+    child: child,
+  );
 }
