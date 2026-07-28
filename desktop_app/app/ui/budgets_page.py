@@ -29,6 +29,7 @@ from app.ui.components import (
     badge,
     create_card,
     empty_state,
+    fit_card_to_content,
     fit_item_view_height,
     ghost_button,
     page_layout,
@@ -232,13 +233,13 @@ class BudgetsPage(QWidget):
         self.table.setVisible(has_budgets)
         if has_budgets and len(budgets) <= 9:
             fit_item_view_height(self.table, len(budgets), maximum_rows=9)
-            self.budget_card.setMaximumHeight(175 + self.table.maximumHeight())
+            fit_card_to_content(self.budget_card)
         elif has_budgets:
             self.table.setMaximumHeight(16777215)
             self.table.setMinimumHeight(320)
             self.budget_card.setMaximumHeight(16777215)
         else:
-            self.budget_card.setMaximumHeight(310)
+            fit_card_to_content(self.budget_card)
         self._sync_actions()
 
     def select_entity(self, category_id: str) -> None:

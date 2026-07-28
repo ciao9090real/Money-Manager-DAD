@@ -128,7 +128,12 @@ class GoalsPage(QWidget):
             action=badge(status_text, status_tone),
         )
         card.setProperty("entityId", goal.id or "")
-        card.setMinimumHeight(245)
+        card.setMinimumHeight(220)
+        card.setMaximumHeight(270)
+        card.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Maximum,
+        )
 
         amounts = FittedLabel(
             f"{format_money(progress.current_amount)} of {format_money(goal.target_amount)}",
@@ -157,8 +162,6 @@ class GoalsPage(QWidget):
         helper.setProperty("role", "helper")
         helper.setWordWrap(True)
         layout.addWidget(helper)
-        layout.addStretch()
-
         edit_button = ghost_button("Edit", "edit")
         contribute_button = soft_button("Add contribution", "plus")
         archive_button = ghost_button("Archive", "archive")
@@ -203,8 +206,12 @@ class GoalsPage(QWidget):
         for column in range(2):
             self.goal_grid.setColumnStretch(column, 1 if column < columns else 0)
         for index, card in enumerate(self._goal_cards):
-            card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-            self.goal_grid.addWidget(card, index // columns, index % columns)
+            self.goal_grid.addWidget(
+                card,
+                index // columns,
+                index % columns,
+                Qt.AlignmentFlag.AlignTop,
+            )
 
     def _clear_goal_cards(self) -> None:
         while self.goal_grid.count():

@@ -33,6 +33,7 @@ from app.ui.components import (
     create_card,
     danger_button,
     empty_state,
+    fit_card_to_content,
     fit_item_view_height,
     ghost_button,
     metric_card,
@@ -124,13 +125,11 @@ class InvestmentsPage(QWidget):
         history_layout.addWidget(self.history_chart)
 
         self.updates_selector = QComboBox()
-        self.updates_selector.setMinimumWidth(150)
-        self.updates_selector.setMaximumWidth(170)
+        self.updates_selector.setMinimumWidth(190)
         self.updates_selector.currentIndexChanged.connect(self._refresh_value_updates)
         updates_card, updates_layout = create_card(
             "Logs",
             subtitle="Saved market values, newest first",
-            action=self.updates_selector,
         )
         self.updates_card = updates_card
         self.updates_caption = QLabel("Choose a portfolio or investment")
@@ -162,10 +161,13 @@ class InvestmentsPage(QWidget):
             lambda _item: self.edit_value_update()
         )
         updates_header = self.updates_table.horizontalHeader()
-        updates_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        updates_header.setSectionResizeMode(
+            0, QHeaderView.ResizeMode.ResizeToContents
+        )
         updates_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        updates_header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        updates_header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         self.updates_table.setMinimumHeight(250)
+        updates_layout.addWidget(self.updates_selector)
         updates_layout.addWidget(self.updates_caption)
         updates_layout.addLayout(update_controls)
         updates_layout.addWidget(self.updates_table)
@@ -322,6 +324,16 @@ class InvestmentsPage(QWidget):
             label = f"{investment.symbol} · {investment.name}" if investment.symbol else investment.name
             self.history_selector.addItem(label, investment.id)
             self.updates_selector.addItem(label, investment.id)
+            self.history_selector.setItemData(
+                self.history_selector.count() - 1,
+                label,
+                Qt.ItemDataRole.ToolTipRole,
+            )
+            self.updates_selector.setItemData(
+                self.updates_selector.count() - 1,
+                label,
+                Qt.ItemDataRole.ToolTipRole,
+            )
         selected_index = self.history_selector.findData(selected_history)
         self.history_selector.setCurrentIndex(max(0, selected_index))
         if snapshots:
@@ -379,13 +391,13 @@ class InvestmentsPage(QWidget):
             controls.setVisible(has_investments)
         if has_investments and len(snapshots) <= 8:
             fit_item_view_height(self.table, len(snapshots), maximum_rows=8)
-            self.portfolio_card.setMaximumHeight(175 + self.table.maximumHeight())
+            fit_card_to_content(self.portfolio_card)
         elif has_investments:
             self.table.setMaximumHeight(16777215)
             self.table.setMinimumHeight(320)
             self.portfolio_card.setMaximumHeight(16777215)
         else:
-            self.portfolio_card.setMaximumHeight(300)
+            fit_card_to_content(self.portfolio_card)
         self._sync_actions()
 
     def add_investment(self) -> None:

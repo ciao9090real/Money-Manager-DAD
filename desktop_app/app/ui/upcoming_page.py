@@ -31,6 +31,7 @@ from app.ui.components import (
     create_card,
     danger_button,
     empty_state,
+    fit_card_to_content,
     fit_item_view_height,
     ghost_button,
     metric_card,
@@ -290,13 +291,13 @@ class UpcomingPage(QWidget):
         self.table.setVisible(has_rules)
         if has_rules and len(rules) <= 8:
             fit_item_view_height(self.table, len(rules), maximum_rows=8)
-            self.schedule_card.setMaximumHeight(190 + self.table.maximumHeight())
+            fit_card_to_content(self.schedule_card)
         elif has_rules:
             self.table.setMaximumHeight(16777215)
             self.table.setMinimumHeight(320)
             self.schedule_card.setMaximumHeight(16777215)
         else:
-            self.schedule_card.setMaximumHeight(330)
+            fit_card_to_content(self.schedule_card)
         self._sync_actions()
 
     def select_entity(self, rule_id: str) -> None:

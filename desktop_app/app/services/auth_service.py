@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import hmac
+import logging
 import os
 import secrets
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Protocol
 
 from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
@@ -24,6 +25,10 @@ WINDOWS_CANCEL_CODES = {
     0x800704C7,  # HRESULT_FROM_WIN32(ERROR_CANCELLED)
     0x80090036,  # NTE_USER_CANCELLED
 }
+WINDOWS_HELLO_TIMEOUT_MS = 120_000
+
+
+logger = logging.getLogger(__name__)
 
 
 class AuthenticationError(RuntimeError):
@@ -53,6 +58,10 @@ class WindowsHelloProvider:
 
             return bool(WindowsClient.is_available())
         except Exception:
+            logger.warning(
+                "Windows Hello availability check failed",
+                exc_info=True,
+            )
             return False
 
     def enroll(self, user_id: bytes, window_handle: int) -> bytes:
@@ -67,6 +76,7 @@ class WindowsHelloProvider:
             from fido2.webauthn import (
                 AuthenticatorAttachment,
                 PublicKeyCredentialRpEntity,
+                PublicKeyCredentialHint,
                 PublicKeyCredentialUserEntity,
                 ResidentKeyRequirement,
                 UserVerificationRequirement,
@@ -91,7 +101,14 @@ class WindowsHelloProvider:
                 user_verification=UserVerificationRequirement.REQUIRED,
                 authenticator_attachment=AuthenticatorAttachment.PLATFORM,
             )
-            response = client.make_credential(options.public_key)
+            public_key = replace(
+                options.public_key,
+                timeout=WINDOWS_HELLO_TIMEOUT_MS,
+                hints=(PublicKeyCredentialHint.CLIENT_DEVICE,),
+            )
+            self._activate_window(window_handle)
+            logger.info("Windows Hello setup prompt opened")
+            response = client.make_credential(public_key)
             auth_data = server.register_complete(state, response)
             credential = auth_data.credential_data
             if credential is None:
@@ -102,7 +119,13 @@ class WindowsHelloProvider:
         except WindowsHelloError:
             raise
         except Exception as exc:
-            raise self._friendly_error("setup", exc) from exc
+            friendly = self._friendly_error("setup", exc)
+            logger.warning(
+                "Windows Hello setup failed: exception=%s windows_code=%s",
+                type(exc).__name__,
+                self._windows_error_code(exc),
+            )
+            raise friendly from exc
 
     def verify(self, credential: bytes, window_handle: int) -> bool:
         if not self.is_available():
@@ -115,6 +138,7 @@ class WindowsHelloProvider:
             from fido2.server import Fido2Server
             from fido2.webauthn import (
                 AttestedCredentialData,
+                PublicKeyCredentialHint,
                 PublicKeyCredentialRpEntity,
                 UserVerificationRequirement,
             )
@@ -133,14 +157,27 @@ class WindowsHelloProvider:
                 [stored_credential],
                 user_verification=UserVerificationRequirement.REQUIRED,
             )
-            selection = client.get_assertion(options.public_key)
+            public_key = replace(
+                options.public_key,
+                timeout=WINDOWS_HELLO_TIMEOUT_MS,
+                hints=(PublicKeyCredentialHint.CLIENT_DEVICE,),
+            )
+            self._activate_window(window_handle)
+            logger.info("Windows Hello verification prompt opened")
+            selection = client.get_assertion(public_key)
             response = selection.get_response(0)
             server.authenticate_complete(state, [stored_credential], response)
             return True
         except WindowsHelloError:
             raise
         except Exception as exc:
-            raise self._friendly_error("verification", exc) from exc
+            friendly = self._friendly_error("verification", exc)
+            logger.warning(
+                "Windows Hello verification failed: exception=%s windows_code=%s",
+                type(exc).__name__,
+                self._windows_error_code(exc),
+            )
+            raise friendly from exc
 
     @staticmethod
     def _client(windows_client, collector, window_handle: int):
@@ -151,9 +188,7 @@ class WindowsHelloProvider:
         )
 
     @staticmethod
-    def _friendly_error(action: str, error: Exception) -> WindowsHelloError:
-        from fido2.client import ClientError
-
+    def _windows_error_code(error: BaseException) -> int | None:
         current: BaseException | None = error
         windows_code: int | None = None
         while current is not None:
@@ -167,8 +202,45 @@ class WindowsHelloProvider:
                 getattr(current, "cause", None)
                 or getattr(current, "__cause__", None)
             )
+        return windows_code
+
+    @staticmethod
+    def _activate_window(window_handle: int) -> None:
+        """Keep the native passkey sheet attached to a visible foreground window."""
+
+        if os.name != "nt" or int(window_handle or 0) <= 0:
+            return
+        try:
+            import ctypes
+
+            handle = int(window_handle)
+            user32 = ctypes.windll.user32
+            if user32.IsIconic(handle):
+                user32.ShowWindow(handle, 9)  # SW_RESTORE
+            user32.SetForegroundWindow(handle)
+        except Exception:
+            logger.debug(
+                "Could not foreground the Windows Hello owner window",
+                exc_info=True,
+            )
+
+    @staticmethod
+    def _friendly_error(action: str, error: Exception) -> WindowsHelloError:
+        from fido2.client import ClientError
+
+        windows_code = WindowsHelloProvider._windows_error_code(error)
         if windows_code in WINDOWS_CANCEL_CODES:
-            return WindowsHelloError("Windows Hello was canceled. Nothing changed.")
+            if action == "setup":
+                return WindowsHelloError(
+                    "Windows received the setup request, but its passkey prompt "
+                    "was canceled. Nothing changed. Try again and choose "
+                    "\"This Windows device\" or \"Windows Hello,\" then approve "
+                    "with your face, fingerprint, or PIN."
+                )
+            return WindowsHelloError(
+                "Windows Hello was canceled. Nothing changed; use the app "
+                "password or try again."
+            )
         if isinstance(error, ClientError):
             if error.code == ClientError.ERR.DEVICE_INELIGIBLE:
                 return WindowsHelloError(

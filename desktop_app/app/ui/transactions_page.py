@@ -7,6 +7,7 @@ from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QCheckBox,
     QFrame,
+    QGridLayout,
     QHeaderView,
     QHBoxLayout,
     QLabel,
@@ -29,6 +30,7 @@ from app.ui.components import (
     create_card,
     danger_button,
     empty_state,
+    fit_card_to_content,
     fit_item_view_height,
     ghost_button,
     page_layout,
@@ -99,7 +101,10 @@ class TransactionsPage(QWidget):
         self.start_date = DatePicker(QDate(today.year(), today.month(), 1))
         self.end_date = DatePicker(today)
         for field in (self.start_date, self.end_date):
-            field.setFixedWidth(128)
+            # Room for "30 Sep 2026" plus the calendar affordance. The old
+            # 128 px width clipped the year at normal Windows text scaling.
+            field.setMinimumWidth(154)
+            field.setMaximumWidth(172)
             field.setEnabled(False)
         self._syncing_dates = False
         self.date_range_enabled.toggled.connect(self._toggle_date_range)
@@ -145,13 +150,17 @@ class TransactionsPage(QWidget):
         search_row.addStretch()
         search_row.addWidget(self.edit_button)
         search_row.addWidget(self.delete_button)
-        filter_row = QHBoxLayout()
+        self.filter_group = QWidget()
+        filter_row = QHBoxLayout(self.filter_group)
+        filter_row.setContentsMargins(0, 0, 0, 0)
         filter_row.setSpacing(5)
         for button in filters:
             filter_row.addWidget(button)
         filter_row.addStretch()
         filter_row.addWidget(self.result_label)
-        date_row = QHBoxLayout()
+        self.date_group = QWidget()
+        date_row = QHBoxLayout(self.date_group)
+        date_row.setContentsMargins(0, 0, 0, 0)
         date_row.setSpacing(7)
         date_row.addStretch()
         date_row.addWidget(self.date_range_enabled)
@@ -163,9 +172,12 @@ class TransactionsPage(QWidget):
         to_label.setProperty("role", "helper")
         date_row.addWidget(to_label)
         date_row.addWidget(self.end_date)
+        self.filter_date_grid = QGridLayout()
+        self.filter_date_grid.setContentsMargins(0, 0, 0, 0)
+        self.filter_date_grid.setHorizontalSpacing(14)
+        self.filter_date_grid.setVerticalSpacing(8)
         controls_layout.addLayout(search_row)
-        controls_layout.addLayout(filter_row)
-        controls_layout.addLayout(date_row)
+        controls_layout.addLayout(self.filter_date_grid)
         card_layout.addWidget(controls)
         empty_action = primary_button("Add transaction", "plus")
         empty_action.clicked.connect(self.add_transaction)
@@ -174,6 +186,7 @@ class TransactionsPage(QWidget):
         card_layout.addWidget(self.table)
         card_layout.addWidget(self.load_more_button, 0)
         layout.addWidget(card, 1)
+        self._layout_filters()
         self.set_filter("all", refresh=False)
 
     def set_filter(self, value: str, refresh: bool = True) -> None:
@@ -251,9 +264,32 @@ class TransactionsPage(QWidget):
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
+        self._layout_filters()
         if hasattr(self, "table"):
             self.table.setColumnHidden(3, self.width() < 1050)
             self.table.setColumnHidden(2, self.width() < 1000)
+
+    def _layout_filters(self) -> None:
+        if not hasattr(self, "filter_date_grid"):
+            return
+        side_by_side = self.width() >= 1120
+        if getattr(self, "_filters_side_by_side", None) == side_by_side:
+            return
+        self._filters_side_by_side = side_by_side
+        while self.filter_date_grid.count():
+            self.filter_date_grid.takeAt(0)
+        if side_by_side:
+            self.filter_date_grid.addWidget(self.filter_group, 0, 0)
+            self.filter_date_grid.addWidget(self.date_group, 0, 1)
+            self.filter_date_grid.setColumnStretch(0, 1)
+            self.filter_date_grid.setColumnStretch(1, 0)
+        else:
+            self.filter_date_grid.addWidget(self.filter_group, 0, 0)
+            self.filter_date_grid.addWidget(self.date_group, 1, 0)
+            self.filter_date_grid.setColumnStretch(0, 1)
+            self.filter_date_grid.setColumnStretch(1, 0)
+        if hasattr(self, "activity_card"):
+            fit_card_to_content(self.activity_card)
 
     def refresh(self) -> None:
         accounts = {account.id: account.name for account in self.accounts.list(include_inactive=True)}
@@ -278,13 +314,13 @@ class TransactionsPage(QWidget):
         displayed_rows = self.table_model.rowCount()
         if transactions and displayed_rows <= 10:
             fit_item_view_height(self.table, displayed_rows, maximum_rows=10)
-            self.activity_card.setMaximumHeight(245 + self.table.maximumHeight())
+            fit_card_to_content(self.activity_card)
         elif transactions:
             self.table.setMaximumHeight(16777215)
             self.table.setMinimumHeight(320)
             self.activity_card.setMaximumHeight(16777215)
         else:
-            self.activity_card.setMaximumHeight(405)
+            fit_card_to_content(self.activity_card)
         self._sync_selection_actions()
 
     def load_more(self) -> None:

@@ -205,6 +205,43 @@ def main() -> None:
             app.processEvents()
             window.grab().save(str(output / "ui-upcoming-empty.png"))
             window.close()
+
+            sparse_db = connect(Path(directory) / "sparse-preview.db")
+            try:
+                AccountService(sparse_db).create_account(
+                    "Main",
+                    "bank",
+                    opening_balance="10000",
+                )
+                sparse_window = MainWindow(sparse_db)
+                sparse_window.resize(1440, 900)
+                sparse_window.show()
+                app.processEvents()
+                for page_key in (
+                    "transactions",
+                    "reconciliation",
+                    "position",
+                    "accounts",
+                    "loans",
+                ):
+                    sparse_window._select_page(
+                        sparse_window.page_keys.index(page_key)
+                    )
+                    app.processEvents()
+                    sparse_window.grab().save(
+                        str(output / f"ui-{page_key}-sparse.png")
+                    )
+                    if page_key == "accounts":
+                        sparse_window.accounts.tree.setCurrentItem(
+                            sparse_window.accounts.tree.topLevelItem(0)
+                        )
+                        app.processEvents()
+                        sparse_window.grab().save(
+                            str(output / "ui-accounts-sparse-selected.png")
+                        )
+                sparse_window.close()
+            finally:
+                sparse_db.close()
         finally:
             db.close()
 

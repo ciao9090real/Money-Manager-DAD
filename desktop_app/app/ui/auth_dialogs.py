@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QDialog,
     QFormLayout,
@@ -41,6 +42,20 @@ def _error_label() -> QLabel:
     label.setWordWrap(True)
     label.hide()
     return label
+
+
+def confirm_windows_hello_prompt(parent=None) -> bool:
+    answer = QMessageBox.question(
+        parent,
+        "Continue in the Windows passkey prompt",
+        "Windows may call this a passkey. In the system prompt, choose "
+        "\"This Windows device\" or \"Windows Hello,\" then approve with "
+        "your face, fingerprint, or PIN.\n\n"
+        "Keep Money Manager in front until Windows finishes. Continue?",
+        QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
+        QMessageBox.StandardButton.Ok,
+    )
+    return answer == QMessageBox.StandardButton.Ok
 
 
 class PasswordSetupDialog(QDialog):
@@ -97,14 +112,18 @@ class PasswordSetupDialog(QDialog):
             return
 
         if self.use_hello.isChecked():
-            try:
-                self.auth.enable_windows_hello(int(self.winId()))
-            except WindowsHelloError as exc:
-                QMessageBox.warning(
-                    self,
-                    "Password saved; Windows Hello not enabled",
-                    f"{exc}\n\nYou can set it up later in Settings > App security.",
-                )
+            if confirm_windows_hello_prompt(self):
+                QApplication.processEvents()
+                self.raise_()
+                self.activateWindow()
+                try:
+                    self.auth.enable_windows_hello(int(self.winId()))
+                except WindowsHelloError as exc:
+                    QMessageBox.warning(
+                        self,
+                        "Password saved; Windows Hello not enabled",
+                        f"{exc}\n\nYou can set it up later in Settings > App security.",
+                    )
         super().accept()
 
     def _show_error(self, message: str) -> None:
@@ -199,7 +218,7 @@ class UnlockDialog(QDialog):
         self.cooldown_timer.timeout.connect(self._cooldown_tick)
         self.password.setFocus()
         if auto_hello and hello_ready:
-            QTimer.singleShot(150, self.try_windows_hello)
+            QTimer.singleShot(350, self.try_windows_hello)
 
     def try_password(self) -> None:
         if self.cooldown_remaining:
@@ -232,6 +251,9 @@ class UnlockDialog(QDialog):
             return
         self.hello_button.setEnabled(False)
         self.error.hide()
+        self.raise_()
+        self.activateWindow()
+        QApplication.processEvents()
         try:
             if self.auth.verify_windows_hello(int(self.winId())):
                 self.accept()

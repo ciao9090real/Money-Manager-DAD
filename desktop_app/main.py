@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QApplication
 from app.core.app_info import APP_NAME, APP_VERSION
 from app.core.database import connect
 from app.core.database_security import DB_ERROR_TYPES
+from app.core.logging_config import configure_logging
 from app.services.backup_service import BackupService
 from app.services.auth_service import AuthService
 from app.services.net_worth_service import NetWorthService
@@ -17,6 +18,7 @@ from app.ui.styles import app_stylesheet
 
 
 def main() -> int:
+    configure_logging()
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setApplicationVersion(APP_VERSION)

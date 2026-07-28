@@ -39,6 +39,7 @@ from app.ui.components import (
     create_card,
     danger_button,
     empty_state,
+    fit_card_to_content,
     fit_item_view_height,
     metric_card,
     page_layout,
@@ -290,6 +291,11 @@ class PositionOverviewPage(QWidget):
             "Accounts",
             subtitle="Live balances across active accounts",
         )
+        self.accounts_card = accounts_card
+        self.accounts_card.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Maximum,
+        )
         self.accounts_empty = empty_state(
             "No accounts yet", "Add a bank, wallet, cash, or asset account."
         )
@@ -303,7 +309,12 @@ class PositionOverviewPage(QWidget):
         accounts_layout.addWidget(self.accounts_table)
 
         content_grid.addWidget(chart_card, 0, 0)
-        content_grid.addWidget(accounts_card, 0, 1)
+        content_grid.addWidget(
+            accounts_card,
+            0,
+            1,
+            Qt.AlignmentFlag.AlignTop,
+        )
         content_grid.setColumnStretch(0, 3)
         content_grid.setColumnStretch(1, 2)
         layout.addLayout(content_grid)
@@ -357,6 +368,7 @@ class PositionOverviewPage(QWidget):
         self.accounts_table.setVisible(bool(accounts))
         if accounts:
             fit_item_view_height(self.accounts_table, len(accounts), maximum_rows=7)
+        fit_card_to_content(self.accounts_card)
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -1089,6 +1101,9 @@ class ReconciliationPage(QWidget):
             self.table.setItem(row, 3, QTableWidgetItem(status))
         if summaries:
             fit_item_view_height(self.table, len(summaries), maximum_rows=8)
+        # Prevent a one-row reconciliation table from expanding into a
+        # mostly-empty viewport-height card.
+        fit_card_to_content(self.table_card)
 
     def _import_statement(self) -> None:
         self.on_import_statement()

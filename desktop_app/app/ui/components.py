@@ -489,9 +489,13 @@ def toolbar(left: list[QWidget] | None = None, right: list[QWidget] | None = Non
 def empty_state(title: str, subtitle: str | None = None, action: QWidget | None = None) -> QWidget:
     container = QWidget()
     container.setProperty("role", "empty")
+    container.setSizePolicy(
+        QSizePolicy.Policy.Expanding,
+        QSizePolicy.Policy.Preferred,
+    )
     layout = QVBoxLayout(container)
-    layout.setContentsMargins(18, 22, 18, 22)
-    layout.setSpacing(8)
+    layout.setContentsMargins(18, 16, 18, 16)
+    layout.setSpacing(7)
     layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
     icon_tile = QFrame()
     icon_tile.setProperty("role", "emptyIcon")
@@ -505,16 +509,35 @@ def empty_state(title: str, subtitle: str | None = None, action: QWidget | None 
     title_label = QLabel(title)
     title_label.setProperty("role", "emptyTitle")
     title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    layout.addWidget(title_label)
+    title_label.setWordWrap(True)
+    title_label.setSizePolicy(
+        QSizePolicy.Policy.Expanding,
+        QSizePolicy.Policy.Preferred,
+    )
+    title_label.ensurePolished()
+    title_label.setMinimumHeight(title_label.sizeHint().height())
+    layout.addWidget(title_label, 0, Qt.AlignmentFlag.AlignHCenter)
     if subtitle:
         subtitle_label = QLabel(subtitle)
         subtitle_label.setProperty("role", "emptySubtitle")
         subtitle_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         subtitle_label.setWordWrap(True)
-        layout.addWidget(subtitle_label)
+        subtitle_label.setMaximumWidth(480)
+        subtitle_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
+        subtitle_label.ensurePolished()
+        subtitle_label.setMinimumHeight(subtitle_label.sizeHint().height())
+        layout.addWidget(subtitle_label, 0, Qt.AlignmentFlag.AlignHCenter)
     if action:
         layout.addWidget(action, 0, Qt.AlignmentFlag.AlignCenter)
-    container.setMinimumHeight(120)
+    # Word-wrapped labels can need more than one line, and that height varies
+    # with both the copy and the active font. A fixed empty-state height made
+    # Qt compress the labels below their size hints, visibly slicing the text.
+    # Let the completed layout establish the minimum instead.
+    layout.activate()
+    container.setMinimumHeight(layout.sizeHint().height())
     return container
 
 
@@ -625,10 +648,33 @@ def fit_item_view_height(view, row_count: int, minimum_rows: int = 1, maximum_ro
         row_height = max(46, view.verticalHeader().defaultSectionSize())
     else:
         header = view.header()
-        row_height = 48
+        measured_row_height = view.sizeHintForRow(0) if row_count else -1
+        row_height = max(32, measured_row_height)
     height = max(40, header.height()) + rows * row_height + 2
     view.setMinimumHeight(height)
     view.setMaximumHeight(height)
+
+
+def fit_card_to_content(card: QFrame, extra_height: int = 10) -> None:
+    """Size a sparse card to its real layout height without clipping children."""
+
+    base_minimum = card.property("_contentFitBaseMinimum")
+    if base_minimum is None:
+        base_minimum = card.minimumHeight()
+        card.setProperty("_contentFitBaseMinimum", base_minimum)
+    card.setMinimumHeight(int(base_minimum))
+    card.setMaximumHeight(16777215)
+    card_layout = card.layout()
+    if card_layout is None:
+        return
+    card_layout.activate()
+    target = max(
+        int(base_minimum),
+        card_layout.sizeHint().height() + max(0, extra_height),
+    )
+    card.setMinimumHeight(target)
+    card.setMaximumHeight(target)
+    card.updateGeometry()
 
 
 def clear_layout(layout: QGridLayout) -> None:

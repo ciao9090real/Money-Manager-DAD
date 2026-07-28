@@ -35,6 +35,7 @@ from app.ui.bank_statement_import_dialog import BankStatementImportDialog
 from app.ui.auth_dialogs import (
     ChangePasswordDialog,
     ConfirmPasswordDialog,
+    confirm_windows_hello_prompt,
 )
 from app.ui.category_manager import CategoryManagerDialog
 from app.ui.components import (
@@ -162,8 +163,8 @@ class SettingsPage(QWidget):
 
         self.sync_qr = QLabel("Start phone sync to create a QR code")
         self.sync_qr.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.sync_qr.setMinimumSize(0, 140)
-        self.sync_qr.setMaximumHeight(280)
+        self.sync_qr.setMinimumSize(0, 58)
+        self.sync_qr.setMaximumHeight(74)
         qr_row = QHBoxLayout()
         qr_row.addStretch()
         qr_row.addWidget(self.sync_qr)
@@ -362,6 +363,8 @@ class SettingsPage(QWidget):
             else "set up Windows Hello"
         )
         if not ConfirmPasswordDialog(self.auth_service, action, self).exec():
+            return
+        if not confirm_windows_hello_prompt(self):
             return
         self.hello_setup_button.setEnabled(False)
         self.hello_setup_button.setText("Waiting for Windows Hello…")
@@ -658,6 +661,8 @@ class SettingsPage(QWidget):
         self.sync_status.style().polish(self.sync_status)
         self.sync_qr.clear()
         self.sync_qr.setText("Start phone sync to create a QR code")
+        self.sync_qr.setMinimumHeight(58)
+        self.sync_qr.setMaximumHeight(74)
         self.notify("Phone sync stopped")
 
     def refresh_pairing_code(self) -> None:
@@ -671,5 +676,7 @@ class SettingsPage(QWidget):
         self.sync_server.stop()
 
     def _show_pairing_details(self, details: dict) -> None:
+        self.sync_qr.setMinimumHeight(250)
+        self.sync_qr.setMaximumHeight(280)
         self.sync_qr.setPixmap(QPixmap.fromImage(pairing_qr_image(details)))
         self.sync_qr.setToolTip("Scan with Money Manager for Android")

@@ -27,6 +27,7 @@ from app.ui.components import (
     compact_money,
     create_card,
     empty_state,
+    fit_card_to_content,
     fit_item_view_height,
     ghost_button,
     metric_card,
@@ -356,13 +357,13 @@ class LoansPage(QWidget):
         self.table.setVisible(has_rows)
         if has_rows and len(snapshots) <= 9:
             fit_item_view_height(self.table, len(snapshots), maximum_rows=9)
-            self.loan_card.setMaximumHeight(175 + self.table.maximumHeight())
+            fit_card_to_content(self.loan_card)
         elif has_rows:
             self.table.setMaximumHeight(16777215)
             self.table.setMinimumHeight(320)
             self.loan_card.setMaximumHeight(16777215)
         else:
-            self.loan_card.setMaximumHeight(310)
+            fit_card_to_content(self.loan_card)
         self._sync_actions()
 
     def select_entity(self, loan_id: str) -> None:
